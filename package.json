@@ -1,0 +1,14 @@
+{
+  "name": "banco-cad",
+  "version": "1.0.0",
+  "description": "Banco CAD: modellatore 3D parametrico per la scuola, in stile SolidWorks, in un'unica pagina HTML",
+  "private": true,
+  "scripts": {
+    "test": "npm run test:kernel && npm run test:ui",
+    "test:kernel": "node tests/extract.js index.html tests/core && node tests/kernel.test.js tests/core",
+    "test:ui": "node tests/ui.test.js index.html"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.0"
+  }
+}
