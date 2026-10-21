@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "test": "npm run test:kernel && npm run test:ui",
-    "test:kernel": "node tests/extract.js index.html tests/core && node tests/kernel.test.js tests/core",
+    "test:kernel": "node tests/extract.js index.html tests/core && node tests/kernel.test.js tests/core && node tests/step.test.js index.html tests/core",
     "test:ui": "node tests/ui.test.js index.html"
   },
   "devDependencies": {

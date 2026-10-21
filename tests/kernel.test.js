@@ -346,6 +346,47 @@ T('Cubo importato + estrusione unita sopra (10 × 10 × 5)', () => {
   feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 5 }); return d;
 }, { V: 8500, A: 2400 + 200, bb: [[0, 0, 0], [20, 25, 20]] });
 
+/* ---------- corpi importati da STEP e IGES (risultato di OpenCascade simulato) ---------- */
+// OpenCascade restituisce, per ogni solido, triangoli con i vertici ripetuti faccia per faccia e l'elenco delle facce vere
+// (brep_faces: primo e ultimo triangolo di ogni faccia). Qui lo si costruisce a mano; il lettore vero è provato in step.test.js.
+function occtMesh(faces, name = 'pezzo') {
+  const pos = [], idx = [], bf = [];
+  for (const tris of faces) {
+    const first = idx.length / 3;
+    for (const t of tris) for (const p of t) { idx.push(pos.length / 3); pos.push(...p); }
+    bf.push({ first, last: idx.length / 3 - 1, color: null });
+  }
+  return { name, attributes: { position: { array: pos } }, index: { array: idx }, brep_faces: bf };
+}
+const fakeOCCT = meshesFor => { const r = p => ({ success: true, meshes: meshesFor(p) }); return { ReadStepFile: (d, p) => r(p), ReadIgesFile: (d, p) => r(p) }; };
+const STEP_HEAD = enc('ISO-10303-21;\nHEADER;\nENDSEC;\n');
+function cadImp(doc, meshes, extra = {}) {
+  const r = MI.readCAD(fakeOCCT(() => meshes), STEP_HEAD, 'step');
+  const m = MI.weld(r.pos); m.f = new Uint32Array([...m.src].map(t => r.face[t]));
+  return feat(doc, { type: 'import', fmt: 'step', file: 'prova.step', unit: 'mm', mesh: MI.pack(m), ...extra });
+}
+// le 6 facce del parallelepipedo, ognuna come faccia vera fatta di 2 triangoli
+const boxFaces = (x0, y0, z0, x1, y1, z1) => { const t = boxTris(x0, y0, z0, x1, y1, z1); return [0, 1, 2, 3, 4, 5].map(k => [t[2 * k], t[2 * k + 1]]); };
+T('STEP: cubo 20 mm, 6 facce vere con i vertici ripetuti', () => { const d = D0('s'); cadImp(d, [occtMesh(boxFaces(0, 0, 0, 20, 20, 20))]); return d; },
+  { V: 8000, A: 2400, C: [10, 10, 10], bb: [[0, 0, 0], [20, 20, 20]], E: 12 });
+// prisma esagonale r 10, h 10: i 6 lati sono un'unica faccia vera (come un cilindro grossolano). Tra i lati ci sono 60°,
+// ma lo spigolo non si disegna perché la faccia è la stessa: restano i due esagoni (12 spigoli)
+const hexFaces = () => { const r = 10, h = 10, P = i => { const a = 2 * PI * (i % 6) / 6; return [r * Math.cos(a), 0, r * Math.sin(a)]; }, U = p => [p[0], h, p[2]];
+  const bot = [], top = [], side = [];
+  for (let i = 0; i < 6; i++) { const a = P(i), b = P(i + 1); bot.push([[0, 0, 0], a, b]); top.push([[0, h, 0], U(b), U(a)]); side.push([b, a, U(a)], [b, U(a), U(b)]); }
+  return [bot, top, side]; };
+T('STEP: prisma esagonale con i lati in una sola faccia vera (spigoli tra i lati nascosti)', () => { const d = D0('s'); cadImp(d, [occtMesh(hexFaces())]); return d; },
+  { V: 1.5 * Math.sqrt(3) * 1000, A: 600 + 3 * Math.sqrt(3) * 100, C: [0, 5, 0], E: 12 });
+T('STEP: due solidi separati (assieme), cubo 10 e cubo 10 a 5 mm di distanza', () => { const d = D0('s'); cadImp(d, [occtMesh(boxFaces(0, 0, 0, 10, 10, 10), 'a'), occtMesh(boxFaces(15, 0, 0, 25, 10, 10), 'b')]); return d; },
+  { V: 2000, A: 1200, C: [12.5, 5, 5], bb: [[0, 0, 0], [25, 10, 10]], E: 24 });
+T('STEP con Z verso l\'alto: blocco 10 × 20 × 30 coricato', () => { const d = D0('s'); cadImp(d, [occtMesh(boxFaces(0, 0, 0, 10, 20, 30))], { zUp: true }); return d; },
+  { V: 6000, A: 2200, C: [5, 15, -10], bb: [[0, 0, -20], [10, 30, 0]], E: 12 });
+T('STEP: cubo importato + foro R4 passante con taglio dalla faccia superiore', () => {
+  const d = D0('s'); cadImp(d, [occtMesh(boxFaces(0, 0, 0, 20, 20, 20))]);
+  const b = SB(); b.circle(10, -10, 4); const s = sketch(d, face(d, nearW([0, 1, 0], 20)), b);
+  feat(d, { type: 'cut', sketch: s, end: 'through' }); return d;
+}, { V: 8000 - 320 * PI, C: [10, 10, 10] });
+
 // materiale
 T('Massa acciaio S235 (blocco 80×50×10)', () => { const d = box(); d.material = 's235'; return d; }, { V: 40000, M: 40000 * 7.85 / 1000 });
 
@@ -423,6 +464,29 @@ SK.push(['DXF: testi e quote ignorati, linee contate (3 LINE, 1 TEXT, 1 DIMENSIO
   const r = MI.parseDXF(dxfFile([dLine(0, 0, 10, 0), dLine(10, 0, 10, 10), dLine(10, 10, 0, 0), ['0', 'TEXT', '8', '0', '10', '0', '20', '0', '1', 'ciao'], ['0', 'DIMENSION', '8', '0'], ['0', 'SPLINE', '8', '0']]));
   const b = SB(); const info = MI.dxfToSketch(b.s, r.geo, {});
   return { ok: true, got: [info.count.line, r.skipped.testi, r.skipped.quote, r.skipped['curve spline'], info.points], exp: [3, 1, 1, 1, 3] };
+}]);
+
+// STEP: se i triangoli sono troppi si rilegge il file con triangoli più grandi (livello successivo)
+SK.push(['STEP: troppi triangoli → secondo livello di finezza (200 → 80, massimo 100)', () => {
+  const tri = n => [occtMesh([Array.from({ length: n }, (_, k) => [[k, 0, 0], [k + 1, 0, 0], [k, 1, 0]])])];
+  const occt = fakeOCCT(p => tri(p.angularDeflection === MI.CAD_LEVELS[0].angularDeflection ? 200 : 80));
+  const r = MI.readCAD(occt, STEP_HEAD, 'step', { max: 100 });
+  return { ok: true, got: [r.level, r.tris, r.faces], exp: [1, 80, 1] };
+}]);
+SK.push(['STEP: facce vere conservate nel salvataggio (pack/unpack)', () => {
+  const r = MI.readCAD(fakeOCCT(() => [occtMesh(hexFaces())]), STEP_HEAD, 'step');
+  const m = MI.weld(r.pos); m.f = new Uint32Array([...m.src].map(t => r.face[t]));
+  const u = MI.unpack(JSON.parse(JSON.stringify(MI.pack(m))));
+  const a = MI.analyze(u);
+  return { ok: true, got: [u.f.length, u.f[0], u.f[u.f.length - 1], a.brepFaces, a.open], exp: [24, 0, 2, 3, 0] };
+}]);
+SK.push(['STEP e IGES: riconoscimento del tipo e messaggi per i file sbagliati', () => {
+  const code = t => ({ step: 1, iges: 2, stepxml: 3 })[MI.cadKind(enc(t))] || 0;
+  const igs = 'Banco CAD prova IGES'.padEnd(72) + 'S      1\n';
+  let wrong = 0;
+  try { MI.readCAD(fakeOCCT(() => []), enc(igs), 'step'); } catch (e) { if (/Sembra un IGES/.test(e.message)) wrong++; }
+  try { MI.readCAD(fakeOCCT(() => []), STEP_HEAD, 'step'); } catch (e) { if (/non ci sono solidi/.test(e.message)) wrong++; }
+  return { ok: true, got: [code('ISO-10303-21;\nHEADER;'), code(igs), code('<?xml version="1.0"?>'), code('solid prova'), wrong], exp: [1, 2, 3, 0, 2] };
 }]);
 
 /* ---------- esecuzione ---------- */

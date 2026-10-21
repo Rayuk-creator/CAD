@@ -292,6 +292,49 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     rec('Interfaccia: file DWG spiegato (va salvato come DXF)', /salvalo come DXF/.test(msg) && nAfter === nBefore && (await page.evaluate(() => App.mode)) === 'part', msg);
   } catch (e) { rec('Interfaccia: importa DXF dal menu (schizzo nuovo, cm, origine) ed estrusione', false, e.message.split('\n')[0]); }
 
+  // 3n. importazione STEP e IGES (lettore OpenCascade dentro la pagina): piastra con foro dal menu, pannello, file sbagliati
+  try {
+    await fresh();
+    const { stepPlateHole } = require('./stepgen.js'), { igesBox } = require('./igesgen.js');
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importCad"]');
+    await page.setInputFiles('#cadFile', { name: 'piastra.stp', mimeType: 'application/step', buffer: Buffer.from(stepPlateHole(60, 40, 10, 8)) });
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.doc.features.some(f => f.type === 'import') && document.querySelector('#modal').hidden, null, { timeout: 30000 });
+    const toastT = await page.evaluate(() => document.querySelector('#toast').textContent);
+    const p1 = await props();
+    const Ve = 24000 - 640 * Math.PI, Ae = 6800 + 32 * Math.PI;
+    // doppio clic: pannello con le facce del modello, senza scelta dell'unità; Z verso l'alto → piastra in piedi
+    await page.locator('.tnode', { hasText: 'Importato1' }).dblclick(); await page.waitForTimeout(300);
+    const pm = await page.evaluate(() => ({ unit: !!document.querySelector('#pm_unit'), text: document.querySelector('#pm').textContent, gl: [...document.querySelectorAll('#pm .grp > h3')].filter(h => !h.querySelector('.gl-i')).length }));
+    await page.locator('#pm label.chk', { hasText: 'Asse Z' }).locator('input').check(); await page.waitForTimeout(300);
+    await page.click('#pm .pm-ok'); await page.waitForTimeout(300);
+    const p2 = await props();
+    const ok = p1 && rel(p1.V, Ve) < TOL && rel(p1.A, Ae) < TOL && /7 facce/.test(toastT) && !pm.unit && /7 facce del modello/.test(pm.text) && !pm.gl
+      && p2 && rel(p2.V, Ve) < TOL && Math.abs(p2.bb[1][1] - 10) < 1e-3 && Math.abs(p2.bb[0][2] + 40) < 1e-3;
+    rec('Interfaccia: importa STEP dal menu (piastra con foro, pannello, Z verso l\'alto)', ok, `V ${p1 && p1.V.toFixed(1)} (${Ve.toFixed(1)}), A ${p1 && p1.A.toFixed(1)} (${Ae.toFixed(1)}), unità nel pannello: ${pm.unit ? 'sì' : 'no'}, dopo Z ingombro ${p2 && JSON.stringify(p2.bb)}; «${toastT}»`);
+    // IGES scelto per sbaglio nella finestra «Importa STL o OBJ»: viene letto lo stesso
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importMesh"]');
+    await page.setInputFiles('#meshFile', { name: 'blocco.igs', mimeType: 'application/iges', buffer: Buffer.from(igesBox(30, 20, 10)) });
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.doc.features.filter(f => f.type === 'import').length === 2 && document.querySelector('#modal').hidden, null, { timeout: 30000 });
+    const ig = await page.evaluate(() => { const f = App.doc.features.filter(f => f.type === 'import')[1]; const i = Model.importInfo(f); return { fmt: f.fmt, faces: i.brepFaces, V: i.volume }; });
+    rec('Interfaccia: IGES letto anche dalla finestra STL/OBJ', ig.fmt === 'iges' && ig.faces === 6 && rel(ig.V, 6000) < TOL, JSON.stringify(ig));
+    // file di SolidWorks e file danneggiato: messaggio nella finestra, niente funzione nuova
+    const nBefore = await page.evaluate(() => App.doc.features.length);
+    const tryBad = async (name, text) => {
+      await page.click('#btnFile'); await page.click('#menuFile [data-act="importCad"]');
+      await page.setInputFiles('#cadFile', { name, mimeType: 'application/octet-stream', buffer: Buffer.from(text) });
+      await page.click('#modalActions .btn-primary');
+      await page.waitForFunction(() => { const e = document.querySelector('#cadErr'); return e && !e.hidden && e.classList.contains('err'); }, null, { timeout: 30000 });
+      const m = await page.evaluate(() => document.querySelector('#cadErr').textContent);
+      await page.click('#modalActions .btn:not(.btn-primary)');
+      return m;
+    };
+    const m1 = await tryBad('pezzo.sldprt', 'xx'), m2 = await tryBad('rotto.step', 'ISO-10303-21;\nHEADER;\nDATA;\n#1=PRODUCT(');
+    const nAfter = await page.evaluate(() => App.doc.features.length);
+    rec('Interfaccia: file SolidWorks e STEP danneggiato spiegati', /STEP AP214/.test(m1) && /non si riesce a leggere|non ci sono solidi/.test(m2) && nAfter === nBefore, m1 + ' | ' + m2);
+  } catch (e) { rec('Interfaccia: importa STEP dal menu (piastra con foro, pannello, Z verso l\'alto)', false, e.message.split('\n')[0]); }
+
   // 4. glossario: ogni comando e ogni titolo dei pannelli ha la sua spiegazione
   try {
     await fresh();

@@ -32,6 +32,8 @@ Designed for technical secondary schools (mechanical and mechatronic engineering
 
 Your work is saved automatically in the browser. To move it to another computer use **Progetto › Esporta il progetto** (Project › Export) and then **Importa un progetto** (Import).
 
+With **Progetto › Importa STEP o IGES** (Project › Import STEP or IGES) you can open a part (or a small assembly) made with another CAD program (SolidWorks, Inventor, Fusion, FreeCAD… saved as STEP or IGES): it arrives with its real faces and the file's units; you can measure it, put it on a drawing, get volume and mass with an error well below 1 %, and add sketches and features on it. The reader is OpenCascade, compressed inside the page: it works offline too.
+
 With **Progetto › Importa STL o OBJ** (Project › Import STL or OBJ) you can also open a part made with another program (SolidWorks, Inventor, Tinkercad… saved as STL or OBJ): it arrives as a faceted body that you can measure, put on a drawing and weigh, and you can add sketches and features on its flat faces.
 
 With **Progetto › Importa DXF (schizzo)** (Project › Import DXF), or **Inserisci DXF** (Insert DXF) in the Sketch tab, a 2D drawing (AutoCAD, DraftSight, LibreCAD, a SolidWorks drawing…) becomes a sketch: lines, arcs, circles, polylines and blocks, in the file's units; dash-dot axes become centerlines. Then you extrude or revolve it.
@@ -105,7 +107,7 @@ Orthographic views in **first-angle projection** (ISO 5456-2), hidden lines, cen
 
 ## Verified calculations
 
-Every calculation is checked by automatic tests: 77 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL and OBJ, sketches imported from DXF, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero.
+Every calculation is checked by automatic tests: 77 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL, OBJ, STEP and IGES, sketches imported from DXF, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero. Another 10 tests run the real reader on STEP and IGES files written for the purpose (blocks, cylinder, plate with a hole, different units, damaged files).
 
 The same tests can be run inside the program: **Valuta › Autoverifica** (Evaluate › Self-check).
 
@@ -113,14 +115,14 @@ The same tests can be run inside the program: **Valuta › Autoverifica** (Evalu
 
 ## For developers
 
-The program is one file, `index.html`, with HTML, CSS and JavaScript together (no dependencies, no build step). The tests use Node.js and Playwright.
+The program is one file, `index.html` (about 5 MB), with HTML, CSS and JavaScript together, no build step. The only part not written here is the STEP/IGES reader (occt-import-js with OpenCascade, LGPL 2.1 licence), compressed at the end of the page: licences and how to replace it are in `licenze/`. The tests use Node.js and Playwright.
 
 ```bash
 npm install
 npx playwright install chromium   # first time only
 npm test                          # all tests
-npm run test:kernel               # calculations only (66 tests, a few seconds)
-npm run test:ui                   # interface only, in Chromium (33 tests)
+npm run test:kernel               # calculations only (85 + 10 STEP/IGES tests, a few seconds)
+npm run test:ui                   # interface only, in Chromium (39 tests)
 ```
 
 If you already have Chromium installed you can point to it with `CHROMIUM_PATH=/path/to/chrome npm run test:ui`. When a test fails, screenshots are saved in `tests/output/`.
@@ -131,6 +133,10 @@ docs/img/             the images in this README
 tests/extract.js      extracts the calculation modules from the file to test them in Node
 tests/kernel.test.js  calculation tests (the same as the in-app Self-check)
 tests/ui.test.js      interface tests with Playwright
+tests/step.test.js    tests of the real STEP/IGES reader
+tests/stepgen.js      writes small STEP test files (igesgen.js: IGES)
+tools/incorpora-occt.js  inserts or updates the STEP/IGES reader in the page
+licenze/              licences of the STEP/IGES reader (LGPL 2.1)
 ```
 
 The interface tests use the program the way a student would: they draw with the mouse, type dimensions, press buttons, simulate fingers on a tablet and reload the page. They also check that every command is explained in the Guide and the Glossary.

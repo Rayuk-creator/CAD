@@ -2,7 +2,7 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 21 ottobre 2026 (importazione DXF negli schizzi).
+Ultimo aggiornamento: 21 ottobre 2026 (importazione STEP e IGES).
 
 ---
 
@@ -16,7 +16,8 @@ Ultimo aggiornamento: 21 ottobre 2026 (importazione DXF negli schizzi).
 
 **Banco CAD** è un modellatore 3D parametrico per la scuola (istituto tecnico, meccanica e meccatronica), **ispirato a SolidWorks** in tutto: nomi dei comandi, flusso schizzo → funzione, albero, PropertyManager, colori dello schizzo, messa in tavola ISO.
 
-- È **un solo file**: `index.html` (≈ 710 kB), con HTML, CSS e JavaScript insieme, senza dipendenze né compilazione. Funziona offline con un doppio clic.
+- È **un solo file**: `index.html` (≈ 5 MB), con HTML, CSS e JavaScript insieme, senza compilazione. Funziona offline con un doppio clic.
+- L'**unica parte esterna** è il lettore STEP/IGES (occt-import-js 0.0.24 = OpenCascade in WebAssembly, licenza LGPL 2.1): il wasm (7,6 MB) è compresso con gzip e scritto in base64 in fondo alla pagina (≈ 4,1 MB), tra i commenti «LETTORE STEP/IGES: inizio/fine». Il resto del programma è ≈ 0,8 MB. Licenze in `licenze/`. Per aggiornarlo: `node tools/incorpora-occt.js <cartella dist>`. **Attenzione:** quella riga in fondo è lunghissima: non leggere né cercare in `index.html` senza limitare l'output.
 - Interfaccia e testi **in italiano**.
 - Il lavoro dell'utente si salva in `localStorage`; Progetto › Esporta / Importa per spostarlo.
 
@@ -27,9 +28,10 @@ Ultimo aggiornamento: 21 ottobre 2026 (importazione DXF negli schizzi).
 - **Valuta**: proprietà di massa esatte, 13 materiali, misura, vista in sezione, **Autoverifica** (le prove dei calcoli dentro il programma).
 - **Messa in tavola**: metodo E (ISO 5456-2), linee nascoste, assi, sezioni, quote, cartiglio, A4–A2; stampa, SVG, DXF. Export STL dal menu Progetto.
 - **Importazione STL e OBJ** (Progetto › Importa STL o OBJ): funzione «Importato» nell'albero, corpo a faccette; STL binario e ASCII, OBJ con facce a più lati; unità del file (mm, cm, m, pollici) e «Asse Z del file verso l'alto», modificabili con doppio clic; vertici saldati con tolleranza, facce girate corrette da sole, avviso se il corpo non è chiuso; facce piane riconosciute (schizzi e funzioni sopra); spigoli tra faccette sotto i 30° nascosti e ombreggiatura morbida; massimo 100 000 triangoli.
+- **Importazione STEP e IGES** (Progetto › Importa STEP o IGES; un .step/.igs scelto nella finestra STL/OBJ viene letto lo stesso): stessa funzione «Importato»; superfici vere divise in triangoli fitti (angolo 0,1 rad ≈ 63 lati per cerchio, scostamento 0,0005 dell'ingombro; se si superano 100 000 triangoli si rilegge più grossolano, fino a 4 livelli, con avviso dal 3°); unità lette dal file e convertite in mm; ogni triangolo ricorda la **faccia vera** d'origine (`f` nel progetto salvato): lo spigolo si disegna solo tra facce diverse, la cucitura dei cilindri non si vede; assiemi = un solo «Importato» con più corpi; «Asse Z verso l'alto» modificabile; messaggi per .sldprt, .ipt, .sat, .x_t, STEP XML e file danneggiati. Il lettore si prepara alla prima importazione (≈ 0,5 s) e funziona offline.
 - **Importazione DXF negli schizzi** (Progetto › Importa DXF (schizzo), oppure **Inserisci DXF** nella scheda Schizzo): fuori da uno schizzo ne crea uno nuovo sul piano scelto, dentro uno schizzo aggiunge a quello aperto; LINE, ARC, CIRCLE, LWPOLYLINE e POLYLINE (anche con tratti curvi, «bulge»), blocchi (INSERT con spostamento, rotazione, scala uniforme, specchio, serie); unità da `$INSUNITS` o scelta a mano; posizione come nel file, angolo o centro sull'origine; estremi vicini uniti, entità doppie tolte; linee tratto-punto → linee di mezzeria, tratteggiate → costruzione; testi, quote, tratteggi, ellissi, spline saltati e contati nel messaggio; DWG e DXF binario spiegati; massimo 3000 entità. Le entità arrivano selezionate e sotto definite (blu).
 - **Esercitazioni**: 8 pezzi con tavola di consegna e verifica automatica.
-- **Guida** «come si fa» (43 argomenti, pulsante in alto, «Mostrami dove») e **Glossario** (≈ 147 termini, ⓘ accanto ai titoli dei pannelli), collegati tra loro.
+- **Guida** «come si fa» (44 argomenti, pulsante in alto, «Mostrami dove») e **Glossario** (≈ 152 termini, ⓘ accanto ai titoli dei pannelli), collegati tra loro.
 
 ### Comandi della vista (decisi dall'utente)
 
@@ -60,10 +62,15 @@ README.md / .en.md    presentazione in italiano e in inglese (con immagini)
 docs/img/             7 schermate del README
 IDEE.md               lavori futuri e idee rimandate
 RIPARTENZA.md         questo file
+licenze/              licenze LGPL del lettore STEP/IGES e LEGGIMI.md (versione, impronte SHA-256)
+tools/incorpora-occt.js  inserisce/aggiorna il lettore STEP/IGES in index.html
 tests/extract.js      estrae i moduli di calcolo da index.html per Node
-tests/kernel.test.js  73 casi geometrici + 4 di schizzo = 77 prove (usate anche dall'Autoverifica)
-tests/ui.test.js      36 prove dell'interfaccia in Chromium (Playwright)
-package.json          npm test / test:kernel / test:ui
+tests/kernel.test.js  78 casi geometrici + 7 di controllo = 85 prove (usate anche dall'Autoverifica)
+tests/step.test.js    10 prove del lettore STEP/IGES vero (prende il lettore da index.html)
+tests/stepgen.js      scrive file STEP di prova (blocco, cilindro, piastra con foro, due blocchi, unità mm/cm/m)
+tests/igesgen.js      scrive file IGES di prova (blocco fatto di superfici piane tagliate)
+tests/ui.test.js      39 prove dell'interfaccia in Chromium (Playwright)
+package.json          npm test / test:kernel (comprende step.test.js) / test:ui
 ```
 
 ### Moduli dentro `index.html` (in ordine)
@@ -71,7 +78,7 @@ package.json          npm test / test:kernel / test:ui
 1. `CSG` – booleane con alberi BSP; ogni poligono ha un tag di superficie.
 2. `Geom` – estrusione, `extrudeDraft` (sformo), rivoluzione, fori, topologia, proprietà di massa esatte.
 3. `Sketch` – entità, relazioni, risolutore, `profiles` (contorni chiusi), `chains` (catene aperte per sweep e nervature).
-3b. `Import` – lettura STL/OBJ (`parseSTL`, `parseOBJ`), saldatura dei vertici (`weld`), forma compatta base64 salvata nel progetto (`pack`/`unpack`), `analyze` (orientamento, chiusura, facce piane); DXF: `parseDXF` (geometria in coordinate del disegno, unità, entità saltate) e `dxfToSketch` (entità dello schizzo con punti uniti). Interfaccia in `App.importDxfDialog`/`App.importDxfData` e `Sketcher.insertDXF`. Il prossimo lettore (STEP/IGES) va qui.
+3b. `Import` – lettura STL/OBJ (`parseSTL`, `parseOBJ`), saldatura dei vertici (`weld`), forma compatta base64 salvata nel progetto (`pack`/`unpack`), `analyze` (orientamento, chiusura, facce piane); DXF: `parseDXF` (geometria in coordinate del disegno, unità, entità saltate) e `dxfToSketch` (entità dello schizzo con punti uniti). Interfaccia in `App.importDxfDialog`/`App.importDxfData` e `Sketcher.insertDXF`. STEP/IGES: `loadOCCT` (decomprime il wasm e avvia il lettore, una volta sola; in Node gli si passa `require`), `readCAD` (triangoli in mm + faccia vera di ogni triangolo, livelli di finezza `CAD_LEVELS`), `cadKind`; `weld` restituisce anche `src` (triangolo d'origine) e `pack`/`unpack`/`analyze` portano il vettore delle facce `f`. Interfaccia in `App.importCadDialog`/`App.importCadData` (asincrona) e `addImported` (comune a STL/OBJ e STEP/IGES).
 4. `Model` – albero delle funzioni e `regen`; `sweepTool`, `ribTool`, `filletCorners`, `edgeTool`, `importTool` (funzione `import`, con cache per file/unità/orientamento; spigoli morbidi in `smoothMeshEdges`); `sketchesOf(f)` (lo sweep usa due schizzi: `f.sketch` profilo, `f.path` percorso).
 5. `GLView` – vista WebGL e camera (`rotate`, `pan`, `zoomAt`, `fit`).
 6. `App` – stato, albero, selezione, comandi, `initView` (mouse, rotella, tablet), salvataggio.
@@ -93,7 +100,8 @@ package.json          npm test / test:kernel / test:ui
 - Dopo aver caricato un pezzo a mano chiamare `App.r.fit(...)`, altrimenti i clic finiscono fuori dal pezzo.
 - Sul tablet toccare un punto **pieno** del pezzo (il centro della piastra forata è il foro!).
 - Lo spostamento con la rotella si misura sulla camera, non sulle coordinate dello schermo; la dimensione del pixel (`pxSize`) va letta dopo un fotogramma (`requestAnimationFrame`), altrimenti può essere quella vecchia.
-- Per i file da importare nei test: `page.setInputFiles('#meshFile', { name, mimeType, buffer })` (DXF: `#dxfFile`); nel codice c'è anche `App.importMeshData(nome, Uint8Array, { unit, zUp })` e `App.importDxfData(nome, Uint8Array, { unit, origin, plane })`.
+- Per i file da importare nei test: `page.setInputFiles('#meshFile', { name, mimeType, buffer })` (DXF: `#dxfFile`, STEP/IGES: `#cadFile`); nel codice c'è anche `App.importMeshData(nome, Uint8Array, { unit, zUp })`, `App.importDxfData(nome, Uint8Array, { unit, origin, plane })` e `await App.importCadData(nome, Uint8Array, { zUp })`.
+- Le caselle dei pannelli non hanno un id: si prendono con `page.locator('#pm label.chk', { hasText: '…' }).locator('input')`.
 
 ---
 
@@ -109,7 +117,10 @@ package.json          npm test / test:kernel / test:ui
 
 ---
 
+- 21 ottobre (terza parte): **importazione STEP e IGES** con OpenCascade (occt-import-js) compresso dentro `index.html` (scelta dell'utente: tutto in un file, ≈ 5 MB); 5 prove di calcolo + 3 di controllo con un lettore simulato, 10 prove con il lettore vero su file STEP/IGES scritti dai generatori dei test, 3 prove dell'interfaccia; Guida (argomento «Importare un pezzo da un file STEP o IGES») e Glossario (STEP, IGES, Importa STEP o IGES, Facce del modello d'origine, OpenCascade) aggiornati. Corretta anche la chiusura doppia `</body></html>` in fondo alla pagina.
+
 ## 6. Cose aperte
 
-- Tutto quello che c'è in `IDEE.md`: **prossimo passo STEP/IGES**, poi il cablaggio 3D semi-automatico da PDF (che userà il lettore DXF).
-- La pagina pubblicata su claude.ai (artifact «Banco CAD») è aggiornata al **21 ottobre** (importazione DXF): ripubblicarla quando l'utente lo chiede. La versione giusta resta `index.html` del repository.
+- Tutto quello che c'è in `IDEE.md`: **prossimo passo: ellissi e spline nel DXF** (deciso dall'utente il 21 ottobre), poi il cablaggio 3D semi-automatico da PDF (che userà il lettore DXF).
+- Due facce vere adiacenti nello stesso piano (per esempio una faccia divisa con una «linea di divisione») si vedono unite, senza lo spigolo in mezzo: si potrebbe distinguere con la faccia d'origine in `surfKey`, ma toccherebbe anche i pezzi normali. Per ora lasciato così.
+- La pagina pubblicata su claude.ai (artifact «Banco CAD») è aggiornata al **21 ottobre** (importazione DXF, **senza** STEP/IGES): ripubblicarla quando l'utente lo chiede (ora la pagina pesa ≈ 5 MB, sotto il limite di 16 MB). La versione giusta resta `index.html` del repository.

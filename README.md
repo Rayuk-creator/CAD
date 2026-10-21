@@ -30,6 +30,8 @@ Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo
 
 Il lavoro si salva da solo nel browser. Per portarlo su un altro computer usa **Progetto › Esporta il progetto** e poi **Importa un progetto**.
 
+Con **Progetto › Importa STEP o IGES** si apre un pezzo (o un piccolo assieme) fatto con un altro programma CAD (SolidWorks, Inventor, Fusion, FreeCAD… salvato in STEP o IGES): arriva con le sue facce vere e l'unità del file, si misura, si mette in tavola, se ne calcolano volume e massa con un errore molto sotto l'1 %, e sopra si aggiungono schizzi e funzioni. Il lettore è OpenCascade, compresso dentro la pagina: funziona anche senza internet.
+
 Con **Progetto › Importa STL o OBJ** si apre anche un pezzo fatto con un altro programma (SolidWorks, Inventor, Tinkercad… salvato in STL o OBJ): arriva come corpo a faccette che si misura, si mette in tavola, se ne calcolano volume e massa, e sulle cui facce piane si possono aggiungere schizzi e funzioni.
 
 Con **Progetto › Importa DXF (schizzo)**, o con **Inserisci DXF** nella scheda Schizzo, un disegno 2D (AutoCAD, DraftSight, LibreCAD, tavola di SolidWorks…) entra in uno schizzo: linee, archi, cerchi, polilinee e blocchi, con l'unità del file; gli assi tratto-punto diventano linee di mezzeria. Poi si estrude o si fa ruotare.
@@ -103,7 +105,7 @@ Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nasc
 
 ## Calcoli verificati
 
-Ogni calcolo del programma è controllato da prove automatiche: 77 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL e OBJ, schizzi importati da DXF, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero.
+Ogni calcolo del programma è controllato da prove automatiche: 77 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 10 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, file danneggiati).
 
 Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifica**.
 
@@ -111,14 +113,14 @@ Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifi
 
 ## Per chi sviluppa
 
-Il programma è un solo file, `index.html`, con HTML, CSS e JavaScript insieme (nessuna dipendenza, nessuna compilazione). I test usano Node.js e Playwright.
+Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScript insieme, senza compilazione. L'unica parte non scritta qui è il lettore STEP/IGES (occt-import-js con OpenCascade, licenza LGPL 2.1), compresso in fondo alla pagina: licenze e istruzioni per sostituirlo sono in `licenze/`. I test usano Node.js e Playwright.
 
 ```bash
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (66 prove, pochi secondi)
-npm run test:ui                   # solo l'interfaccia in Chromium (33 prove)
+npm run test:kernel               # solo i calcoli (85 + 10 prove STEP/IGES, pochi secondi)
+npm run test:ui                   # solo l'interfaccia in Chromium (39 prove)
 ```
 
 Se hai già un Chromium installato puoi indicarlo con `CHROMIUM_PATH=/percorso/chrome npm run test:ui`. In caso di errore, le immagini di controllo finiscono in `tests/output/`.
@@ -129,6 +131,10 @@ docs/img/             le immagini di questo README
 tests/extract.js      estrae dal file i moduli di calcolo per provarli in Node
 tests/kernel.test.js  prove dei calcoli (le stesse dell'Autoverifica)
 tests/ui.test.js      prove dell'interfaccia con Playwright
+tests/step.test.js    prove del lettore STEP/IGES vero
+tests/stepgen.js      scrive piccoli file STEP di prova (igesgen.js: IGES)
+tools/incorpora-occt.js  inserisce o aggiorna il lettore STEP/IGES nella pagina
+licenze/              licenze del lettore STEP/IGES (LGPL 2.1)
 ```
 
 Le prove dell'interfaccia usano il programma come farebbe uno studente: disegnano con il mouse, scrivono le quote, premono i pulsanti, simulano le dita sul tablet e ricaricano la pagina. Controllano anche che ogni comando abbia la sua spiegazione nella Guida e nel Glossario.
