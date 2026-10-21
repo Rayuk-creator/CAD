@@ -341,6 +341,50 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     rec('Interfaccia: DXF con ellisse e spline (archi tangenti) ed estrusione', false, e.message.split('\n')[0] + ' ' + JSON.stringify(why));
   }
 
+  // 3m-quater. DXF con più layer: elenco con le caselle (il layer spento nel file parte senza spunta), anteprima che cambia
+  //           con la scelta, «Nessuno» → messaggio, solo PEZZO → schizzo con il solo pezzo ed estrusione
+  try {
+    await fresh();
+    const L = (ly, x0, y0, x1, y1) => ['0', 'LINE', '8', ly, '10', x0, '20', y0, '30', 0, '11', x1, '21', y1, '31', 0];
+    const C = (ly, x, y, r) => ['0', 'CIRCLE', '8', ly, '10', x, '20', y, '40', r];
+    const rect = (ly, x0, y0, x1, y1) => [L(ly, x0, y0, x1, y0), L(ly, x1, y0, x1, y1), L(ly, x1, y1, x0, y1), L(ly, x0, y1, x0, y0)];
+    const tables = ['0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '0', 'LAYER', '2', 'QUOTE', '70', '0', '62', '-3', '6', 'CONTINUOUS', '0', 'ENDTAB', '0', 'ENDSEC'];
+    const ents = [...rect('PEZZO', 0, 0, 80, 50), C('PEZZO', 40, 25, 10), ...rect('CARTIGLIO', -30, -30, 260, 180), L('QUOTE', 0, -10, 80, -10)];
+    const file = ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '4', '0', 'ENDSEC', ...tables, '0', 'SECTION', '2', 'ENTITIES', ...ents.flat().map(String), '0', 'ENDSEC', '0', 'EOF'].join('\r\n');
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', { name: 'tavola.dxf', mimeType: 'application/dxf', buffer: Buffer.from(file) });
+    await page.waitForFunction(() => document.querySelector('#dxfPrev svg') && !document.querySelector('#dxfLayers').hidden, null, { timeout: 5000 });
+    const look = () => page.evaluate(() => ({ boxes: [...document.querySelectorAll('#dxfLayers input[data-ly]')].map(x => x.dataset.ly + ':' + (x.checked ? 1 : 0)).join(' '),
+      cap: document.querySelector('#dxfCap').textContent, svg: !!document.querySelector('#dxfPrev svg'), vb: (document.querySelector('#dxfPrev svg') || { getAttribute: () => '' }).getAttribute('viewBox'), ph: (document.querySelector('#dxfPrev .ph') || {}).textContent || '' }));
+    const a = await look();
+    await page.locator('#dxfLayers label.chk', { hasText: 'CARTIGLIO' }).locator('input').uncheck(); await page.waitForTimeout(100);
+    const b = await look();
+    await page.click('#dxfLayers button[data-all="0"]'); await page.waitForTimeout(100);
+    const c = await look();
+    await page.click('#modalActions .btn-primary'); await page.waitForTimeout(200);
+    const errNone = await page.evaluate(() => document.querySelector('#dxfErr').hidden ? '' : document.querySelector('#dxfErr').textContent);
+    await page.locator('#dxfLayers label.chk', { hasText: 'PEZZO' }).locator('input').check(); await page.waitForTimeout(100);
+    await page.selectOption('#dxfOrigin', 'corner'); await page.waitForTimeout(100);
+    const d = await look();
+    await page.screenshot({ path: path.join(OUT, 'dxf-layer.png') });
+    await page.selectOption('#dxfPlane', 'front');
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    const sk = await page.evaluate(() => { const s = Sketcher.session(); return { ln: s.sk.ents.filter(e => e.t === 'ln').length, ci: s.sk.ents.filter(e => e.t === 'ci').length }; });
+    await page.waitForTimeout(1200);
+    await tool('exitSketch'); await page.evaluate(() => App.setCmdTab('features'));
+    await tool('extrude');
+    const dep = page.locator('.pm-body .row', { hasText: 'Profondità' }).first().locator('input');
+    await dep.fill('10'); await dep.press('Tab');
+    await page.click('.pm-ok'); await page.waitForTimeout(300);
+    const p = await props();
+    const Ve = 10 * (4000 - 100 * Math.PI);
+    const ok = a.boxes === 'CARTIGLIO:1 PEZZO:1 QUOTE:0' && /^9 entità · ingombro 290 × 210 mm/.test(a.cap) && a.svg && /^5 entità · ingombro 80 × 50 mm/.test(b.cap) && b.vb !== a.vb
+      && !c.svg && /Nessun layer/.test(c.ph) && /almeno un layer/.test(errNone) && /^5 entità/.test(d.cap) && sk.ln === 4 && sk.ci === 1 && p && rel(p.V, Ve) < TOL && rel(p.bb[1][0], 80) < TOL && Math.abs(p.bb[0][0]) < 1e-6;
+    rec('Interfaccia: DXF con più layer (caselle, anteprima, solo il pezzo)', ok,
+      `layer «${a.boxes}»; «${a.cap}» → senza cartiglio «${b.cap}» → nessuno: «${c.ph}» / «${errNone}»; schizzo ${sk.ln} linee e ${sk.ci} cerchio; V ${p && p.V.toFixed(1)} (${Ve.toFixed(1)}), x ${p && p.bb[0][0].toFixed(3)}…${p && p.bb[1][0].toFixed(3)}`);
+  } catch (e) { rec('Interfaccia: DXF con più layer (caselle, anteprima, solo il pezzo)', false, e.message.split('\n')[0]); }
+
   // 3m-ter. raccordo sul bordo di un foro ellittico: un clic sceglie tutto il bordo (≈ 56 archi), un clic in un altro punto
   //         dello stesso bordo lo toglie; raccordo R3 confermato: materiale tolto = r²(1 − π/4)·(L + 2πc)
   try {

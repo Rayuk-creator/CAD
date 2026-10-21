@@ -503,6 +503,18 @@ const parabolaPath = p => MI.dxfToSketch(p.s, MI.parseDXF(dxfFile([dSpl(2, [0, 0
 T('Sweep: cerchio R2 lungo una SPLINE importata da DXF (arco di parabola)', () => sweepDoc(parabolaPath, b => b.circle(0, 0, 2)),
   { V: 4 * PI * (100 + 50 * Math.SQRT2 * Math.asinh(1)) });
 
+/* ---------- DXF: scelta dei layer ---------- */
+// disegno con il pezzo (quadrato 40 sul layer PEZZO + blocco Q inserito sul layer PEZZO, con le sue entità sul layer 0),
+// la squadratura (rettangolo 200 × 150 sul layer CARTIGLIO) e un layer QUOTE spento nella tabella dei layer (colore negativo)
+const dLy = (ly, ...e) => e.map(x => { const y = x.slice(); y[3] = ly; return y; });
+const layerFile = () => dxfFile([...dLy('PEZZO', dPoly([[100, 0], [140, 0], [140, 40], [100, 40]], true)), ['0', 'INSERT', '8', 'PEZZO', '2', 'Q', '10', '5', '20', '5'],
+  ...dLy('CARTIGLIO', dPoly([[-20, -20], [180, -20], [180, 130], [-20, 130]], true)), ...dLy('QUOTE', dLine(0, 0, 50, 0), dLine(0, 0, 0, 30))], {
+  blocks: dBlockQ, tables: ['0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '0', 'LAYER', '2', 'QUOTE', '70', '0', '62', '-7', '6', 'CONTINUOUS', '0', 'ENDTAB', '0', 'ENDSEC'] });
+// solo il layer PEZZO: quadrato 40 × 40 (1600) più il blocco Q (quadrato 10 × 10 con foro Ø4, il punto base va in (5, 5): angolo in (5, 5))
+T('DXF: solo il layer PEZZO (senza squadratura e quote), estruso 10', () => { const r = MI.parseDXF(layerFile(), { layers: ['PEZZO'] }); const b = SB(); MI.dxfToSketch(b.s, r.geo, {});
+  const doc = D0('layer'); feat(doc, { type: 'extrude', sketch: sketch(doc, STD('front'), b), end: 'blind', depth: 10 }); return doc; },
+  { V: 10 * (1600 + 100 - 4 * PI), bb: [[5, 0, 0], [140, 40, 10]] });
+
 /* ---------- raccordi e smussi sul bordo di ellissi e spline (un solo spigolo) e su archi ---------- */
 // Volume tolto (o aggiunto) = area della sezione × lunghezza della linea dei baricentri (Pappo-Guldino). Per una curva chiusa
 // convessa la linea dei baricentri è la curva spostata di c: lunghezza L + 2πc (verso l'esterno) o L − 2πc (verso l'interno).
@@ -626,6 +638,12 @@ SK.push(['DXF: SPLINE con i nodi sbagliati saltata; SPLINE non piana appiattita 
   return { ok: true, got: [r.skipped['curve spline'], r.curves3d, r.geo.length, r.geo[0].b[0]], exp: [1, 1, 1, 10] };
 }]);
 
+SK.push(['DXF: elenco dei layer con il numero di entità e i layer spenti; filtro per layer (anche dentro i blocchi)', () => {
+  const all = MI.parseDXF(layerFile()), info = Object.fromEntries(all.layerInfo.map(l => [l.name, l]));
+  const only = ly => MI.parseDXF(layerFile(), { layers: ly }).geo.length;
+  return { ok: true, got: [all.layerInfo.map(l => l.name).join() === 'CARTIGLIO,PEZZO,QUOTE' ? 1 : 0, info.PEZZO.count, info.CARTIGLIO.count, info.QUOTE.count, info.QUOTE.off ? 1 : 0, info.PEZZO.off ? 1 : 0,
+    all.geo.length, only(['PEZZO']), only(['CARTIGLIO', 'QUOTE']), only([])], exp: [1, 3, 1, 2, 1, 0, 4 + 5 + 4 + 2, 9, 6, 0] };
+}]);
 SK.push(['Bordo di un foro ellittico: un solo spigolo (tutti gli archi); dopo il raccordo nessuna riga tra i tratti', () => {
   // 12 spigoli della piastra + bordo superiore e inferiore del foro; dopo il raccordo: + il bordo tra raccordo e parete
   const d = ellHole(), st0 = Model.regen(d), g0 = [...Model.edgeGroups(st0, st0.topo).values()];

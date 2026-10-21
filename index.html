@@ -228,6 +228,17 @@ input, select, textarea { font: inherit; color: var(--ink); }
 .modal-body li { margin: 4px 0; }
 .modal-body kbd { font: 12px var(--mono); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--panel-2); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 18px 16px; flex-wrap: wrap; }
+.dxf-prev { margin: 8px 0 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2, var(--bg)); height: 210px; display: grid; place-items: center; overflow: hidden; }
+.dxf-prev svg { width: 100%; height: 100%; display: block; }
+.dxf-prev .ph { font-size: 12.5px; color: var(--ink-3); padding: 0 12px; text-align: center; }
+.dxf-cap { font-size: 12.5px; color: var(--ink-2); margin: 0 0 6px; min-height: 1.2em; }
+.dxf-cap.warn { color: var(--err); }
+.dxf-layers { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 4px 0 8px; max-height: 132px; overflow: auto; }
+.dxf-layers .lh { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); margin-bottom: 2px; }
+.dxf-layers .lh b { color: var(--ink); font-weight: 600; margin-right: auto; }
+.dxf-layers .lh button { font: inherit; font-size: 12px; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 2px 4px; }
+.dxf-layers label.chk { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 2px 0; }
+.dxf-layers label.chk .n { color: var(--ink-3); font-size: 12px; margin-left: auto; }
 .toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 90; background: var(--ink); color: var(--panel); padding: 8px 14px; border-radius: 8px; font-size: 13px; box-shadow: var(--shadow); max-width: 90vw; }
 
 
@@ -2661,7 +2672,10 @@ label.chk .gl-i { margin-left: 2px; }
     return { P: ev, breaks: u };
   }
   // geometria del file in coordinate del disegno: {t:'line',a,b} | {t:'circle',c,r} | {t:'arc',c,r,a0,a1} (radianti, antiorario da a0 ad a1, a1 > a0)
-  function parseDXF(data) {
+  // opts.layers: elenco (o Set) dei layer da leggere; senza, si leggono tutti. Le entità di un blocco sul layer «0»
+  // prendono il layer dell'INSERT (come in AutoCAD).
+  function parseDXF(data, opts = {}) {
+    const want = opts.layers ? new Set(opts.layers) : null;
     let text;
     if (typeof data === 'string') text = data;
     else {
@@ -2678,7 +2692,7 @@ label.chk .gl-i { margin-left: 2px; }
     }
     if (!pairs.some(p => p[0] === 0 && p[1] === 'SECTION')) throw new Error('Il file non è un DXF: manca la sezione delle entità.');
     let insunits = 0;
-    const blocks = new Map(), layerLt = new Map();
+    const blocks = new Map(), layerLt = new Map(), layerOff = new Map();
     const top = [];
     let i = 0;
     // legge un'entità a partire da pairs[i] (codice 0); restituisce {type, g: [[codice, valore], ...]}
@@ -2701,7 +2715,11 @@ label.chk .gl-i { margin-left: 2px; }
           while (i < pairs.length && !(pairs[i][0] === 0 && pairs[i][1] === 'ENDSEC')) {
             if (pairs[i][0] !== 0) { i++; continue; }
             const e = readEnt();
-            if (e.type === 'LAYER') layerLt.set(val(e.g, 2, ''), val(e.g, 6, ''));
+            if (e.type === 'LAYER') {
+              layerLt.set(val(e.g, 2, ''), val(e.g, 6, ''));
+              // spento (colore negativo) o congelato (bit 1 di 70): in AutoCAD non si vede
+              if (num(e.g, 62, 7) < 0 || (num(e.g, 70) & 1)) layerOff.set(val(e.g, 2, ''), true);
+            }
           }
         } else if (name === 'BLOCKS') {
           let cur = null;
@@ -2729,7 +2747,7 @@ label.chk .gl-i { margin-left: 2px; }
       if (e.type === 'POLYLINE') e.verts = [];
       list.push(e);
     }
-    const geo = [], skipped = {}, layers = new Set();
+    const geo = [], skipped = {}, layers = new Set(), layerCount = new Map();
     let curves3d = 0;
     const skip = (t, n = 1) => { const k = DXF_IGNORED[t] || t.toLowerCase(); skipped[k] = (skipped[k] || 0) + n; };
     // tr: trasformazione dei blocchi {m: [a,b,c,d,e,f]} con x' = a x + b y + e, y' = c x + d y + f (rotazione, scala uniforme, specchio)
@@ -2865,10 +2883,15 @@ label.chk .gl-i { margin-left: 2px; }
       const r = Math.hypot(p[0] - c[0], p[1] - c[1]);
       pushArc(m, c, r, Math.atan2(p[1] - c[1], p[0] - c[0]), unwrapAfter(Math.atan2(p[1] - c[1], p[0] - c[0]), Math.atan2(q[1] - c[1], q[0] - c[0])));
     };
-    const walk = (list, m, depth, inh) => {
+    const walk = (list, m, depth, inh, inhLy) => {
       for (const e of list) {
         const g = e.g;
-        if (e.type !== 'INSERT') layers.add(val(g, 8, '0'));
+        let ly = val(g, 8, '0');
+        if (ly === '0' && inhLy) ly = inhLy;
+        if (e.type !== 'INSERT') {
+          layers.add(ly); layerCount.set(ly, (layerCount.get(ly) || 0) + 1);
+          if (want && !want.has(ly)) continue;
+        }
         kind = ltKind(g, inh);
         switch (e.type) {
           case 'LINE': {
@@ -2953,7 +2976,7 @@ label.chk .gl-i { margin-left: 2px; }
               // x_mondo = ins + R·(S·(x - base) + (ox, oy))
               const R = [cr, -sr, sr, cr, num(g, 10), num(g, 20)];
               const S = [sx, 0, 0, sy, -sx * b.base[0] + ox, -sy * b.base[1] + oy];
-              walk(b.ents, mmul(mmul(m, o), mmul(R, S)), depth + 1, kind);
+              walk(b.ents, mmul(mmul(m, o), mmul(R, S)), depth + 1, kind, ly);
             }
             break;
           }
@@ -2967,9 +2990,11 @@ label.chk .gl-i { margin-left: 2px; }
       const n = v2.length; if (n < 2) return;
       for (let k = 0; k < (closed ? n : n - 1); k++) bulgeArc(m, v2[k].p, v2[(k + 1) % n].p, v2[k].b);
     }
-    walk(top, ID, 0, null);
+    walk(top, ID, 0, null, null);
     const unit = DXF_UNITS[insunits] || null;
-    return { geo, unit, insunits, skipped, layers: [...layers], curves3d, approx };
+    // layerInfo: nome, numero di entità (anche quelle che non si importano), spento o congelato nel file
+    const layerInfo = [...layers].sort((a, b) => a.localeCompare(b, 'it', { numeric: true })).map(name => ({ name, count: layerCount.get(name) || 0, off: !!layerOff.get(name) }));
+    return { geo, unit, insunits, skipped, layers: [...layers], layerInfo, curves3d, approx };
   }
   function normAng(a) { const t = 2 * Math.PI; a %= t; if (a < 0) a += t; return a; }
   function unwrapAfter(a0, a1) { while (a1 <= a0 + 1e-12) a1 += 2 * Math.PI; while (a1 > a0 + 2 * Math.PI + 1e-12) a1 -= 2 * Math.PI; return a1; }
@@ -6123,36 +6148,114 @@ label.chk .gl-i { margin-left: 2px; }
     if (inSketch && Sketcher.session() && Sketcher.session().opts.hole) { toast('Nello schizzo delle posizioni dei fori non si importano file DXF.'); return; }
     modal('Importa un file DXF', `<p class="note">Linee, archi e cerchi del disegno entrano ${inSketch ? 'nello <b>schizzo aperto</b>' : 'in uno <b>schizzo nuovo</b>'}: poi li estrudi, o li fai ruotare attorno a una linea di mezzeria. <b>Ellissi e spline</b> diventano archi tangenti tra loro, vicinissimi alla curva vera. Testi, quote e tratteggi non si importano.</p>
       <p><input type="file" id="dxfFile" accept=".dxf"></p>
+      <div class="dxf-prev" id="dxfPrev"><span class="ph">Scegli un file: qui vedrai l'anteprima del disegno.</span></div>
+      <p class="dxf-cap" id="dxfCap"></p>
+      <div class="dxf-layers" id="dxfLayers" hidden></div>
       ${inSketch ? '' : '<div class="row"><label for="dxfPlane">Piano dello schizzo</label><select id="dxfPlane"><option value="front">Piano frontale</option><option value="top">Piano superiore</option><option value="right">Piano destro</option></select></div>'}
       <div class="row"><label for="dxfUnit">Unità del file</label><select id="dxfUnit"><option value="file">dal file</option><option value="mm">millimetri</option><option value="cm">centimetri</option><option value="m">metri</option><option value="in">pollici</option></select></div>
       <div class="row"><label for="dxfOrigin">Posizione</label><select id="dxfOrigin"><option value="file">come nel file</option><option value="corner">angolo in basso a sinistra sull'origine</option><option value="center">centro sull'origine</option></select></div>
-      <p class="note">Le linee tratto-punto (assi) diventano <b>linee di mezzeria</b>, quelle tratteggiate <b>geometria di costruzione</b>. Gli estremi molto vicini vengono uniti e le entità doppie tolte. Se il file non dice l'unità si usano i millimetri. Un file DWG va prima salvato come DXF.</p>
+      <p class="note">Nell'anteprima la crocetta rossa è il punto che andrà sull'origine dello schizzo. Togli la spunta ai <b>layer</b> che non servono (cartiglio, quote, squadratura). Le linee tratto-punto (assi) diventano <b>linee di mezzeria</b>, quelle tratteggiate <b>geometria di costruzione</b>. Gli estremi molto vicini vengono uniti e le entità doppie tolte. Se il file non dice l'unità si usano i millimetri. Un file DWG va prima salvato come DXF.</p>
       <p class="note err" id="dxfErr" hidden></p>`, [
       { label: 'Annulla' },
-      { label: 'Importa', primary: true, keep: true, fn: () => {
-        const inp = $('#dxfFile'), file = inp && inp.files[0];
+      { label: 'Importa', primary: true, keep: true, fn: async () => {
         const err = t => { const e = $('#dxfErr'); e.textContent = t; e.hidden = false; };
-        if (!file) { err('Scegli prima il file.'); return; }
+        if (!cur && loading) await loading;   // il file scelto si sta ancora leggendo
+        if (!cur) { err('Scegli prima il file.'); return; }
+        if (cur.error) { err(cur.error); return; }
         const opts = { unit: $('#dxfUnit').value, origin: $('#dxfOrigin').value, plane: $('#dxfPlane') ? $('#dxfPlane').value : null };
-        const rd = new FileReader();
-        rd.onload = () => {
-          try { const r = importDxfData(file.name, new Uint8Array(rd.result), opts); closeModal(); toast(r.msg, 8000); }
-          catch (e) { err(e.message); }
-        };
-        rd.onerror = () => err('Il file non si riesce a leggere.');
-        rd.readAsArrayBuffer(file);
+        if (cur.layers) opts.layers = chosenLayers();
+        try { const r = importDxfData(cur.name, cur.data, opts); closeModal(); toast(r.msg, 8000); }
+        catch (e) { err(e.message); }
       } },
     ]);
+    // file letto: nome, byte, layer del file (oppure error con il messaggio, se il file non va bene)
+    let cur = null, loading = null;
+    const chosenLayers = () => [...document.querySelectorAll('#dxfLayers input[data-ly]')].filter(x => x.checked).map(x => x.dataset.ly);
+    const showErr = t => { const e = $('#dxfErr'); e.textContent = t || ''; e.hidden = !t; };
+    const placeholder = t => { $('#dxfPrev').innerHTML = `<span class="ph">${esc(t)}</span>`; };
+    $('#dxfFile').addEventListener('change', () => {
+      const file = $('#dxfFile').files[0];
+      cur = null; showErr(''); $('#dxfLayers').hidden = true; $('#dxfCap').textContent = '';
+      if (!file) { placeholder('Scegli un file: qui vedrai l\'anteprima del disegno.'); return; }
+      placeholder('Lettura del file…');
+      loading = new Promise(res => {
+        const rd = new FileReader();
+        rd.onload = () => { try { loadDxfPreview(file.name, new Uint8Array(rd.result)); } finally { res(); } };
+        rd.onerror = () => { cur = { name: file.name, error: 'Il file non si riesce a leggere.' }; placeholder(cur.error); res(); };
+        rd.readAsArrayBuffer(file);
+      });
+    });
+    for (const id of ['dxfUnit', 'dxfOrigin']) $('#' + id).addEventListener('change', () => cur && drawDxfPreview());
+    function loadDxfPreview(name, data) {
+      const ext = (String(name).split('.').pop() || '').toLowerCase();
+      let r;
+      try {
+        if (ext !== 'dxf') importDxfData(name, new Uint8Array(0), { check: true });   // solo i messaggi sui formati sbagliati
+        r = Import.parseDXF(data);
+      } catch (e) { cur = { name, error: e.message }; placeholder('Nessuna anteprima'); showErr(e.message); return; }
+      cur = { name, data, unit: r.unit, layers: r.layerInfo.length > 1 ? r.layerInfo : null };
+      const box = $('#dxfLayers');
+      if (cur.layers) {
+        box.innerHTML = `<div class="lh"><b>Layer da importare</b><button type="button" data-all="1">Tutti</button><button type="button" data-all="0">Nessuno</button></div>` +
+          cur.layers.map(l => `<label class="chk"><input type="checkbox" data-ly="${esc(l.name)}" ${l.off ? '' : 'checked'}> ${esc(l.name)}${l.off ? ' <i>(spento nel file)</i>' : ''}<span class="n">${l.count} entità</span></label>`).join('');
+        box.hidden = false;
+        box.querySelectorAll('input[data-ly]').forEach(x => x.addEventListener('change', drawDxfPreview));
+        box.querySelectorAll('button[data-all]').forEach(b => b.addEventListener('click', () => { box.querySelectorAll('input[data-ly]').forEach(x => { x.checked = b.dataset.all === '1'; }); drawDxfPreview(); }));
+      }
+      drawDxfPreview();
+    }
+    // anteprima: il disegno dei soli layer scelti, nelle coordinate del file (y verso l'alto)
+    function drawDxfPreview() {
+      if (!cur || cur.error) return;
+      showErr('');
+      let r;
+      try { r = Import.parseDXF(cur.data, cur.layers ? { layers: chosenLayers() } : {}); }
+      catch (e) { placeholder('Nessuna anteprima'); showErr(e.message); return; }
+      const cap = $('#dxfCap'); cap.classList.remove('warn');
+      if (!r.geo.length) { placeholder(cur.layers && !chosenLayers().length ? 'Nessun layer scelto.' : 'Nei layer scelti non ci sono linee, archi o cerchi.'); cap.textContent = ''; return; }
+      const unit = $('#dxfUnit').value !== 'file' ? $('#dxfUnit').value : (r.unit || 'mm'), k = Import.DXF_SCALE[unit];
+      const mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
+      const grow = p => { mn[0] = Math.min(mn[0], p[0]); mn[1] = Math.min(mn[1], p[1]); mx[0] = Math.max(mx[0], p[0]); mx[1] = Math.max(mx[1], p[1]); };
+      const arcPt = (g, a) => [g.c[0] + g.r * Math.cos(a), g.c[1] + g.r * Math.sin(a)];
+      for (const g of r.geo) {
+        if (g.t === 'line') { grow(g.a); grow(g.b); continue; }
+        const a0 = g.t === 'circle' ? 0 : g.a0, a1 = g.t === 'circle' ? 2 * Math.PI : g.a1;
+        grow(arcPt(g, a0)); grow(arcPt(g, a1));
+        for (let q = Math.ceil(a0 / (Math.PI / 2)); q * Math.PI / 2 <= a1; q++) grow(arcPt(g, q * Math.PI / 2));
+      }
+      const w = Math.max(mx[0] - mn[0], 1e-9), h = Math.max(mx[1] - mn[1], 1e-9), pad = 0.06 * Math.max(w, h);
+      const vb = [mn[0] - pad, -(mx[1] + pad), w + 2 * pad, h + 2 * pad];
+      const f = x => +x.toPrecision(9);
+      const P = p => f(p[0]) + ' ' + f(-p[1]);
+      const paths = { n: [], center: [], cons: [] };
+      for (const g of r.geo) {
+        const d = paths[g.kind || 'n'];
+        if (g.t === 'line') d.push('M' + P(g.a) + 'L' + P(g.b));
+        else if (g.t === 'circle') { const a = arcPt(g, 0), b = arcPt(g, Math.PI); d.push('M' + P(a) + `A${f(g.r)} ${f(g.r)} 0 1 0 ` + P(b) + `A${f(g.r)} ${f(g.r)} 0 1 0 ` + P(a)); }
+        else { const sw = g.a1 - g.a0; d.push('M' + P(arcPt(g, g.a0)) + `A${f(g.r)} ${f(g.r)} 0 ${sw > Math.PI ? 1 : 0} 0 ` + P(arcPt(g, g.a1))); }
+      }
+      // punto che andrà sull'origine (scelta «Posizione»)
+      const o = $('#dxfOrigin').value, O = o === 'corner' ? [mn[0], mn[1]] : o === 'center' ? [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2] : [0, 0];
+      const cs = 0.04 * Math.max(vb[2], vb[3]);
+      const stroke = (d, col, dash) => d.length ? `<path d="${d.join('')}" fill="none" stroke="${col}" stroke-width="1.3" vector-effect="non-scaling-stroke"${dash ? ` stroke-dasharray="${dash}"` : ''}/>` : '';
+      $('#dxfPrev').innerHTML = `<svg viewBox="${vb.map(f).join(' ')}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Anteprima del disegno DXF">` +
+        stroke(paths.cons, 'var(--ink-3)', '5 4') + stroke(paths.center, 'var(--accent)', '10 3 2 3') + stroke(paths.n, 'var(--ink)') +
+        `<path d="M${P([O[0] - cs, O[1]])}L${P([O[0] + cs, O[1]])}M${P([O[0], O[1] - cs])}L${P([O[0], O[1] + cs])}" stroke="#d92d20" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
+      const n = r.geo.length, fmtN = x => (Math.round(x * k * 100) / 100).toLocaleString('it-IT');
+      cap.textContent = `${n.toLocaleString('it-IT')} entità · ingombro ${fmtN(w)} × ${fmtN(h)} mm (unità: ${DXF_UNIT_NAMES[unit] || unit}${r.unit || $('#dxfUnit').value !== 'file' ? '' : ', il file non la dice'})`;
+      if (n > Import.DXF_MAXENT) { cap.textContent += ` — troppe: il massimo è ${Import.DXF_MAXENT.toLocaleString('it-IT')}, togli qualche layer.`; cap.classList.add('warn'); }
+    }
   }
   function importDxfData(name, data, opts = {}) {
     const ext = (String(name).split('.').pop() || '').toLowerCase();
     if (ext === 'dwg') throw new Error('I file DWG sono un formato chiuso di AutoCAD: salvalo come DXF (da AutoCAD, DraftSight o con ODA File Converter, gratuito) e importa quello.');
     if (ext !== 'dxf') throw new Error('Qui si importano file .dxf. Per i pezzi 3D usa «Importa STL o OBJ».');
-    const r = Import.parseDXF(data);
+    const r = Import.parseDXF(data, opts.layers ? { layers: opts.layers } : {});
+    if (opts.layers && !opts.layers.length) throw new Error('Scegli almeno un layer da importare.');
     const unit = opts.unit && opts.unit !== 'file' ? opts.unit : (r.unit || 'mm');
     const scale = Import.DXF_SCALE[unit];
     if (!r.geo.length) throw new Error('Nel file non ci sono linee, archi o cerchi da importare' + (Object.keys(r.skipped).length ? ' (solo ' + Object.keys(r.skipped).join(', ') + ').' : '.'));
-    if (r.geo.length > Import.DXF_MAXENT) throw new Error(`Il file ha ${r.geo.length.toLocaleString('it-IT')} entità: il massimo è ${Import.DXF_MAXENT.toLocaleString('it-IT')}. Tieni nel DXF solo il contorno del pezzo (senza cartiglio, quote e tratteggi) e riprova.`);
+    if (r.geo.length > Import.DXF_MAXENT) throw new Error(`${opts.layers ? 'I layer scelti hanno' : 'Il file ha'} ${r.geo.length.toLocaleString('it-IT')} entità: il massimo è ${Import.DXF_MAXENT.toLocaleString('it-IT')}. Togli la spunta ai layer che non servono (cartiglio, squadratura) o tieni nel DXF solo il contorno del pezzo, e riprova.`);
     if (App.mode === 'drawing') App.setCmdTab('features');
     if (App.mode !== 'sketch') {
       if (App.pm) App.closePM(false);
@@ -11033,6 +11136,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Importazione', 'Spline', ['spline', 'nurbs', 'curva spline', 'b-spline'], 'Curva libera e morbida definita da pochi punti: i punti di controllo la «tirano» verso di sé (spline NURBS, con eventuali pesi), oppure la curva passa esattamente per i punti di passaggio. Serve per profili che non sono fatti di rette e archi (carrozzerie, camme, sagome). Importata da un DXF diventa una catena di archi tangenti (biarchi).'],
     ['Importazione', 'Biarco', ['biarchi', 'archi tangenti'], 'Coppia di archi tangenti tra loro, che parte e arriva con la stessa direzione della curva da imitare. Con tanti biarchi uno dopo l\'altro si segue un\'ellisse o una spline senza spigoli: dove lo scostamento è troppo grande il tratto viene diviso a metà, finché resta sotto 1/10 000 della dimensione minore della curva. Nel pezzo le facce di questi archi si vedono come una superficie sola, senza righe tra l\'una e l\'altra, e i loro centri non compaiono nello schizzo.'],
     ['Importazione', 'Scostamento dalla curva', ['scostamento', 'tolleranza della curva'], 'La distanza più grande tra la curva vera (ellisse o spline del file DXF) e gli archi che la sostituiscono. Il messaggio dell\'importazione dice quanto vale, in millimetri: di solito pochi millesimi, quindi volume e massa restano esatti ben sotto l\'1 %.'],
+    ['Importazione', 'Layer', ['livello', 'livelli', 'strato'], 'In un disegno DXF (o DWG) ogni entità sta su un «layer», come su un foglio trasparente: per esempio PEZZO, QUOTE, CARTIGLIO. Nella finestra di importazione DXF si sceglie con le caselle quali layer importare; quelli spenti o congelati nel file partono senza spunta. Le entità di un blocco che stanno sul layer «0» prendono il layer del blocco inserito, come in AutoCAD.'],
     ['Importazione', 'Tipo di linea', ['tratto-punto', 'tratteggiata', 'linetype'], 'Il modo in cui è disegnata una linea: continua, tratteggiata (spigoli nascosti) o tratto-punto (assi). Nell\'importazione DXF le linee tratto-punto diventano linee di mezzeria, le tratteggiate geometria di costruzione; le continue formano i contorni.'],
     ['Importazione', 'File importato', [], 'Il nome e il formato del file da cui viene il corpo, con il numero di triangoli (per STEP e IGES: di facce del modello d\'origine), le facce piane riconosciute e l\'ingombro. Le facce piane (fatte da più triangoli sullo stesso piano) si possono usare per gli schizzi, come le facce di un pezzo disegnato qui.'],
     ['Importazione', 'Importa STEP o IGES', ['importa step', 'importa iges', 'importare uno step', 'importare un iges'], 'Porta nel Banco CAD un pezzo, o un piccolo assieme, fatto con un altro programma CAD (Progetto › Importa STEP o IGES). Il file viene letto dalle sue superfici vere; nell\'albero compare la funzione «Importato»: il pezzo si vede, si misura, si mette in tavola, se ne calcolano volume e massa, e sopra si possono aggiungere schizzi e funzioni. Le superfici curve vengono divise in triangoli molto fitti: l\'errore su volume, area e massa resta molto sotto l\'1 %. L\'unità di misura è letta dal file.'],
@@ -11680,6 +11784,18 @@ const parabolaPath = p => MI.dxfToSketch(p.s, MI.parseDXF(dxfFile([dSpl(2, [0, 0
 T('Sweep: cerchio R2 lungo una SPLINE importata da DXF (arco di parabola)', () => sweepDoc(parabolaPath, b => b.circle(0, 0, 2)),
   { V: 4 * PI * (100 + 50 * Math.SQRT2 * Math.asinh(1)) });
 
+/* ---------- DXF: scelta dei layer ---------- */
+// disegno con il pezzo (quadrato 40 sul layer PEZZO + blocco Q inserito sul layer PEZZO, con le sue entità sul layer 0),
+// la squadratura (rettangolo 200 × 150 sul layer CARTIGLIO) e un layer QUOTE spento nella tabella dei layer (colore negativo)
+const dLy = (ly, ...e) => e.map(x => { const y = x.slice(); y[3] = ly; return y; });
+const layerFile = () => dxfFile([...dLy('PEZZO', dPoly([[100, 0], [140, 0], [140, 40], [100, 40]], true)), ['0', 'INSERT', '8', 'PEZZO', '2', 'Q', '10', '5', '20', '5'],
+  ...dLy('CARTIGLIO', dPoly([[-20, -20], [180, -20], [180, 130], [-20, 130]], true)), ...dLy('QUOTE', dLine(0, 0, 50, 0), dLine(0, 0, 0, 30))], {
+  blocks: dBlockQ, tables: ['0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '0', 'LAYER', '2', 'QUOTE', '70', '0', '62', '-7', '6', 'CONTINUOUS', '0', 'ENDTAB', '0', 'ENDSEC'] });
+// solo il layer PEZZO: quadrato 40 × 40 (1600) più il blocco Q (quadrato 10 × 10 con foro Ø4, il punto base va in (5, 5): angolo in (5, 5))
+T('DXF: solo il layer PEZZO (senza squadratura e quote), estruso 10', () => { const r = MI.parseDXF(layerFile(), { layers: ['PEZZO'] }); const b = SB(); MI.dxfToSketch(b.s, r.geo, {});
+  const doc = D0('layer'); feat(doc, { type: 'extrude', sketch: sketch(doc, STD('front'), b), end: 'blind', depth: 10 }); return doc; },
+  { V: 10 * (1600 + 100 - 4 * PI), bb: [[5, 0, 0], [140, 40, 10]] });
+
 /* ---------- raccordi e smussi sul bordo di ellissi e spline (un solo spigolo) e su archi ---------- */
 // Volume tolto (o aggiunto) = area della sezione × lunghezza della linea dei baricentri (Pappo-Guldino). Per una curva chiusa
 // convessa la linea dei baricentri è la curva spostata di c: lunghezza L + 2πc (verso l'esterno) o L − 2πc (verso l'interno).
@@ -11803,6 +11919,12 @@ SK.push(['DXF: SPLINE con i nodi sbagliati saltata; SPLINE non piana appiattita 
   return { ok: true, got: [r.skipped['curve spline'], r.curves3d, r.geo.length, r.geo[0].b[0]], exp: [1, 1, 1, 10] };
 }]);
 
+SK.push(['DXF: elenco dei layer con il numero di entità e i layer spenti; filtro per layer (anche dentro i blocchi)', () => {
+  const all = MI.parseDXF(layerFile()), info = Object.fromEntries(all.layerInfo.map(l => [l.name, l]));
+  const only = ly => MI.parseDXF(layerFile(), { layers: ly }).geo.length;
+  return { ok: true, got: [all.layerInfo.map(l => l.name).join() === 'CARTIGLIO,PEZZO,QUOTE' ? 1 : 0, info.PEZZO.count, info.CARTIGLIO.count, info.QUOTE.count, info.QUOTE.off ? 1 : 0, info.PEZZO.off ? 1 : 0,
+    all.geo.length, only(['PEZZO']), only(['CARTIGLIO', 'QUOTE']), only([])], exp: [1, 3, 1, 2, 1, 0, 4 + 5 + 4 + 2, 9, 6, 0] };
+}]);
 SK.push(['Bordo di un foro ellittico: un solo spigolo (tutti gli archi); dopo il raccordo nessuna riga tra i tratti', () => {
   // 12 spigoli della piastra + bordo superiore e inferiore del foro; dopo il raccordo: + il bordo tra raccordo e parete
   const d = ellHole(), st0 = Model.regen(d), g0 = [...Model.edgeGroups(st0, st0.topo).values()];
@@ -12107,12 +12229,13 @@ if (isNode) {
     steps: [
       'Nel programma d\'origine salva il disegno come [[File DXF]], meglio se con il solo contorno del pezzo (senza cartiglio, quote e tratteggi).',
       'Scheda **Schizzo › Inserisci DXF** (oppure **Progetto › Importa DXF (schizzo)**). Fuori da uno schizzo scegli il **piano**; dentro uno schizzo la geometria va in quello aperto.',
-      'Scegli il file, l\'[[Unità del file]] (di solito «dal file») e la **posizione**: come nel file, oppure con l\'angolo in basso a sinistra o il centro sull\'origine. Premi **Importa**.',
+      'Scegli il file: nella finestra compare l\'**anteprima** del disegno, con una crocetta rossa sul punto che andrà nell\'origine. Se il disegno ha più [[Layer|layer]], togli la spunta a quelli che non servono (cartiglio, quote, squadratura): l\'anteprima si aggiorna.',
+      'Scegli l\'[[Unità del file]] (di solito «dal file») e la **posizione**: come nel file, oppure con l\'angolo in basso a sinistra o il centro sull\'origine. Premi **Importa**.',
       'Le entità arrivano selezionate e blu ([[Sotto definito]]): controlla che i contorni siano chiusi, poi premi ✓. Le [[Ellisse|ellissi]] e le [[Spline|spline]] arrivano come catene di archi tangenti ([[Biarco|biarchi]]).',
       'Seleziona lo schizzo e usa **Estrusione base**, oppure **Rivoluzione base** se c\'è una [[Linea di mezzeria]].',
     ],
-    tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Il messaggio finale dice in quanti archi è stata divisa ogni ellisse o spline e lo [[Scostamento dalla curva]]: di solito pochi millesimi di millimetro.', 'Al massimo 3000 entità: i disegni più grandi vanno puliti prima (una spline lunga e tortuosa può diventare molti archi).'],
-    terms: ['Inserisci DXF', 'File DXF', 'Tipo di linea', 'Unità del file', 'Ellisse', 'Spline', 'Biarco', 'Scostamento dalla curva'],
+    tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Il messaggio finale dice in quanti archi è stata divisa ogni ellisse o spline e lo [[Scostamento dalla curva]]: di solito pochi millesimi di millimetro.', 'Al massimo 3000 entità: togli i layer che non servono, oppure pulisci il disegno prima (una spline lunga e tortuosa può diventare molti archi).', 'I layer spenti o congelati nel file partono senza spunta.'],
+    terms: ['Inserisci DXF', 'File DXF', 'Layer', 'Tipo di linea', 'Unità del file', 'Ellisse', 'Spline', 'Biarco', 'Scostamento dalla curva'],
   });
   add('Schizzo', 'sk-converti', 'Converti entità', {
     why: 'Usare gli spigoli del pezzo nello schizzo (per esempio per una borchia sul bordo).',
