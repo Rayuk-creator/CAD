@@ -2,7 +2,7 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 21 ottobre 2026 (importazione STEP e IGES).
+Ultimo aggiornamento: 21 ottobre 2026 (ellissi e spline nel DXF).
 
 ---
 
@@ -29,7 +29,7 @@ Ultimo aggiornamento: 21 ottobre 2026 (importazione STEP e IGES).
 - **Messa in tavola**: metodo E (ISO 5456-2), linee nascoste, assi, sezioni, quote, cartiglio, A4–A2; stampa, SVG, DXF. Export STL dal menu Progetto.
 - **Importazione STL e OBJ** (Progetto › Importa STL o OBJ): funzione «Importato» nell'albero, corpo a faccette; STL binario e ASCII, OBJ con facce a più lati; unità del file (mm, cm, m, pollici) e «Asse Z del file verso l'alto», modificabili con doppio clic; vertici saldati con tolleranza, facce girate corrette da sole, avviso se il corpo non è chiuso; facce piane riconosciute (schizzi e funzioni sopra); spigoli tra faccette sotto i 30° nascosti e ombreggiatura morbida; massimo 100 000 triangoli.
 - **Importazione STEP e IGES** (Progetto › Importa STEP o IGES; un .step/.igs scelto nella finestra STL/OBJ viene letto lo stesso): stessa funzione «Importato»; superfici vere divise in triangoli fitti (angolo 0,1 rad ≈ 63 lati per cerchio, scostamento 0,0005 dell'ingombro; se si superano 100 000 triangoli si rilegge più grossolano, fino a 4 livelli, con avviso dal 3°); unità lette dal file e convertite in mm; ogni triangolo ricorda la **faccia vera** d'origine (`f` nel progetto salvato): lo spigolo si disegna solo tra facce diverse, la cucitura dei cilindri non si vede; assiemi = un solo «Importato» con più corpi; «Asse Z verso l'alto» modificabile; messaggi per .sldprt, .ipt, .sat, .x_t, STEP XML e file danneggiati. Il lettore si prepara alla prima importazione (≈ 0,5 s) e funziona offline.
-- **Importazione DXF negli schizzi** (Progetto › Importa DXF (schizzo), oppure **Inserisci DXF** nella scheda Schizzo): fuori da uno schizzo ne crea uno nuovo sul piano scelto, dentro uno schizzo aggiunge a quello aperto; LINE, ARC, CIRCLE, LWPOLYLINE e POLYLINE (anche con tratti curvi, «bulge»), blocchi (INSERT con spostamento, rotazione, scala uniforme, specchio, serie); unità da `$INSUNITS` o scelta a mano; posizione come nel file, angolo o centro sull'origine; estremi vicini uniti, entità doppie tolte; linee tratto-punto → linee di mezzeria, tratteggiate → costruzione; testi, quote, tratteggi, ellissi, spline saltati e contati nel messaggio; DWG e DXF binario spiegati; massimo 3000 entità. Le entità arrivano selezionate e sotto definite (blu).
+- **Importazione DXF negli schizzi** (Progetto › Importa DXF (schizzo), oppure **Inserisci DXF** nella scheda Schizzo): fuori da uno schizzo ne crea uno nuovo sul piano scelto, dentro uno schizzo aggiunge a quello aperto; LINE, ARC, CIRCLE, LWPOLYLINE e POLYLINE (anche con tratti curvi, «bulge»), **ELLIPSE** (intera o arco, normale −Z) e **SPLINE** (NURBS di qualsiasi grado con nodi e pesi, oppure solo punti di passaggio con tangenti agli estremi o chiusa), blocchi (INSERT con spostamento, rotazione, scala uniforme, specchio, serie); unità da `$INSUNITS` o scelta a mano; posizione come nel file, angolo o centro sull'origine; estremi vicini uniti, entità doppie tolte; linee tratto-punto → linee di mezzeria, tratteggiate → costruzione; ellissi e spline diventano **biarchi** (coppie di archi tangenti) con scostamento ≤ 1/10 000 della dimensione minore della curva (asse minore dell'ellisse; per la spline il lato minore dell'ingombro, non meno di 1/10 della diagonale), il messaggio dice quanti archi e lo scostamento massimo in mm; i **centri** di questi archi sono nascosti (`hc` sul punto: non si disegnano, non si agganciano, non contano per l'inquadratura, selezione a finestra sull'arco); gli archi della stessa curva uniti in modo tangente hanno lo stesso gruppo `cg`, e tra le loro facce lo spigolo non si disegna (anche lungo un percorso a spline, `pcg`); testi, quote, tratteggi saltati e contati nel messaggio; DWG e DXF binario spiegati; massimo 3000 entità. Le entità arrivano selezionate e sotto definite (blu).
 - **Esercitazioni**: 8 pezzi con tavola di consegna e verifica automatica.
 - **Guida** «come si fa» (44 argomenti, pulsante in alto, «Mostrami dove») e **Glossario** (≈ 152 termini, ⓘ accanto ai titoli dei pannelli), collegati tra loro.
 
@@ -48,7 +48,7 @@ Ultimo aggiornamento: 21 ottobre 2026 (importazione STEP e IGES).
 - **Test affidabili** con **tolleranza dell'1 %** sui calcoli; dopo ogni modifica far girare tutte le prove.
 - Ogni termine nuovo va spiegato nel **Glossario**, e ogni comando nuovo nella **Guida** (c'è un test che lo controlla).
 - Le richieste lunghe consumano molto: l'utente ha un limite settimanale (si azzera il **martedì alle 17**). Per i controlli piccoli usare task nuove e corte.
-- La memoria tra chat è disattivata: i promemoria vanno in `IDEE.md` e in questo file.
+- I promemoria vanno in `IDEE.md` e in questo file (la memoria tra chat ora è attiva, ma questi file restano il riferimento).
 
 ---
 
@@ -65,11 +65,11 @@ RIPARTENZA.md         questo file
 licenze/              licenze LGPL del lettore STEP/IGES e LEGGIMI.md (versione, impronte SHA-256)
 tools/incorpora-occt.js  inserisce/aggiorna il lettore STEP/IGES in index.html
 tests/extract.js      estrae i moduli di calcolo da index.html per Node
-tests/kernel.test.js  78 casi geometrici + 7 di controllo = 85 prove (usate anche dall'Autoverifica)
+tests/kernel.test.js  93 casi geometrici + 16 di controllo = 109 prove (usate anche dall'Autoverifica)
 tests/step.test.js    10 prove del lettore STEP/IGES vero (prende il lettore da index.html)
 tests/stepgen.js      scrive file STEP di prova (blocco, cilindro, piastra con foro, due blocchi, unità mm/cm/m)
 tests/igesgen.js      scrive file IGES di prova (blocco fatto di superfici piane tagliate)
-tests/ui.test.js      39 prove dell'interfaccia in Chromium (Playwright)
+tests/ui.test.js      41 prove dell'interfaccia in Chromium (Playwright)
 package.json          npm test / test:kernel (comprende step.test.js) / test:ui
 ```
 
@@ -77,9 +77,9 @@ package.json          npm test / test:kernel (comprende step.test.js) / test:ui
 
 1. `CSG` – booleane con alberi BSP; ogni poligono ha un tag di superficie.
 2. `Geom` – estrusione, `extrudeDraft` (sformo), rivoluzione, fori, topologia, proprietà di massa esatte.
-3. `Sketch` – entità, relazioni, risolutore, `profiles` (contorni chiusi), `chains` (catene aperte per sweep e nervature).
-3b. `Import` – lettura STL/OBJ (`parseSTL`, `parseOBJ`), saldatura dei vertici (`weld`), forma compatta base64 salvata nel progetto (`pack`/`unpack`), `analyze` (orientamento, chiusura, facce piane); DXF: `parseDXF` (geometria in coordinate del disegno, unità, entità saltate) e `dxfToSketch` (entità dello schizzo con punti uniti). Interfaccia in `App.importDxfDialog`/`App.importDxfData` e `Sketcher.insertDXF`. STEP/IGES: `loadOCCT` (decomprime il wasm e avvia il lettore, una volta sola; in Node gli si passa `require`), `readCAD` (triangoli in mm + faccia vera di ogni triangolo, livelli di finezza `CAD_LEVELS`), `cadKind`; `weld` restituisce anche `src` (triangolo d'origine) e `pack`/`unpack`/`analyze` portano il vettore delle facce `f`. Interfaccia in `App.importCadDialog`/`App.importCadData` (asincrona) e `addImported` (comune a STL/OBJ e STEP/IGES).
-4. `Model` – albero delle funzioni e `regen`; `sweepTool`, `ribTool`, `filletCorners`, `edgeTool`, `importTool` (funzione `import`, con cache per file/unità/orientamento; spigoli morbidi in `smoothMeshEdges`); `sketchesOf(f)` (lo sweep usa due schizzi: `f.sketch` profilo, `f.path` percorso).
+3. `Sketch` – entità, relazioni, risolutore, `profiles` (contorni chiusi), `chains` (catene aperte per sweep e nervature). `analyze` (stato blu/nero/rosso) e `rankOf`: con meno vincoli che incognite scompongono la **trasposta** della matrice dei vincoli (stesso risultato, fino a 100 volte più veloce). `touchOnly`: due tratti tangenti con un estremo in comune non si «incrociano».
+3b. `Import` – lettura STL/OBJ (`parseSTL`, `parseOBJ`), saldatura dei vertici (`weld`), forma compatta base64 salvata nel progetto (`pack`/`unpack`), `analyze` (orientamento, chiusura, facce piane); DXF: `parseDXF` (geometria in coordinate del disegno, unità, entità saltate, `approx` = conteggi e scostamento di ellissi e spline) e `dxfToSketch` (entità dello schizzo con punti uniti). Ellissi e spline: `curveToArcs` (biarchi ricorsivi, divisi a metà finché lo scostamento misurato nei due sensi supera la tolleranza `DXF_CURVE_TOL` = 10⁻⁴), `biarc`, `nurbsEval` (de Boor omogeneo), `fitSpline` (spline cubica per punti, parametro = corde; libera, con tangenti o chiusa). Interfaccia in `App.importDxfDialog`/`App.importDxfData` e `Sketcher.insertDXF`. STEP/IGES: `loadOCCT` (decomprime il wasm e avvia il lettore, una volta sola; in Node gli si passa `require`), `readCAD` (triangoli in mm + faccia vera di ogni triangolo, livelli di finezza `CAD_LEVELS`), `cadKind`; `weld` restituisce anche `src` (triangolo d'origine) e `pack`/`unpack`/`analyze` portano il vettore delle facce `f`. Interfaccia in `App.importCadDialog`/`App.importCadData` (asincrona) e `addImported` (comune a STL/OBJ e STEP/IGES).
+4. `Model` – albero delle funzioni e `regen` (alla fine `smoothMeshEdges` e `smoothCurveEdges`: spigoli morbidi dei corpi importati e delle curve da DXF); `sweepTool`, `ribTool`, `filletCorners`, `edgeTool`, `importTool` (funzione `import`, con cache per file/unità/orientamento; spigoli morbidi in `smoothMeshEdges`); `sketchesOf(f)` (lo sweep usa due schizzi: `f.sketch` profilo, `f.path` percorso).
 5. `GLView` – vista WebGL e camera (`rotate`, `pan`, `zoomAt`, `fit`).
 6. `App` – stato, albero, selezione, comandi, `initView` (mouse, rotella, tablet), salvataggio.
 7. `Sketcher` – editor di schizzo. 8. `Features` – PropertyManager delle funzioni. 9. `Drawing` – messa in tavola. 10. `Lessons` – esercitazioni.
@@ -118,9 +118,12 @@ package.json          npm test / test:kernel (comprende step.test.js) / test:ui
 ---
 
 - 21 ottobre (terza parte): **importazione STEP e IGES** con OpenCascade (occt-import-js) compresso dentro `index.html` (scelta dell'utente: tutto in un file, ≈ 5 MB); 5 prove di calcolo + 3 di controllo con un lettore simulato, 10 prove con il lettore vero su file STEP/IGES scritti dai generatori dei test, 3 prove dell'interfaccia; Guida (argomento «Importare un pezzo da un file STEP o IGES») e Glossario (STEP, IGES, Importa STEP o IGES, Facce del modello d'origine, OpenCascade) aggiornati. Corretta anche la chiusura doppia `</body></html>` in fondo alla pagina.
+- 21 ottobre (quarta parte): **ellissi e spline nel DXF** diventano biarchi; 15 prove di calcolo nuove (volumi, aree e baricentri calcolati a mano: ellisse intera, ruotata, quarto, normale −Z, foro ellittico, 1:100, in un blocco; spline quadratica, cubica, cerchio NURBS razionale esatto, grado 1, per 2/3/4 punti di passaggio; tubo lungo una spline), 9 controlli dello schizzo, 2 prove dell'interfaccia; errore massimo 0,021 %. Dopo aver guardato le schermate: centri degli archi nascosti (un'ellisse 200 × 2 occupava lo 0,4 % della vista, ora il 74 %) e niente righe tra le facce della stessa curva (52 in un'ellisse estrusa, 2698 in un tubo lungo una spline). Corretti tre difetti dello schizzo trovati strada facendo: (1) con due entità incrociate il controllo andava in errore JavaScript invece di dare il messaggio «si intersecano»; (2) archi tangenti con raggi grandi, o sullo stesso cerchio, venivano presi per incroci (arrotondamenti); (3) lo stato dello schizzo con tante entità era lentissimo (9,5 s con 88 archi, ora 0,13 s; verificato uguale al vecchio su 1000 schizzi). Guida e Glossario (Ellisse, Spline, Biarco, Scostamento dalla curva) aggiornati.
 
 ## 6. Cose aperte
 
-- Tutto quello che c'è in `IDEE.md`: **prossimo passo: ellissi e spline nel DXF** (deciso dall'utente il 21 ottobre), poi il cablaggio 3D semi-automatico da PDF (che userà il lettore DXF).
+- Tutto quello che c'è in `IDEE.md`: ellissi e spline nel DXF **fatte** il 21 ottobre; prossimo passo previsto: il cablaggio 3D semi-automatico da PDF (che userà il lettore DXF), da confermare con l'utente.
+- Un'ellisse diventa ≈ 50–60 archi (tolleranza 1/10 000): va bene fino a qualche decina di curve per disegno (massimo 3000 entità). Se servisse, si possono ridurre gli archi scegliendo meglio il punto di giunzione dei biarchi.
+- Il bordo di un foro ellittico (o a spline) è fatto di tanti spigoli, uno per arco: per un raccordo o uno smusso su quel bordo vanno scelti tutti (in SolidWorks è uno spigolo solo). Si potrebbe far scegliere insieme gli spigoli dello stesso gruppo `cg`.
 - Due facce vere adiacenti nello stesso piano (per esempio una faccia divisa con una «linea di divisione») si vedono unite, senza lo spigolo in mezzo: si potrebbe distinguere con la faccia d'origine in `surfKey`, ma toccherebbe anche i pezzi normali. Per ora lasciato così.
 - La pagina pubblicata su claude.ai (artifact «Banco CAD») è aggiornata al **21 ottobre** (importazione DXF, **senza** STEP/IGES): ripubblicarla quando l'utente lo chiede (ora la pagina pesa ≈ 5 MB, sotto il limite di 16 MB). La versione giusta resta `index.html` del repository.

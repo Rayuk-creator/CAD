@@ -9,14 +9,14 @@ Il 20 ottobre 2026 abbiamo valutato l'importazione di altri formati. Il 21 ottob
 | Formato | Fattibile? | Risultato | Note |
 |---|---|---|---|
 | STL, OBJ | Sì, facile | Solido a faccette da vedere, misurare, mettere in tavola, calcolarne volume e massa | **Fatto** il 21 ottobre 2026 |
-| DXF | Sì, medio | Linee, archi e cerchi importati in uno schizzo, poi estrusione o rivoluzione | **Fatto** il 21 ottobre 2026 (polilinee con tratti curvi, blocchi, unità, assi tratto-punto → mezzerie). Non ancora: ellissi e spline |
+| DXF | Sì, medio | Linee, archi e cerchi importati in uno schizzo, poi estrusione o rivoluzione | **Fatto** il 21 ottobre 2026 (polilinee con tratti curvi, blocchi, unità, assi tratto-punto → mezzerie; ellissi e spline come archi tangenti) |
 | STEP (.stp, .step), IGES (.igs, .iges) | Sì, impegnativo | Solido con le facce vere, diviso in triangoli fitti (errore su volume e massa molto sotto l'1 %) | **Fatto** il 21 ottobre 2026 con occt-import-js (OpenCascade in WebAssembly, LGPL 2.1), compresso dentro `index.html`: la pagina passa da ~0,8 MB a ~5 MB |
 | DWG | Difficile | — | Formato chiuso di AutoCAD; consigliare la conversione in DXF (AutoCAD, DraftSight o ODA File Converter gratuito) |
 | SolidWorks (.sldprt, .sldasm, .slddrw), Inventor (.ipt, .iam, .idw, .ipn) | No | — | Formati proprietari senza specifiche pubbliche; consigliare di esportare in STEP (parti, assiemi) o DXF (tavole) dal programma d'origine |
 
 Limite comune: i pezzi importati arrivano **senza la storia delle funzioni** (le quote originali non si modificano); si possono aggiungere funzioni nuove sopra. Gli schizzi DXF arrivano senza quote (blu): si possono quotare.
 
-Miglioramenti possibili del DXF: **ellissi e spline (approssimate con archi) – prossimo lavoro, deciso il 21 ottobre**; poi scelta dei layer da importare, anteprima nella finestra prima di importare.
+Miglioramenti possibili del DXF: ellissi e spline **fatte** il 21 ottobre (biarchi, scostamento ≤ 1/10 000 della dimensione minore); restano la scelta dei layer da importare e l'anteprima nella finestra prima di importare; eventualmente meno archi per curva (punto di giunzione dei biarchi scelto meglio); scegliere con un clic tutto il bordo di un foro ellittico o a spline per raccordarlo (oggi è fatto di uno spigolo per arco).
 
 Miglioramenti possibili di STEP/IGES: scelta dei corpi di un assieme da importare (oggi arrivano tutti in un solo «Importato»); colori delle facce (il lettore li dà); spigolo visibile tra due facce vere complanari; lettura in un Worker per non bloccare la pagina con i file molto grandi.
 
@@ -31,7 +31,7 @@ Versione **semi-automatica** fattibile (il lettore DXF ora c'è: `Import.parseDX
 3. Il programma fa scorrere un cerchio lungo ogni fascio con l'**estrusione con percorso** già esistente, unendo le diramazioni.
 4. Ai capi mette dei blocchetti al posto dei connettori.
 
-Risultato: il cablaggio 3D steso in piano. Da affrontare dopo ellissi e spline del DXF.
+Risultato: il cablaggio 3D steso in piano. Ellissi e spline del DXF sono pronte: è il prossimo lavoro grande, da confermare con l'utente.
 
 ## Altro ancora da fare
 

@@ -292,6 +292,55 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     rec('Interfaccia: file DWG spiegato (va salvato come DXF)', /salvalo come DXF/.test(msg) && nAfter === nBefore && (await page.evaluate(() => App.mode)) === 'part', msg);
   } catch (e) { rec('Interfaccia: importa DXF dal menu (schizzo nuovo, cm, origine) ed estrusione', false, e.message.split('\n')[0]); }
 
+  // 3m-bis. DXF con ellisse e spline: piastra 120 × 80 con un foro ellittico 40 × 60 e un foro a spline chiusa
+  //         per 4 punti (area 61/20 · R², R 10), estrusa 10
+  try {
+    await fresh();
+    const P = (pts) => ['0', 'LWPOLYLINE', '8', '0', '90', pts.length, '70', 1, ...pts.flatMap(p => ['10', p[0], '20', p[1]])];
+    const E = ['0', 'ELLIPSE', '8', '0', '10', 0, '20', 0, '30', 0, '11', 0, '21', 30, '31', 0, '40', 2 / 3, '41', 0, '42', 2 * Math.PI];
+    const S = ['0', 'SPLINE', '8', '0', '70', 9, '71', 3, '74', 4, ...[[50, 0], [40, 10], [30, 0], [40, -10]].flatMap(p => ['11', p[0], '21', p[1], '31', 0])];
+    const file = dxfText([P([[-60, -40], [60, -40], [60, 40], [-60, 40]]), E, S], 4);
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    const note = await page.evaluate(() => document.querySelector('#modal .note').textContent);
+    await page.setInputFiles('#dxfFile', { name: 'piastra-ellisse.dxf', mimeType: 'application/dxf', buffer: Buffer.from(file) });
+    await page.selectOption('#dxfPlane', 'front');
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    const info = await page.evaluate(() => { const s = Sketcher.session(); const pr = Sketch.profiles(s.sk); return { ar: s.sk.ents.filter(e => e.t === 'ar').length, regions: pr.regions.length, err: pr.errors.length, toast: document.querySelector('#toast').textContent }; });
+    await page.waitForTimeout(1200);
+    await tool('exitSketch');
+    await page.evaluate(() => App.setCmdTab('features'));
+    await tool('extrude');
+    const dep = page.locator('.pm-body .row', { hasText: 'Profondità' }).first().locator('input');
+    await dep.fill('10'); await dep.press('Tab');
+    await page.click('.pm-ok'); await page.waitForTimeout(300);
+    const p = await props();
+    const Ve = 10 * (9600 - Math.PI * 600 - 61 / 20 * 100);
+    const ok = /Ellissi e spline/.test(note) && info.ar > 8 && info.regions === 1 && !info.err && /1 ellisse e 1 spline sono diventate \d+ archi/.test(info.toast) && /mm dalla curva vera/.test(info.toast)
+      && p && !p.err.length && rel(p.V, Ve) < TOL;
+    // ellisse 200 × 2: i centri degli archi (lontani metri) non si vedono e non allargano l'inquadratura
+    await fresh();
+    const thin = dxfText([['0', 'ELLIPSE', '8', '0', '10', 0, '20', 0, '30', 0, '11', 100, '21', 0, '31', 0, '40', 0.01, '41', 0, '42', 2 * Math.PI]], 4);
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', { name: 'ellisse-sottile.dxf', mimeType: 'application/dxf', buffer: Buffer.from(thin) });
+    await page.selectOption('#dxfPlane', 'front');
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    await page.waitForTimeout(1500);
+    const view = await page.evaluate(() => new Promise(res => requestAnimationFrame(() => {
+      const a = App.r.project([-100, 0, 0]), b = App.r.project([100, 0, 0]), w = document.querySelector('.view canvas').getBoundingClientRect().width;
+      const s = Sketcher.session(), far = s.sk.ents.filter(e => e.hc && Math.hypot(e.x, e.y) > 1000).length;
+      res({ frac: Math.abs(b[0] - a[0]) / w, far, hidden: s.sk.ents.filter(e => e.hc).length });
+    })));
+    await page.evaluate(() => Sketcher.exit(false));
+    const ok2 = view.frac > 0.4 && view.far > 0 && view.hidden > 0;
+    rec('Interfaccia: ellisse 200 × 2 inquadrata bene (centri lontani nascosti)', ok2, `larghezza dell'ellisse ${(100 * view.frac).toFixed(0)}% della vista; centri nascosti ${view.hidden}, di cui oltre 1 m ${view.far}`);
+    rec('Interfaccia: DXF con ellisse e spline (archi tangenti) ed estrusione', ok, `archi ${info.ar}, regioni ${info.regions}, V ${p && p.V.toFixed(1)} (${Ve.toFixed(1)}, ${p && (100 * rel(p.V, Ve)).toFixed(3)}%); «${info.toast}»`);
+  } catch (e) {
+    const why = await page.evaluate(() => { const x = document.querySelector('#dxfErr'); return { mode: App.mode, modal: !document.querySelector('#modal').hidden, err: x && !x.hidden ? x.textContent : '' }; }).catch(() => ({}));
+    rec('Interfaccia: DXF con ellisse e spline (archi tangenti) ed estrusione', false, e.message.split('\n')[0] + ' ' + JSON.stringify(why));
+  }
+
   // 3n. importazione STEP e IGES (lettore OpenCascade dentro la pagina): piastra con foro dal menu, pannello, file sbagliati
   try {
     await fresh();

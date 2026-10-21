@@ -975,10 +975,10 @@ label.chk .gl-i { margin-left: 2px; }
             const a3 = to3(F, s.a), b3 = to3(F, s.b);
             let nn = norm(cross(sub(b3, a3), F.z));
             // la normale verso l'esterno dipende dal verso del loop: la correggiamo sotto con il poligono
-            tg = { kind: 'plane', name: base + '|side|' + s.id, feature: base, ent: s.id };
+            tg = { kind: 'plane', name: base + '|side|' + s.id, feature: base, ent: s.id, cg: s.cg };
           } else {
             const c3 = to3(F, s.c);
-            tg = { kind: 'rev', o: c3, d: F.z.slice(), prof: { pt: 'line', r0: s.r, z0: dot(F.z, sub(add(F.o, zv0), c3)), r1: s.r, z1: dot(F.z, sub(add(F.o, zv1), c3)) }, name: base + '|side|' + s.id, feature: base, ent: s.id, R: s.r };
+            tg = { kind: 'rev', o: c3, d: F.z.slice(), prof: { pt: 'line', r0: s.r, z0: dot(F.z, sub(add(F.o, zv0), c3)), r1: s.r, z1: dot(F.z, sub(add(F.o, zv1), c3)) }, name: base + '|side|' + s.id, feature: base, ent: s.id, cg: s.cg, R: s.r };
           }
           sideTag.set(s, tg);
         }
@@ -1067,12 +1067,12 @@ label.chk .gl-i { margin-left: 2px; }
         if (tg === undefined) {
           if (s.type === 'line') {
             const pl = CSG.planeOf([a0, b0, b1, a1]);
-            tg = tags.add({ kind: 'plane', n: pl.n, w: pl.w, name: base + '|side|' + s.id, feature: base, ent: s.id });
+            tg = tags.add({ kind: 'plane', n: pl.n, w: pl.w, name: base + '|side|' + s.id, feature: base, ent: s.id, cg: s.cg });
           } else {
             const ccw = (t.pts[i][0] - s.c[0]) * (t.pts[j][1] - t.pts[i][1]) - (t.pts[i][1] - s.c[1]) * (t.pts[j][0] - t.pts[i][0]) > 0;
             const c3 = to3(F, s.c);
             const r1 = s.r + (ccw ? -delta : delta);
-            tg = tags.add({ kind: 'rev', o: c3, d: F.z.slice(), prof: { pt: 'line', r0: s.r, z0: 0, r1, z1: d1 }, name: base + '|side|' + s.id, feature: base, ent: s.id });
+            tg = tags.add({ kind: 'rev', o: c3, d: F.z.slice(), prof: { pt: 'line', r0: s.r, z0: 0, r1, z1: d1 }, name: base + '|side|' + s.id, feature: base, ent: s.id, cg: s.cg });
           }
           sideTag.set(s, tg);
         }
@@ -1130,7 +1130,7 @@ label.chk .gl-i { margin-left: 2px; }
         const rcs = dot(rvv, e1) >= 0 ? len(rvv) : -len(rvv);
         tg = { kind: 'rev', o: A, d, prof: { pt: 'arc', rc: rcs, zc: zz, a: s.r } };
       }
-      tg.name = base + '|rev|' + s.id; tg.feature = base; tg.ent = s.id;
+      tg.name = base + '|rev|' + s.id; tg.feature = base; tg.ent = s.id; tg.cg = s.cg;
       tagCache.set(s, tg);
       return tg;
     };
@@ -1546,8 +1546,10 @@ label.chk .gl-i { margin-left: 2px; }
     }
     const s = [];
     for (let j = 0; j < n; j++) { let t = 0; for (let i = 0; i < m; i++) t += U[i][j] * U[i][j]; s.push(Math.sqrt(t)); }
-    return { s, V };
+    return { s, V, U };
   }
+  // trasposta di una matrice m×n (array di righe)
+  function transpose(A, m, n) { const T = []; for (let i = 0; i < n; i++) { const r = new Array(m); for (let k = 0; k < m; k++) r[k] = A[k][i]; T.push(r); } return T; }
 
   /* ---------------- modello ---------------- */
   function newSketch() {
@@ -1829,21 +1831,31 @@ label.chk .gl-i { margin-left: 2px; }
     const m = r.length;
     const resid = norm2(r);
     if (n === 0) return { dof: 0, status: resid > 1e-7 ? 'over' : (m ? 'full' : 'full'), free: new Set(), redundant: false, unsolved: resid > 1e-7 };
-    let s = [], Vm = null;
-    if (m > 0) { const d = svd(J, m, n); s = d.s; Vm = d.V; }
+    let s = [], Vm = null, Ut = null;
+    // con meno vincoli che incognite (m < n) si scompone la trasposta: Jacobi su m colonne invece di n, stesso rango
+    // e stesso nucleo, ma molto più veloce (schizzi con tanti archi da un DXF: da secondi a millisecondi)
+    if (m > 0 && m < n) { const d = svd(transpose(J, m, n), n, m); s = d.s; Ut = d.U; }
+    else if (m > 0) { const d = svd(J, m, n); s = d.s; Vm = d.V; }
     const smax = Math.max(1e-12, ...s);
     const tol = 1e-8 * Math.max(1, smax);
     let rank = 0; for (const x of s) if (x > tol) rank++;
     const dof = n - rank;
     const free = new Set();
     // variabili libere = componenti non nulle del nucleo
-    const nullCols = [];
-    if (m === 0) for (let j = 0; j < n; j++) nullCols.push(null);
-    else s.forEach((x, j) => { if (x <= tol) nullCols.push(j); });
-    // se m < n, alcune colonne sono implicitamente nel nucleo: Jacobi su m righe lascia n colonne (le nulle hanno s=0)
     const freeVar = new Array(n).fill(false);
     if (m === 0) freeVar.fill(true);
-    else for (const j of nullCols) for (let i = 0; i < n; i++) if (Math.abs(Vm[i][j]) > 1e-6) freeVar[i] = true;
+    else if (Ut) {
+      // colonne di Ut = s_k · u_k, con u_k base ortonormale dello spazio delle righe di J; la variabile i è libera se e_i
+      // ha una parte nel nucleo: |P_nucleo e_i|² = 1 − Σ_k (Ut[i][k] / s_k)²  (> 10⁻¹², cioè una componente > 10⁻⁶)
+      for (let i = 0; i < n; i++) {
+        let q = 0; for (let k = 0; k < m; k++) if (s[k] > tol) { const u = Ut[i][k] / s[k]; q += u * u; }
+        if (1 - q > 1e-12) freeVar[i] = true;
+      }
+    } else {
+      const nullCols = [];
+      s.forEach((x, j) => { if (x <= tol) nullCols.push(j); });
+      for (const j of nullCols) for (let i = 0; i < n; i++) if (Math.abs(Vm[i][j]) > 1e-6) freeVar[i] = true;
+    }
     V.vars.forEach(([e, k], i) => { if (freeVar[i]) free.add(e.id); });
     // entità composte: una linea è libera se lo è un suo estremo
     const E = V.E;
@@ -1867,7 +1879,7 @@ label.chk .gl-i { margin-left: 2px; }
     const { J, r } = jacobian(sk, V);
     const m = r.length, n = V.vars.length;
     if (!m || !n) return { rank: 0, m, n };
-    const d = svd(J, m, n);
+    const d = m < n ? svd(transpose(J, m, n), n, m) : svd(J, m, n);   // il rango è lo stesso: si scompone la forma più piccola
     const smax = Math.max(1e-12, ...d.s);
     let rank = 0; for (const x of d.s) if (x > 1e-8 * Math.max(1, smax)) rank++;
     return { rank, m, n };
@@ -1938,12 +1950,13 @@ label.chk .gl-i { margin-left: 2px; }
     }
     // controllo delle intersezioni tra entità (non ammesse se non negli estremi)
     const segs = geoSegments(sk, geo);
-    for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
+    cross: for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
       const pts = intersectSeg(segs[i], segs[j]);
+      if (pts.length && touchOnly(segs[i], segs[j])) continue;
       for (const p of pts) {
         const atEndI = segs[i].ends.some(q => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1e-6);
         const atEndJ = segs[j].ends.some(q => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1e-6);
-        if (!(atEndI && atEndJ)) { errors.push('Alcune entità si intersecano: usa «Taglia entità» per eliminare le parti in più, così i contorni sono chiusi e separati.'); i = segs.length; break; }
+        if (!(atEndI && atEndJ)) { errors.push('Alcune entità si intersecano: usa «Taglia entità» per eliminare le parti in più, così i contorni sono chiusi e separati.'); break cross; }
       }
     }
     for (const n of nodes) {
@@ -2032,14 +2045,17 @@ label.chk .gl-i { margin-left: 2px; }
   function segOf(E, g, forward) {
     if (g.t === 'ln') {
       const a = E.get(g.a), b = E.get(g.b);
-      return forward ? { type: 'line', a: [a.x, a.y], b: [b.x, b.y], id: g.id } : { type: 'line', a: [b.x, b.y], b: [a.x, a.y], id: g.id };
+      const sg = forward ? { type: 'line', a: [a.x, a.y], b: [b.x, b.y], id: g.id } : { type: 'line', a: [b.x, b.y], b: [a.x, a.y], id: g.id };
+      if (g.cg) sg.cg = g.cg;
+      return sg;
     }
     const c = E.get(g.c), a = E.get(g.a), b = E.get(g.b);
     const r = Math.hypot(a.x - c.x, a.y - c.y);
     let a0 = Math.atan2(a.y - c.y, a.x - c.x), a1 = Math.atan2(b.y - c.y, b.x - c.x);
     while (a1 <= a0 + 1e-12) a1 += TAU;
-    if (forward) return { type: 'arc', c: [c.x, c.y], r, a0, a1, id: g.id };
-    return { type: 'arc', c: [c.x, c.y], r, a0: a1, a1: a0, id: g.id };
+    const sg = forward ? { type: 'arc', c: [c.x, c.y], r, a0, a1, id: g.id } : { type: 'arc', c: [c.x, c.y], r, a0: a1, a1: a0, id: g.id };
+    if (g.cg) sg.cg = g.cg;   // tratto di un'ellisse o di una spline importata (gruppo di tangenza)
+    return sg;
   }
   function sampleLoop(loop) {
     const pts = [];
@@ -2116,14 +2132,36 @@ label.chk .gl-i { margin-left: 2px; }
     }
     // cerchio-cerchio
     const dx = u.c[0] - s.c[0], dy = u.c[1] - s.c[1], dd = Math.hypot(dx, dy);
-    if (dd < 1e-12) { if (Math.abs(s.r - u.r) < 1e-9 && !s.full && !u.full) { /* archi sovrapposti */ } return out; }
+    // stesso cerchio (centri e raggi uguali a meno degli arrotondamenti): non si cercano intersezioni
+    if (dd < 1e-12 || (dd <= 1e-9 * Math.max(s.r, u.r) && Math.abs(s.r - u.r) <= 1e-9 * Math.max(s.r, u.r))) return out;
     if (dd > s.r + u.r + 1e-9 || dd < Math.abs(s.r - u.r) - 1e-9) return out;
     const a = (s.r * s.r - u.r * u.r + dd * dd) / (2 * dd);
-    const h = Math.sqrt(Math.max(0, s.r * s.r - a * a));
+    // cerchi tangenti (esterni o interni): un solo punto di contatto. Senza questo controllo, con raggi grandi,
+    // l'arrotondamento di r² − a² dà due punti falsi lontani dal contatto (√(r·errore), fino a 10⁻⁴ mm)
+    const rm = Math.max(s.r, u.r, dd);
+    const tangent = Math.abs(dd - (s.r + u.r)) <= 1e-9 * rm || Math.abs(dd - Math.abs(s.r - u.r)) <= 1e-9 * rm;
+    const h = tangent ? 0 : Math.sqrt(Math.max(0, s.r * s.r - a * a));
     const mx = s.c[0] + a * dx / dd, my = s.c[1] + a * dy / dd;
     const cand = h < 1e-12 ? [[mx, my]] : [[mx + h * dy / dd, my - h * dx / dd], [mx - h * dy / dd, my + h * dx / dd]];
     for (const p of cand) if (onArc(s, p) && onArc(u, p)) out.push(p);
     return out;
+  }
+
+  // due tratti con un estremo in comune e tangenti tra loro (o sullo stesso cerchio): l'unico punto in comune è
+  // l'estremo, anche se il calcolo dell'intersezione, mal condizionato, trova un punto poco distante
+  function touchOnly(s, u) {
+    const shared = s.ends.some(q => u.ends.some(w => Math.hypot(q[0] - w[0], q[1] - w[1]) < 1e-9));
+    if (!shared) return false;
+    if (s.kind === 'c' && u.kind === 'c') {
+      const dd = Math.hypot(u.c[0] - s.c[0], u.c[1] - s.c[1]), rm = Math.max(s.r, u.r, dd);
+      return Math.abs(dd - (s.r + u.r)) <= 1e-9 * rm || Math.abs(dd - Math.abs(s.r - u.r)) <= 1e-9 * rm;
+    }
+    if (s.kind === 'l' && u.kind === 'l') return false;
+    const l = s.kind === 'l' ? s : u, c = s.kind === 'l' ? u : s;
+    const d = [l.b[0] - l.a[0], l.b[1] - l.a[1]], L = Math.hypot(d[0], d[1]);
+    if (!(L > 0)) return false;
+    const dist = Math.abs(d[0] * (c.c[1] - l.a[1]) - d[1] * (c.c[0] - l.a[0])) / L;   // distanza del centro dalla retta
+    return Math.abs(dist - c.r) <= 1e-9 * Math.max(c.r, L);
   }
 
   // vincoli non soddisfatti (per colorarli di rosso)
@@ -2135,7 +2173,7 @@ label.chk .gl-i { margin-left: 2px; }
     r.forEach((x, i) => { if (Math.abs(x) > 1e-6 && rows[i] && rows[i].id) bad.add(rows[i]); });
     return [...bad];
   }
-  const api = { unsatisfied, newSketch, solve, analyze, measure, profiles, residuals, buildVars, wouldOverdefine, geoSegments, intersectSeg, onArc, byId, DIM_TYPES, REL_NAMES, svd, polyArea, loopArea, pointInPoly, sampleLoop, chains, segStart, segEnd, segTan };
+  const api = { unsatisfied, newSketch, solve, analyze, measure, profiles, residuals, buildVars, wouldOverdefine, geoSegments, intersectSeg, touchOnly, onArc, byId, DIM_TYPES, REL_NAMES, svd, polyArea, loopArea, pointInPoly, sampleLoop, chains, segStart, segEnd, segTan };
   if (typeof module !== 'undefined') module.exports = api; else root.Sketch = api;
 })(this);
 
@@ -2434,6 +2472,190 @@ label.chk .gl-i { margin-left: 2px; }
   const DXF_SCALE = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8, uin: 25.4e-6, mil: 0.0254, um: 0.001, dm: 100 };
   const DXF_IGNORED = { TEXT: 'testi', MTEXT: 'testi', DIMENSION: 'quote', HATCH: 'tratteggi', SOLID: 'riempimenti', POINT: 'punti', ELLIPSE: 'ellissi', SPLINE: 'curve spline', LEADER: 'richiami', MLEADER: 'richiami', '3DFACE': 'facce 3D', ATTRIB: 'attributi', ATTDEF: 'attributi', IMAGE: 'immagini', VIEWPORT: 'finestre', WIPEOUT: 'mascherature', RAY: 'semirette', XLINE: 'rette infinite', TOLERANCE: 'tolleranze', INSERT: 'blocchi' };
   const DXF_MAXENT = 3000;
+
+  /* ---- ellissi e spline: approssimazione con archi tangenti (biarchi) ---- */
+  // scostamento massimo ammesso tra la curva vera e gli archi: 1/10 000 della dimensione della curva
+  const DXF_CURVE_TOL = 1e-4;
+  const CURVE_MAXDEPTH = 14, CURVE_MAXSEGS = 1000;
+  const v2sub = (a, b) => [a[0] - b[0], a[1] - b[1]], v2dot = (a, b) => a[0] * b[0] + a[1] * b[1], v2len = a => Math.hypot(a[0], a[1]);
+  // distanza del punto q da un tratto {t:'line',a,b} o {t:'arc',c,r,a0,a1}
+  function primDist(q, s) {
+    if (s.t === 'line') {
+      const ab = v2sub(s.b, s.a), L2 = v2dot(ab, ab);
+      const u = L2 > 0 ? Math.max(0, Math.min(1, v2dot(v2sub(q, s.a), ab) / L2)) : 0;
+      return Math.hypot(q[0] - s.a[0] - ab[0] * u, q[1] - s.a[1] - ab[1] * u);
+    }
+    const dx = q[0] - s.c[0], dy = q[1] - s.c[1];
+    let f = Math.atan2(dy, dx); while (f < s.a0) f += 2 * Math.PI; while (f > s.a0 + 2 * Math.PI) f -= 2 * Math.PI;
+    if (f <= s.a1) return Math.abs(Math.hypot(dx, dy) - s.r);
+    const e0 = [s.c[0] + s.r * Math.cos(s.a0), s.c[1] + s.r * Math.sin(s.a0)], e1 = [s.c[0] + s.r * Math.cos(s.a1), s.c[1] + s.r * Math.sin(s.a1)];
+    return Math.min(v2len(v2sub(q, e0)), v2len(v2sub(q, e1)));
+  }
+  // arco che parte da P con tangente T (unitaria) e arriva in E; linea se è quasi dritto (freccia < lineTol)
+  function arcFrom(P, T, E, lineTol) {
+    const w = v2sub(E, P), ww = v2dot(w, w);
+    if (!(ww > 0)) return null;
+    const nw = -T[1] * w[0] + T[0] * w[1];          // componente della corda lungo la normale sinistra
+    // freccia dell'arco = r - √(r² - (corda/2)²), con r = |ww / (2 nw)|
+    const r = Math.abs(ww / (2 * nw));
+    const sag = Number.isFinite(r) ? r - Math.sqrt(Math.max(0, r * r - ww / 4)) : 0;
+    if (!Number.isFinite(r) || sag < lineTol) return { t: 'line', a: P.slice(), b: E.slice() };
+    const s = ww / (2 * nw), c = [P[0] - T[1] * s, P[1] + T[0] * s];
+    const aP = Math.atan2(P[1] - c[1], P[0] - c[0]), aE = Math.atan2(E[1] - c[1], E[0] - c[0]);
+    return s > 0 ? { t: 'arc', c, r, a0: aP, a1: unwrapAfter(aP, aE) } : { t: 'arc', c, r, a0: aE, a1: unwrapAfter(aE, aP) };
+  }
+  // biarco: due archi tangenti tra loro, il primo tangente a T0 in P0, il secondo tangente a T1 in P1 (bracci uguali)
+  function biarc(P0, T0, P1, T1, lineTol) {
+    const v = v2sub(P1, P0), vv = v2dot(v, v);
+    if (!(vv > 0)) return null;
+    const vt = v2dot(v, [T0[0] + T1[0], T0[1] + T1[1]]), k = 1 - v2dot(T0, T1);
+    // |v − d(T0+T1)| = 2d  →  d = vv / (√(vt² + 2k·vv) + vt)
+    const den = Math.sqrt(vt * vt + 2 * k * vv) + vt;
+    if (!(den > 1e-12 * Math.sqrt(vv))) return null;
+    const d = vv / den;
+    const J = [(P0[0] + d * T0[0] + P1[0] - d * T1[0]) / 2, (P0[1] + d * T0[1] + P1[1] - d * T1[1]) / 2];
+    const out = [];
+    const a = arcFrom(P0, T0, J, lineTol); if (a) out.push(a);
+    const b = arcFrom(P1, [-T1[0], -T1[1]], J, lineTol); if (b) out.push(b);
+    return out.length ? out : null;
+  }
+  /* Curva P(t) → [x, y] sull'intervallo dei parametri, spezzata nei punti breaks (spigoli possibili, tratti della spline).
+     Restituisce {segs: tratti {t:'line'|'arc'}, err: scostamento massimo misurato} con err ≤ tol. */
+  function curveToArcs(P, breaks, tol) {
+    const segs = []; let err = 0, over = false;
+    const lineTol = tol * 0.05;
+    // tangente unitaria all'inizio (dir = +1) o alla fine (dir = −1) del tratto [ta, tb], presa dall'interno
+    const tang = (ta, tb, atStart) => {
+      for (const f of [1e-6, 1e-4, 1e-2]) {
+        const h = (tb - ta) * f, t = atStart ? ta : tb, s = atStart ? 1 : -1;
+        const p0 = P(t), p1 = P(t + s * h), p2 = P(t + 2 * s * h);
+        const D = [s * (-3 * p0[0] + 4 * p1[0] - p2[0]), s * (-3 * p0[1] + 4 * p1[1] - p2[1])];
+        const L = v2len(D); if (L > 1e-14 * (1 + v2len(p0))) return [D[0] / L, D[1] / L];
+      }
+      return null;
+    };
+    const N = 16;
+    // passo ricorsivo: biarco sul tratto [ta, tb], diviso a metà finché lo scostamento supera tol
+    const step = (ta, tb, depth) => {
+      const ts = [], ps = [];
+      for (let i = 0; i <= N; i++) { const t = i === N ? tb : ta + (tb - ta) * i / N; ts.push(t); ps.push(P(t)); }
+      const split = () => { const tm = (ta + tb) / 2; step(ta, tm, depth + 1); step(tm, tb, depth + 1); };
+      const canSplit = depth < CURVE_MAXDEPTH && segs.length < CURVE_MAXSEGS;
+      const P0 = ps[0], P1 = ps[N], chord = v2sub(P1, P0), cl = v2len(chord);
+      // giro della tangente lungo il tratto (dalle corde dei campioni): oltre 90° si divide prima di provare
+      let turn = 0, prev = null, maxOff = 0;
+      for (let i = 0; i < N; i++) {
+        const d = v2sub(ps[i + 1], ps[i]), L = v2len(d); if (!(L > 0)) continue;
+        const u = [d[0] / L, d[1] / L];
+        if (prev) turn += Math.acos(Math.max(-1, Math.min(1, v2dot(prev, u))));
+        prev = u;
+        if (cl > 0) maxOff = Math.max(maxOff, Math.abs(chord[0] * (ps[i][1] - P0[1]) - chord[1] * (ps[i][0] - P0[0])) / cl);
+      }
+      if ((turn > Math.PI / 2 || !(cl > 0)) && canSplit) return split();
+      // tratto dritto: una linea sola
+      if (cl > 0 && maxOff <= lineTol * 0.01) { segs.push({ t: 'line', a: P0, b: P1 }); err = Math.max(err, maxOff); return; }
+      const T0 = tang(ta, tb, true), T1 = tang(ta, tb, false);
+      const ba = T0 && T1 ? biarc(P0, T0, P1, T1, lineTol) : null;
+      if (!ba) { if (canSplit) return split(); segs.push({ t: 'line', a: P0, b: P1 }); err = Math.max(err, maxOff); over = true; return; }
+      // scostamento nei due sensi: campioni della curva → archi, punti degli archi → curva (minimo locale)
+      let e = 0;
+      for (let i = 1; i < N; i++) e = Math.max(e, Math.min(...ba.map(s => primDist(ps[i], s))));
+      // punti fitti della curva per cercare il punto più vicino a ogni punto degli archi
+      const M = 4 * N, tt = [], pp = [];
+      for (let i = 0; i <= M; i++) { const t = i === M ? tb : ta + (tb - ta) * i / M; tt.push(t); pp.push(P(t)); }
+      for (const s of ba) for (let j = 1; j < 8; j++) {
+        const u = j / 8;
+        const q = s.t === 'line' ? [s.a[0] + (s.b[0] - s.a[0]) * u, s.a[1] + (s.b[1] - s.a[1]) * u]
+          : [s.c[0] + s.r * Math.cos(s.a0 + (s.a1 - s.a0) * u), s.c[1] + s.r * Math.sin(s.a0 + (s.a1 - s.a0) * u)];
+        let bi = 0, bd = Infinity;
+        for (let i = 0; i <= M; i++) { const dd = Math.hypot(pp[i][0] - q[0], pp[i][1] - q[1]); if (dd < bd) { bd = dd; bi = i; } }
+        // sezione aurea sul parametro tra i due campioni vicini
+        let lo = tt[Math.max(0, bi - 1)], hi = tt[Math.min(M, bi + 1)];
+        const g = (Math.sqrt(5) - 1) / 2, f = t => { const p = P(t); return Math.hypot(p[0] - q[0], p[1] - q[1]); };
+        let x1 = hi - g * (hi - lo), x2 = lo + g * (hi - lo), f1 = f(x1), f2 = f(x2);
+        for (let it = 0; it < 40; it++) {
+          if (f1 < f2) { hi = x2; x2 = x1; f2 = f1; x1 = hi - g * (hi - lo); f1 = f(x1); }
+          else { lo = x1; x1 = x2; f1 = f2; x2 = lo + g * (hi - lo); f2 = f(x2); }
+        }
+        e = Math.max(e, Math.min(bd, f1, f2));
+      }
+      if (e > tol && canSplit) return split();
+      if (e > tol) over = true;
+      err = Math.max(err, e);
+      for (const s of ba) segs.push(s);
+    };
+    for (let k = 0; k + 1 < breaks.length; k++) if (breaks[k + 1] > breaks[k]) step(breaks[k], breaks[k + 1], 0);
+    return { segs, err, over };
+  }
+  // valutazione di una NURBS (algoritmo di de Boor in coordinate omogenee); dominio [knots[deg], knots[n]]
+  function nurbsEval(deg, knots, ctrl, w) {
+    const n = ctrl.length;
+    return t => {
+      let k = deg; while (k < n - 1 && t >= knots[k + 1]) k++;
+      const d = [];
+      for (let j = 0; j <= deg; j++) { const i = k - deg + j, wi = w ? w[i] : 1; d.push([ctrl[i][0] * wi, ctrl[i][1] * wi, wi]); }
+      for (let r = 1; r <= deg; r++) for (let j = deg; j >= r; j--) {
+        const i = k - deg + j, den = knots[i + deg - r + 1] - knots[i];
+        const a = den > 0 ? (t - knots[i]) / den : 0, x = d[j - 1], y = d[j];
+        d[j] = [(1 - a) * x[0] + a * y[0], (1 - a) * x[1] + a * y[1], (1 - a) * x[2] + a * y[2]];
+      }
+      const q = d[deg]; return [q[0] / q[2], q[1] / q[2]];
+    };
+  }
+  // sistema tridiagonale a[i] x[i−1] + b[i] x[i] + c[i] x[i+1] = r[i] (algoritmo di Thomas)
+  function triSolve(a, b, c, r) {
+    const n = r.length, cp = new Array(n), rp = new Array(n), x = new Array(n);
+    cp[0] = c[0] / b[0]; rp[0] = r[0] / b[0];
+    for (let i = 1; i < n; i++) { const m = b[i] - a[i] * cp[i - 1]; cp[i] = c[i] / m; rp[i] = (r[i] - a[i] * rp[i - 1]) / m; }
+    x[n - 1] = rp[n - 1];
+    for (let i = n - 2; i >= 0; i--) x[i] = rp[i] - cp[i] * x[i + 1];
+    return x;
+  }
+  // sistema tridiagonale ciclico (c[n−1] lega x[n−1] a x[0], a[0] lega x[0] a x[n−1]): Sherman-Morrison
+  function cyclicSolve(a, b, c, r) {
+    const n = r.length, gam = -b[0], bb = b.slice();
+    bb[0] = b[0] - gam; bb[n - 1] = b[n - 1] - a[0] * c[n - 1] / gam;
+    const y = triSolve(a, bb, c, r);
+    const u = new Array(n).fill(0); u[0] = gam; u[n - 1] = c[n - 1];
+    const z = triSolve(a, bb, c, u);
+    const fac = (y[0] + a[0] * y[n - 1] / gam) / (1 + z[0] + a[0] * z[n - 1] / gam);
+    return y.map((v, i) => v - fac * z[i]);
+  }
+  // spline cubica che passa per i punti (parametro = lunghezza delle corde); estremi liberi, con tangente data, o chiusa
+  function fitSpline(pts, closed, t0, t1) {
+    const P = pts.filter((p, k) => k === 0 || Math.hypot(p[0] - pts[k - 1][0], p[1] - pts[k - 1][1]) > 1e-12);
+    if (closed && P.length > 2 && Math.hypot(P[0][0] - P[P.length - 1][0], P[0][1] - P[P.length - 1][1]) > 1e-12) P.push(P[0].slice());
+    if (closed && P.length > 2) P[P.length - 1] = P[0].slice();
+    const n = P.length - 1;
+    if (n < 1) return null;
+    const u = [0]; for (let i = 0; i < n; i++) u.push(u[i] + Math.hypot(P[i + 1][0] - P[i][0], P[i + 1][1] - P[i][1]));
+    const h = []; for (let i = 0; i < n; i++) h.push(u[i + 1] - u[i]);
+    const Ms = [0, 1].map(ax => {
+      const y = P.map(p => p[ax]);
+      const sl = i => (y[i + 1] - y[i]) / h[i];
+      if (closed && n >= 3) {   // M[0] = M[n]: n incognite
+        const a = [], b = [], c = [], r = [];
+        for (let i = 0; i < n; i++) {
+          const hm = h[(i - 1 + n) % n], hp = h[i];
+          a.push(hm); b.push(2 * (hm + hp)); c.push(hp); r.push(6 * (sl(i) - sl((i - 1 + n) % n)));
+        }
+        const m = cyclicSolve(a, b, c, r); m.push(m[0]); return m;
+      }
+      const a = [0], b = [], c = [], r = [];
+      if (t0) { b.push(2 * h[0]); c.push(h[0]); r.push(6 * (sl(0) - t0[ax])); } else { b.push(1); c.push(0); r.push(0); }
+      for (let i = 1; i < n; i++) { a.push(h[i - 1]); b.push(2 * (h[i - 1] + h[i])); c.push(h[i]); r.push(6 * (sl(i) - sl(i - 1))); }
+      if (t1) { a.push(h[n - 1]); b.push(2 * h[n - 1]); r.push(6 * (t1[ax] - sl(n - 1))); } else { a.push(0); b.push(1); r.push(0); }
+      c.push(0);
+      return triSolve(a, b, c, r);
+    });
+    const ev = t => {
+      let i = 0; while (i < n - 1 && t >= u[i + 1]) i++;
+      const A = u[i + 1] - t, B = t - u[i], H = h[i];
+      return [0, 1].map(ax => { const M = Ms[ax], y0 = P[i][ax], y1 = P[i + 1][ax];
+        return M[i] * A * A * A / (6 * H) + M[i + 1] * B * B * B / (6 * H) + (y0 / H - M[i] * H / 6) * A + (y1 / H - M[i + 1] * H / 6) * B; });
+    };
+    return { P: ev, breaks: u };
+  }
   // geometria del file in coordinate del disegno: {t:'line',a,b} | {t:'circle',c,r} | {t:'arc',c,r,a0,a1} (radianti, antiorario da a0 ad a1, a1 > a0)
   function parseDXF(data) {
     let text;
@@ -2537,6 +2759,92 @@ label.chk .gl-i { margin-left: 2px; }
       b0 = normAng(b0); b1 = normAng(b1); if (b1 <= b0 + 1e-12) b1 += 2 * Math.PI;
       geo.push(kind ? { t: 'arc', c: cc, r: rr, a0: b0, a1: b1, kind } : { t: 'arc', c: cc, r: rr, a0: b0, a1: b1 });
     };
+    // ellissi e spline: archi tangenti; approx raccoglie i conteggi e lo scostamento massimo (unità del file)
+    const approx = { ellipses: 0, splines: 0, arcs: 0, lines: 0, err: 0, over: false, groups: 0 };
+    const curveOut = (m, P, breaks, size) => {
+      const tol = Math.max(1e-9, DXF_CURVE_TOL * size);
+      const r = curveToArcs(P, breaks, tol);
+      const sc = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
+      // gruppo (cg): tratti consecutivi della stessa curva uniti in modo tangente; dove la curva ha uno spigolo vero
+      // (spline con un nodo ad angolo) comincia un gruppo nuovo. Tra facce dello stesso gruppo lo spigolo non si disegna.
+      const ends = q => q.t === 'line' ? [q.a, q.b] : [[q.c[0] + q.r * Math.cos(q.a0), q.c[1] + q.r * Math.sin(q.a0)], [q.c[0] + q.r * Math.cos(q.a1), q.c[1] + q.r * Math.sin(q.a1)]];
+      const tanAt = (q, p) => { const d = q.t === 'line' ? [q.b[0] - q.a[0], q.b[1] - q.a[1]] : [-(p[1] - q.c[1]), p[0] - q.c[0]]; const L = Math.hypot(d[0], d[1]); return [d[0] / L, d[1] / L]; };
+      const smoothJoin = (q1, q2) => {
+        for (const p of ends(q1)) for (const p2 of ends(q2)) if (Math.hypot(p[0] - p2[0], p[1] - p2[1]) <= 1e-9 * (1 + Math.hypot(p[0], p[1]))) {
+          const u = tanAt(q1, p), v = tanAt(q2, p); return Math.abs(u[0] * v[1] - u[1] * v[0]) < 1e-6;
+        }
+        return false;
+      };
+      let grp = ++approx.groups;
+      r.segs.forEach((s, k) => {
+        if (k && !smoothJoin(r.segs[k - 1], s)) grp = ++approx.groups;
+        if (s.t === 'line') { pushLine(m, s.a, s.b); approx.lines++; }
+        else { pushArc(m, s.c, s.r, s.a0, s.a1); approx.arcs++; }
+        Object.assign(geo[geo.length - 1], { curve: true, cg: grp });   // tratto di un'ellisse o di una spline
+      });
+      // curva chiusa: il primo e l'ultimo tratto sono nello stesso gruppo se si uniscono in modo tangente
+      if (r.segs.length > 2 && smoothJoin(r.segs[r.segs.length - 1], r.segs[0])) {
+        const first = geo[geo.length - r.segs.length].cg;
+        for (let k = geo.length - r.segs.length; k < geo.length; k++) if (geo[k].cg === grp) geo[k].cg = first;
+      }
+      approx.err = Math.max(approx.err, r.err * sc);
+      if (r.over) approx.over = true;
+    };
+    // SPLINE: NURBS (grado, nodi, punti di controllo, pesi) oppure solo punti di passaggio; null se i dati non tornano
+    const readSpline = g => {
+      const fl = num(g, 70), deg = Math.round(num(g, 71, 3));
+      const knots = [], wts = [], ctrl = [], fit = []; let t0 = null, t1 = null, cur = null;
+      for (const [code, v] of g) {
+        const x = parseFloat(v);
+        if (code === 40) knots.push(x);
+        else if (code === 41) wts.push(x);
+        else if (code === 10) { cur = [x, 0, 0]; ctrl.push(cur); }
+        else if (code === 20 && cur) cur[1] = x;
+        else if (code === 30 && cur) cur[2] = x;
+        else if (code === 11) { cur = [x, 0, 0]; fit.push(cur); }
+        else if (code === 21 && cur) cur[1] = x;
+        else if (code === 31 && cur) cur[2] = x;
+        else if (code === 12) { t0 = [x, 0]; cur = null; }
+        else if (code === 22 && t0) t0[1] = x;
+        else if (code === 13) { t1 = [x, 0]; cur = null; }
+        else if (code === 23 && t1) t1[1] = x;
+      }
+      const all = ctrl.length ? ctrl : fit;
+      if (all.some(p => !Number.isFinite(p[0] + p[1] + p[2]))) return null;
+      let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+      for (const p of all) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], p[k]); mx[k] = Math.max(mx[k], p[k]); }
+      const diag = Math.hypot(mx[0] - mn[0], mx[1] - mn[1]);
+      if (!(diag > 0)) return null;
+      // dimensione per la tolleranza: il lato minore dell'ingombro, ma non meno di 1/10 della diagonale
+      const size = Math.max(Math.min(mx[0] - mn[0], mx[1] - mn[1]), diag / 10);
+      const flat3d = mx[2] - mn[2] > 1e-9 * diag;
+      const n = ctrl.length;
+      if (n >= 2 && deg >= 1 && n >= deg + 1) {
+        let kn = knots;
+        if (!kn.length) {   // nodi mancanti: spline «bloccata» agli estremi con nodi uniformi
+          kn = [];
+          for (let k = 0; k <= deg; k++) kn.push(0);
+          for (let k = 1; k < n - deg; k++) kn.push(k);
+          for (let k = 0; k <= deg; k++) kn.push(n - deg);
+        }
+        if (kn.length !== n + deg + 1 || kn.some((x, k) => !Number.isFinite(x) || (k && x < kn[k - 1]))) return null;
+        const lo = kn[deg], hi = kn[n];
+        if (!(hi > lo)) return null;
+        let w = null;
+        if (wts.length === n && wts.some(x => Math.abs(x - 1) > 1e-12)) { if (wts.some(x => !(x > 0))) return null; w = wts; }
+        const breaks = [lo];
+        for (let k = deg + 1; k < n; k++) if (kn[k] > breaks[breaks.length - 1] && kn[k] < hi) breaks.push(kn[k]);
+        breaks.push(hi);
+        return { P: nurbsEval(deg, kn, ctrl, w), breaks, size, flat3d };
+      }
+      if (fit.length >= 2) {
+        const unit = t => { if (!t) return null; const L = v2len(t); return L > 0 ? [t[0] / L, t[1] / L] : null; };
+        const s = fitSpline(fit.map(p => [p[0], p[1]]), (fl & 1) === 1, unit(t0), unit(t1));
+        if (!s) return null;
+        return { P: s.P, breaks: s.breaks, size, flat3d };
+      }
+      return null;
+    };
     // sistema di coordinate dell'oggetto (OCS): con normale (0,0,-1) la x è rovesciata
     const ocs = g => {
       const nx = num(g, 210, 0), ny = num(g, 220, 0), nz = num(g, 230, 1);
@@ -2592,6 +2900,42 @@ label.chk .gl-i { margin-left: 2px; }
             const vs = e.verts.filter(vg => !(num(vg, 70) & 16)).map(vg => ({ p: [num(vg, 10), num(vg, 20)], b: num(vg, 42) }));
             polyline(mm, vs, (fl & 1) === 1); break;
           }
+          case 'ELLIPSE': {
+            // centro e semiasse maggiore in coordinate del mondo; il parametro gira in senso antiorario attorno alla normale
+            const nx = num(g, 210, 0), ny = num(g, 220, 0), nz = num(g, 230, 1);
+            if (Math.abs(nx) > 1e-9 || Math.abs(ny) > 1e-9) { curves3d++; break; }
+            const sgn = nz < 0 ? -1 : 1;
+            const C = [num(g, 10), num(g, 20)], Mj = [num(g, 11), num(g, 21)], ratio = num(g, 40, 1);
+            const a = v2len(Mj);
+            if (!(a > 0) || !(ratio > 0)) { skip('ELLIPSE'); break; }
+            if (Math.abs(num(g, 31)) > 1e-9 * a) curves3d++;   // asse maggiore inclinato rispetto al piano: si appiattisce
+            const K = [-sgn * Mj[1] * ratio, sgn * Mj[0] * ratio];   // semiasse minore = ratio · (normale × asse maggiore)
+            let t0 = num(g, 41, 0), t1 = num(g, 42, 2 * Math.PI);
+            const full = Math.abs(t1 - t0) >= 2 * Math.PI - 1e-9;
+            if (full) t1 = t0 + 2 * Math.PI; else t1 = unwrapAfter(t0, t1);
+            const Pe = t => [C[0] + Mj[0] * Math.cos(t) + K[0] * Math.sin(t), C[1] + Mj[1] * Math.cos(t) + K[1] * Math.sin(t)];
+            approx.ellipses++;
+            if (Math.abs(ratio - 1) < 1e-12) {   // in realtà è un cerchio (o un arco): esatto
+              if (full) { pushArc(m, C, a, 0, 2 * Math.PI); break; }
+              const p0 = Pe(t0), p1 = Pe(t1), b0 = Math.atan2(p0[1] - C[1], p0[0] - C[0]), b1 = Math.atan2(p1[1] - C[1], p1[0] - C[0]);
+              if (sgn > 0) pushArc(m, C, a, b0, unwrapAfter(b0, b1)); else pushArc(m, C, a, b1, unwrapAfter(b1, b0));
+              break;
+            }
+            // punti di divisione: i vertici dell'ellisse (multipli di 90° del parametro)
+            const br = [t0];
+            for (let q = Math.floor(t0 / (Math.PI / 2)) + 1; q * Math.PI / 2 < t1 - 1e-9; q++) if (q * Math.PI / 2 > t0 + 1e-9) br.push(q * Math.PI / 2);
+            br.push(t1);
+            curveOut(m, Pe, br, 2 * a * Math.min(1, ratio));   // tolleranza sulla dimensione minore dell'ellisse
+            break;
+          }
+          case 'SPLINE': {
+            const sp = readSpline(g);
+            if (!sp) { skip('SPLINE'); break; }
+            approx.splines++;
+            if (sp.flat3d) curves3d++;
+            curveOut(m, sp.P, sp.breaks, sp.size);
+            break;
+          }
           case 'INSERT': {
             const b = blocks.get(val(g, 2, ''));
             if (!b || depth > 8) { skip('INSERT'); break; }
@@ -2621,7 +2965,7 @@ label.chk .gl-i { margin-left: 2px; }
     }
     walk(top, ID, 0, null);
     const unit = DXF_UNITS[insunits] || null;
-    return { geo, unit, insunits, skipped, layers: [...layers], curves3d };
+    return { geo, unit, insunits, skipped, layers: [...layers], curves3d, approx };
   }
   function normAng(a) { const t = 2 * Math.PI; a %= t; if (a < 0) a += t; return a; }
   function unwrapAfter(a0, a1) { while (a1 <= a0 + 1e-12) a1 += 2 * Math.PI; while (a1 > a0 + 2 * Math.PI + 1e-12) a1 -= 2 * Math.PI; return a1; }
@@ -2673,6 +3017,9 @@ label.chk .gl-i { margin-left: 2px; }
       return e.id;
     };
     const out = [], seen = new Set();
+    // gruppi delle curve (cg numerico del lettore → nome unico nello schizzo)
+    const groups = new Map();
+    const cgOf = g => { if (!g.cg) return {}; if (!groups.has(g.cg)) groups.set(g.cg, newId('g')); return { cg: groups.get(g.cg) }; };
     // assi (tratto-punto) → linee di mezzeria; linee tratteggiate e archi d'asse → costruzione
     const cx = g => !g.kind ? {} : (g.kind === 'center' && g.t === 'line') ? { cons: true, center: true } : { cons: true };
     let dup = 0, tiny = 0;
@@ -2683,7 +3030,7 @@ label.chk .gl-i { margin-left: 2px; }
         if (a === b) { tiny++; continue; }
         const k = 'l' + [a, b].sort().join('|');
         if (seen.has(k)) { dup++; continue; } seen.add(k);
-        out.push({ id: newId('l'), t: 'ln', a, b, ...cx(g) });
+        out.push({ id: newId('l'), t: 'ln', a, b, ...cx(g), ...cgOf(g) });
       } else if (g.t === 'circle') {
         const c = T(g.c), r = g.r * sc;
         if (r < tol) { tiny++; continue; }
@@ -2699,8 +3046,10 @@ label.chk .gl-i { margin-left: 2px; }
         if (pa === pb) { tiny++; continue; }
         const k = 'a' + r6(c[0]) + ',' + r6(c[1]) + ',' + r6(r) + ',' + pa + ',' + pb;
         if (seen.has(k)) { dup++; continue; } seen.add(k);
-        const cid = newId('p'); pts.push({ id: cid, t: 'pt', x: c[0], y: c[1] });
-        out.push({ id: newId('a'), t: 'ar', c: cid, a: pa, b: pb, ...cx(g) });
+        // il centro degli archi che imitano un'ellisse o una spline è nascosto (hc): non si vede, non si aggancia e non conta
+        // per l'inquadratura (come in SolidWorks, dove la curva non ha centri); con le curve quasi dritte è lontanissimo
+        const cid = newId('p'); pts.push(g.curve ? { id: cid, t: 'pt', x: c[0], y: c[1], hc: true } : { id: cid, t: 'pt', x: c[0], y: c[1] });
+        out.push({ id: newId('a'), t: 'ar', c: cid, a: pa, b: pb, ...cx(g), ...cgOf(g) });
       }
     }
     // centri degli archi: il raggio verso i due estremi (uniti) può differire di poco; il centro va sull'asse della corda
@@ -2721,7 +3070,7 @@ label.chk .gl-i { margin-left: 2px; }
     return { count, dup, tiny, points: pts.length, box: { mn: T(bb.mn), mx: T(bb.mx) }, ids: out.map(e => e.id) };
   }
 
-  const api = { parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS, parseDXF, dxfToSketch, DXF_SCALE, DXF_UNITS, DXF_MAXENT, loadOCCT, readCAD, cadKind, CAD_EXT, CAD_LEVELS, CAD_MAX };
+  const api = { parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS, parseDXF, dxfToSketch, DXF_SCALE, DXF_UNITS, DXF_MAXENT, DXF_CURVE_TOL, curveToArcs, nurbsEval, fitSpline, loadOCCT, readCAD, cadKind, CAD_EXT, CAD_LEVELS, CAD_MAX };
   if (typeof module !== 'undefined') module.exports = api; else root.Import = api;
 })(this);
 
@@ -2815,7 +3164,21 @@ label.chk .gl-i { margin-left: 2px; }
     }
     st.topo = st.body.length ? G.topology(st.body, tags) : { verts: [], polyVerts: [], edges: [], surfKeys: [] };
     smoothMeshEdges(st);
+    smoothCurveEdges(st);
     return st;
+  }
+  // ellissi e spline importate da DXF diventano tanti archi tangenti: ogni arco dà una faccia, ma per chi guarda è una
+  // superficie sola (in SolidWorks sarebbe una faccia). Tra due facce dello stesso gruppo di tangenza (cg, dalla stessa
+  // funzione) e tra due tratti dello stesso percorso a spline (pcg, stessa entità del profilo) lo spigolo non si disegna.
+  function smoothCurveEdges(st) {
+    for (const e of st.topo.edges) {
+      if (!e.sharp || e.polys.length !== 2) continue;
+      const a = st.tags.get(st.body[e.polys[0]].t), b = st.tags.get(st.body[e.polys[1]].t);
+      if (!a || !b || a === b) continue;
+      const sameCurve = a.cg && a.cg === b.cg && a.feature === b.feature;
+      const samePath = a.pcg && a.pcg === b.pcg && a.ent && a.ent === b.ent;
+      if (sameCurve || samePath) { e.sharp = false; e.smooth = true; }
+    }
   }
   // corpi importati: tra faccette quasi allineate (meno di 30°) lo spigolo non si disegna, come su una superficie curva.
   // Nei file STEP e IGES si conoscono le facce vere: lo spigolo si disegna solo dove finisce una faccia e ne comincia un'altra
@@ -3142,6 +3505,7 @@ label.chk .gl-i { margin-left: 2px; }
     let out = null;
     segs.forEach((s, k) => {
       const base = f.id + '~' + (k + 1);
+      const nt0 = st.tags.list.length;
       let part = [];
       if (s.type === 'line') {
         const L = Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]);
@@ -3160,6 +3524,8 @@ label.chk .gl-i { margin-left: 2px; }
         X = rotV(X, d, phi); Y = rotV(Y, d, phi); T = rotV(T, d, phi);
         A = add(C, rotV(sub(A, C), d, phi));
       }
+      // percorso fatto da un'ellisse o da una spline importata: le facce dei tratti si uniscono senza spigolo
+      if (s.cg) for (let t = nt0; t < st.tags.list.length; t++) st.tags.list[t].pcg = s.cg;
       out = out ? CSG.union(out, part) : part;
     });
     return out;
@@ -5537,7 +5903,7 @@ label.chk .gl-i { margin-left: 2px; }
   function importDxfDialog() {
     const inSketch = App.mode === 'sketch';
     if (inSketch && Sketcher.session() && Sketcher.session().opts.hole) { toast('Nello schizzo delle posizioni dei fori non si importano file DXF.'); return; }
-    modal('Importa un file DXF', `<p class="note">Linee, archi e cerchi del disegno entrano ${inSketch ? 'nello <b>schizzo aperto</b>' : 'in uno <b>schizzo nuovo</b>'}: poi li estrudi, o li fai ruotare attorno a una linea di mezzeria. Testi, quote, tratteggi, ellissi e curve spline non si importano.</p>
+    modal('Importa un file DXF', `<p class="note">Linee, archi e cerchi del disegno entrano ${inSketch ? 'nello <b>schizzo aperto</b>' : 'in uno <b>schizzo nuovo</b>'}: poi li estrudi, o li fai ruotare attorno a una linea di mezzeria. <b>Ellissi e spline</b> diventano archi tangenti tra loro, vicinissimi alla curva vera. Testi, quote e tratteggi non si importano.</p>
       <p><input type="file" id="dxfFile" accept=".dxf"></p>
       ${inSketch ? '' : '<div class="row"><label for="dxfPlane">Piano dello schizzo</label><select id="dxfPlane"><option value="front">Piano frontale</option><option value="top">Piano superiore</option><option value="right">Piano destro</option></select></div>'}
       <div class="row"><label for="dxfUnit">Unità del file</label><select id="dxfUnit"><option value="file">dal file</option><option value="mm">millimetri</option><option value="cm">centimetri</option><option value="m">metri</option><option value="in">pollici</option></select></div>
@@ -5583,6 +5949,19 @@ label.chk .gl-i { margin-left: 2px; }
     const ONE = { testi: 'testo', quote: 'quota', tratteggi: 'tratteggio', riempimenti: 'riempimento', punti: 'punto', ellissi: 'ellisse', 'curve spline': 'curva spline', richiami: 'richiamo', 'facce 3D': 'faccia 3D', attributi: 'attributo', immagini: 'immagine', finestre: 'finestra', mascherature: 'mascheratura', semirette: 'semiretta', 'rette infinite': 'retta infinita', tolleranze: 'tolleranza', blocchi: 'blocco' };
     const sk = Object.entries(r.skipped).map(([k, v]) => v + ' ' + (v === 1 && ONE[k] ? ONE[k] : k));
     if (sk.length) msg += ' Non importati: ' + sk.join(', ') + '.';
+    const ap = r.approx;
+    if (ap && (ap.ellipses || ap.splines)) {
+      const what = [];
+      if (ap.ellipses) what.push(ap.ellipses + (ap.ellipses === 1 ? ' ellisse' : ' ellissi'));
+      if (ap.splines) what.push(ap.splines + ' spline');   // «spline» non cambia al plurale
+      const pieces = [];
+      if (ap.arcs) pieces.push(ap.arcs + (ap.arcs === 1 ? ' arco' : ' archi'));
+      if (ap.lines) pieces.push(ap.lines + (ap.lines === 1 ? ' linea' : ' linee'));
+      const e = ap.err * scale;
+      const em = e < 0.0005 ? 'meno di 0,001' : (e < 0.01 ? e.toLocaleString('it-IT', { maximumFractionDigits: 4 }) : e.toLocaleString('it-IT', { maximumSignificantDigits: 2 }));
+      msg += ` ${what.join(' e ')} ${ap.ellipses + ap.splines === 1 ? 'è diventata' : 'sono diventate'} ${pieces.join(' e ')} (compresi nel conteggio), lontani al massimo ${em} mm dalla curva vera.`;
+      if (ap.over) msg += ' Attenzione: in qualche punto la curva è troppo complicata e lo scostamento è maggiore del solito.';
+    }
     if (info.dup) msg += ` Tolte ${info.dup} entità doppie.`;
     if (r.curves3d) msg += ` ${r.curves3d} entità fuori dal piano del disegno sono state saltate o appiattite.`;
     return { info, parsed: r, unit, msg };
@@ -5717,7 +6096,7 @@ label.chk .gl-i { margin-left: 2px; }
     ss.sel = new Set(info.ids);
     // inquadra lo schizzo con la geometria nuova
     const b3 = { mn: [Infinity, Infinity, Infinity], mx: [-Infinity, -Infinity, -Infinity] };
-    for (const p of ss.sk.ents) if (p.t === 'pt' && !p.ext) { const q = Geom.to3(ss.F, [p.x, p.y]); for (let k = 0; k < 3; k++) { b3.mn[k] = Math.min(b3.mn[k], q[k]); b3.mx[k] = Math.max(b3.mx[k], q[k]); } }
+    for (const p of ss.sk.ents) if (p.t === 'pt' && !p.ext && !p.hc) { const q = Geom.to3(ss.F, [p.x, p.y]); for (let k = 0; k < 3; k++) { b3.mn[k] = Math.min(b3.mn[k], q[k]); b3.mx[k] = Math.max(b3.mx[k], q[k]); } }
     for (const k of [0, 1]) { const q = Geom.to3(ss.F, k ? info.box.mx : info.box.mn); for (let j = 0; j < 3; j++) { b3.mn[j] = Math.min(b3.mn[j], q[j]); b3.mx[j] = Math.max(b3.mx[j], q[j]); } }
     App.r.targetQ = GLView.Renderer.normalQ(ss.F);
     App.r.fit(true, App.st.body.length ? { mn: b3.mn.map((v, k) => Math.min(v, App.r.bbox.mn[k])), mx: b3.mx.map((v, k) => Math.max(v, App.r.bbox.mx[k])) } : b3);
@@ -5763,7 +6142,7 @@ label.chk .gl-i { margin-left: 2px; }
     App.sel = [];
     App.r.setView(GLView.Renderer.normalQ(F));
     // inquadra lo schizzo se non è vuoto
-    const pts = f.sk.ents.filter(e => e.t === 'pt' && !e.ext);
+    const pts = f.sk.ents.filter(e => e.t === 'pt' && !e.ext && !e.hc);
     if (pts.length > 1) {
       const b3 = { mn: [Infinity, Infinity, Infinity], mx: [-Infinity, -Infinity, -Infinity] };
       for (const p of pts) { const q = Geom.to3(F, [p.x, p.y]); for (let k = 0; k < 3; k++) { b3.mn[k] = Math.min(b3.mn[k], q[k]); b3.mx[k] = Math.max(b3.mx[k], q[k]); } }
@@ -5833,7 +6212,7 @@ label.chk .gl-i { margin-left: 2px; }
     ['trim', 'Taglia entità', 'Clic sulla parte di entità da togliere (fino alle intersezioni)'],
     ['smirror', 'Specchia entità', 'Seleziona le entità e una linea di mezzeria, poi premi qui'],
     ['convert', 'Converti entità', 'Copia nello schizzo gli spigoli selezionati della faccia (in grigio)'],
-    ['dxf', 'Inserisci DXF', 'Porta nello schizzo linee, archi e cerchi di un file DXF'],
+    ['dxf', 'Inserisci DXF', 'Porta nello schizzo linee, archi, cerchi, ellissi e spline di un file DXF'],
     ['construction', 'Costruzione', 'Trasforma le entità selezionate in geometria di costruzione (e viceversa)'],
     '-',
     ['dim', 'Quota intelligente', 'Clic su una o due entità, poi clic per posizionare la quota e scrivi il valore'],
@@ -5843,7 +6222,7 @@ label.chk .gl-i { margin-left: 2px; }
   SK.toolbar = function () {
     const App = A();
     if (App.mode !== 'sketch') {
-      return [['sketch', 'Schizzo', 'Nuovo schizzo: scegli un piano o una faccia piana'], ['dxf', 'Inserisci DXF', 'Schizzo nuovo con linee, archi e cerchi di un file DXF'], '-', ...TOOLS.filter(t => t !== '-' && t[0] !== 'exitSketch' && t[0] !== 'dxf').map(t => [t[0], t[1], 'Entra prima in uno schizzo', { disabled: true }])];
+      return [['sketch', 'Schizzo', 'Nuovo schizzo: scegli un piano o una faccia piana'], ['dxf', 'Inserisci DXF', 'Schizzo nuovo con linee, archi, cerchi, ellissi e spline di un file DXF'], '-', ...TOOLS.filter(t => t !== '-' && t[0] !== 'exitSketch' && t[0] !== 'dxf').map(t => [t[0], t[1], 'Entra prima in uno schizzo', { disabled: true }])];
     }
     if (ss.opts.hole) return [['point', 'Punto', 'Posizione del foro', { pressed: ss.tool === 'point' }], ['dim', 'Quota intelligente', 'Quota la posizione dei fori', { pressed: ss.tool === 'dim' }], ['relation', 'Aggiungi relazione', 'Relazioni tra i punti e gli spigoli', { pressed: ss.tool === 'relation' }], '-', ['exitSketch', 'Conferma le posizioni', 'Torna al pannello del foro']];
     return TOOLS.map(t => t === '-' ? t : [t[0], t[1], t[2], { pressed: ss.tool === t[0] }]);
@@ -5965,7 +6344,7 @@ label.chk .gl-i { margin-left: 2px; }
     let best = null, bd = tol;
     // punti (compresa l'origine e la geometria esterna)
     for (const e of ss.sk.ents) {
-      if (e.t !== 'pt' || exclude.has(e.id)) continue;
+      if (e.t !== 'pt' || e.hc || exclude.has(e.id)) continue;
       const q = scr(e.x, e.y); const d = Math.hypot(q[0] - sx, q[1] - sy);
       if (d < bd) { bd = d; best = { p: [e.x, e.y], kind: 'point', id: e.id }; }
     }
@@ -5973,7 +6352,8 @@ label.chk .gl-i { margin-left: 2px; }
     // centri dei cerchi
     for (const e of ss.sk.ents) {
       if ((e.t === 'ci' || e.t === 'ar') && !exclude.has(e.c)) {
-        const c = m.get(e.c); const q = scr(c.x, c.y); const d = Math.hypot(q[0] - sx, q[1] - sy);
+        const c = m.get(e.c); if (c.hc) continue;
+        const q = scr(c.x, c.y); const d = Math.hypot(q[0] - sx, q[1] - sy);
         if (d < bd) { bd = d; best = { p: [c.x, c.y], kind: 'point', id: c.id }; }
       }
     }
@@ -6117,15 +6497,21 @@ label.chk .gl-i { margin-left: 2px; }
   SK.boxSelect = function (b, additive) {
     if (!additive) ss.sel.clear();
     for (const e of ss.sk.ents) {
-      if (e.origin || e.ext) continue;
+      if (e.origin || e.ext || e.hc) continue;
       const pts = e.t === 'pt' ? [e] : entPts(e);
       let inside = true;
-      const samples = e.t === 'ci' ? circleSamples(e) : pts.map(p => [p.x, p.y]);
+      // arco di un'ellisse o di una spline: conta l'arco (estremi e punto medio), non il suo centro nascosto
+      const samples = e.t === 'ci' ? circleSamples(e) : (e.t === 'ar' && pts[0].hc) ? arcSamples(e) : pts.map(p => [p.x, p.y]);
       for (const p of samples) { const q = scr(p[0], p[1]); if (q[0] < b.x0 || q[0] > b.x1 || q[1] < b.y0 || q[1] > b.y1) { inside = false; break; } }
       if (inside) ss.sel.add(e.id);
     }
     showProps(); A().redraw();
   };
+  function arcSamples(e) {
+    const m = E(), c = m.get(e.c), a = m.get(e.a), b = m.get(e.b), r = Math.hypot(a.x - c.x, a.y - c.y);
+    const a0 = Math.atan2(a.y - c.y, a.x - c.x); let a1 = Math.atan2(b.y - c.y, b.x - c.x); while (a1 <= a0) a1 += TAU;
+    return [[a.x, a.y], [b.x, b.y], [c.x + r * Math.cos((a0 + a1) / 2), c.y + r * Math.sin((a0 + a1) / 2)]];
+  }
   function circleSamples(e) { const c = E().get(e.c); const out = []; for (let i = 0; i < 8; i++) { const t = i * TAU / 8; out.push([c.x + e.r * Math.cos(t), c.y + e.r * Math.sin(t)]); } return out; }
   function selectHit(h, additive) {
     const App = A();
@@ -6174,7 +6560,7 @@ label.chk .gl-i { margin-left: 2px; }
     }
     let best = null, bd = 8;
     for (const e of ss.sk.ents) {
-      if (e.t !== 'pt') continue;
+      if (e.t !== 'pt' || e.hc) continue;
       const q = scr(e.x, e.y); const d = Math.hypot(q[0] - sx, q[1] - sy);
       if (d < bd) { bd = d; best = { kind: 'ent', id: e.id }; }
     }
@@ -7226,7 +7612,7 @@ label.chk .gl-i { margin-left: 2px; }
     c.setLineDash([]);
     // punti
     for (const e of ss.sk.ents) {
-      if (e.t !== 'pt') continue;
+      if (e.t !== 'pt' || e.hc) continue;
       const q = scr(e.x, e.y);
       if (e.origin) {
         c.strokeStyle = '#c0392b'; c.lineWidth = 1.5;
@@ -10421,7 +10807,11 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Importazione', 'Opzioni di importazione', [], 'Le scelte che servono per leggere bene il file: l\'unità di misura e quale asse è verso l\'alto. Si possono cambiare in ogni momento con doppio clic su «Importato» nell\'albero.'],
     ['Importazione', 'Corpo chiuso', ['corpo non chiuso', 'lati liberi'], 'Un corpo a faccette è chiuso quando ogni lato di triangolo è in comune con esattamente un altro triangolo: allora racchiude un volume. Se ci sono lati liberi (buchi nella superficie) volume e massa non sono attendibili e le funzioni aggiunte sopra possono fallire.'],
     ['Importazione', 'Inserisci DXF', ['importa dxf', 'importa dxf (schizzo)', 'importare un dxf'], 'Porta in uno schizzo le linee, gli archi e i cerchi di un disegno 2D fatto con un altro programma (AutoCAD, DraftSight, LibreCAD, la messa in tavola di SolidWorks…). Fuori da uno schizzo, o da Progetto › Importa DXF (schizzo), crea uno schizzo nuovo sul piano scelto; dentro uno schizzo aggiunge la geometria a quello aperto. Le entità arrivano senza quote, quindi blu (sotto definite): si possono estrudere o far ruotare subito, oppure quotare.'],
-    ['Importazione', 'File DXF', ['.dxf', 'dwg', 'formato dxf'], 'Formato di scambio dei disegni 2D, nato con AutoCAD e letto da quasi tutti i CAD. Qui si leggono i file DXF di testo (ASCII): linee, archi, cerchi, polilinee (anche con tratti curvi) e blocchi. Testi, quote, tratteggi, ellissi e spline si saltano. Il DWG è il formato chiuso di AutoCAD: va prima salvato come DXF.'],
+    ['Importazione', 'File DXF', ['.dxf', 'dwg', 'formato dxf'], 'Formato di scambio dei disegni 2D, nato con AutoCAD e letto da quasi tutti i CAD. Qui si leggono i file DXF di testo (ASCII): linee, archi, cerchi, polilinee (anche con tratti curvi), ellissi, spline e blocchi. Ellissi e spline diventano archi tangenti tra loro (biarchi). Testi, quote e tratteggi si saltano. Il DWG è il formato chiuso di AutoCAD: va prima salvato come DXF.'],
+    ['Importazione', 'Ellisse', ['ellissi', 'ellipse'], 'Curva chiusa «schiacciata», come un cerchio visto di sbieco: ha un semiasse maggiore a e uno minore b; l\'area è π·a·b. Nei file DXF può essere intera o solo un tratto (arco di ellisse). Nel Banco CAD, come in molti CAD, l\'ellisse importata diventa una catena di archi tangenti (biarchi) molto vicina alla curva vera.'],
+    ['Importazione', 'Spline', ['spline', 'nurbs', 'curva spline', 'b-spline'], 'Curva libera e morbida definita da pochi punti: i punti di controllo la «tirano» verso di sé (spline NURBS, con eventuali pesi), oppure la curva passa esattamente per i punti di passaggio. Serve per profili che non sono fatti di rette e archi (carrozzerie, camme, sagome). Importata da un DXF diventa una catena di archi tangenti (biarchi).'],
+    ['Importazione', 'Biarco', ['biarchi', 'archi tangenti'], 'Coppia di archi tangenti tra loro, che parte e arriva con la stessa direzione della curva da imitare. Con tanti biarchi uno dopo l\'altro si segue un\'ellisse o una spline senza spigoli: dove lo scostamento è troppo grande il tratto viene diviso a metà, finché resta sotto 1/10 000 della dimensione minore della curva. Nel pezzo le facce di questi archi si vedono come una superficie sola, senza righe tra l\'una e l\'altra, e i loro centri non compaiono nello schizzo.'],
+    ['Importazione', 'Scostamento dalla curva', ['scostamento', 'tolleranza della curva'], 'La distanza più grande tra la curva vera (ellisse o spline del file DXF) e gli archi che la sostituiscono. Il messaggio dell\'importazione dice quanto vale, in millimetri: di solito pochi millesimi, quindi volume e massa restano esatti ben sotto l\'1 %.'],
     ['Importazione', 'Tipo di linea', ['tratto-punto', 'tratteggiata', 'linetype'], 'Il modo in cui è disegnata una linea: continua, tratteggiata (spigoli nascosti) o tratto-punto (assi). Nell\'importazione DXF le linee tratto-punto diventano linee di mezzeria, le tratteggiate geometria di costruzione; le continue formano i contorni.'],
     ['Importazione', 'File importato', [], 'Il nome e il formato del file da cui viene il corpo, con il numero di triangoli (per STEP e IGES: di facce del modello d\'origine), le facce piane riconosciute e l\'ingombro. Le facce piane (fatte da più triangoli sullo stesso piano) si possono usare per gli schizzi, come le facce di un pezzo disegnato qui.'],
     ['Importazione', 'Importa STEP o IGES', ['importa step', 'importa iges', 'importare uno step', 'importare un iges'], 'Porta nel Banco CAD un pezzo, o un piccolo assieme, fatto con un altro programma CAD (Progetto › Importa STEP o IGES). Il file viene letto dalle sue superfici vere; nell\'albero compare la funzione «Importato»: il pezzo si vede, si misura, si mette in tavola, se ne calcolano volume e massa, e sopra si possono aggiungere schizzi e funzioni. Le superfici curve vengono divise in triangoli molto fitti: l\'errore su volume, area e massa resta molto sotto l\'1 %. L\'unità di misura è letta dal file.'],
@@ -11006,6 +11396,69 @@ T('DXF: flangia con angoli raggiati R10 (LWPOLYLINE), 4 fori Ø8 e foro Ø28', (
   const doc = D0('flangia'); feat(doc, { type: 'extrude', sketch: sketch(doc, STD('top'), b), end: 'blind', depth: 12 }); return doc;
 }, { V: 12 * (6000 - (4 - PI) * 100 - 4 * PI * 16 - PI * 196), C: [50, 6, -30], bb: [[0, 0, -60], [100, 12, 0]] });
 
+/* ---------- DXF: ellissi e spline (diventano archi tangenti) ---------- */
+// ELLIPSE: centro, estremo del semiasse maggiore (relativo al centro), rapporto minore/maggiore, parametri iniziale e finale (radianti)
+const dEll = (cx, cy, mx, my, ratio, t0 = 0, t1 = 2 * PI, nz = 1) => ['0', 'ELLIPSE', '8', '0', '10', cx, '20', cy, '30', 0, '11', mx, '21', my, '31', 0, '210', 0, '220', 0, '230', nz, '40', ratio, '41', t0, '42', t1];
+// SPLINE con punti di controllo (NURBS): grado, nodi, punti, pesi (facoltativi); 70: 1 chiusa, 4 razionale, 8 piana
+const dSpl = (deg, knots, ctrl, w, flags = 8) => ['0', 'SPLINE', '8', '0', '210', 0, '220', 0, '230', 1, '70', flags, '71', deg, '72', knots.length, '73', ctrl.length, '74', 0,
+  ...knots.flatMap(k => ['40', k]), ...(w ? w.flatMap(x => ['41', x]) : []), ...ctrl.flatMap(p => ['10', p[0], '20', p[1], '30', 0])];
+// SPLINE con i soli punti di passaggio (ed eventualmente le tangenti agli estremi)
+const dFit = (pts, flags = 8, t0, t1) => ['0', 'SPLINE', '8', '0', '70', flags, '71', 3, '72', 0, '73', 0, '74', pts.length,
+  ...(t0 ? ['12', t0[0], '22', t0[1], '32', 0] : []), ...(t1 ? ['13', t1[0], '23', t1[1], '33', 0] : []), ...pts.flatMap(p => ['11', p[0], '21', p[1], '31', 0])];
+// perimetro dell'ellisse (formula di Ramanujan, errore relativo < 10⁻¹⁰ per questi rapporti)
+const ellP = (a, b) => { const h = ((a - b) / (a + b)) ** 2; return PI * (a + b) * (1 + 3 * h / (10 + Math.sqrt(4 - 3 * h))); };
+T('DXF: ellisse intera 100×60 (ELLIPSE), estrusa 10', () => dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6)])),
+  { V: 10 * PI * 50 * 30, A: 2 * PI * 50 * 30 + 10 * ellP(50, 30), C: [0, 0, 5], bb: [[-50, -30, 0], [50, 30, 10]] });
+T('DXF: ellisse 100×60 ruotata di 30°, centro (100, 50)', () => dxfPart(dxfFile([dEll(100, 50, 50 * Math.cos(PI / 6), 50 * Math.sin(PI / 6), 0.6)])),
+  (() => { const wx = Math.sqrt(2500 * 0.75 + 900 * 0.25), wy = Math.sqrt(2500 * 0.25 + 900 * 0.75); // semiampiezze dell'ingombro: √(a²cos²θ + b²sin²θ), √(a²sin²θ + b²cos²θ)
+    return { V: 10 * PI * 1500, C: [100, 50, 5], bb: [[100 - wx, 50 - wy, 0], [100 + wx, 50 + wy, 10]] }; })());
+T('DXF: quarto di ellisse (parametri 0…π/2) chiuso da due LINE', () => dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6, 0, PI / 2), dLine(0, 0, 50, 0), dLine(0, 0, 0, 30)])),
+  { V: 10 * PI * 1500 / 4, C: [4 * 50 / (3 * PI), 4 * 30 / (3 * PI), 5], bb: [[0, 0, 0], [50, 30, 10]] });
+T('DXF: mezza ellisse con normale (0,0,−1): parametri 0…π vanno sotto l\'asse', () => dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6, 0, PI, -1), dLine(-50, 0, 50, 0)])),
+  { V: 10 * PI * 1500 / 2, C: [0, -4 * 30 / (3 * PI), 5], bb: [[-50, -30, 0], [50, 0, 10]] });
+T('DXF: piastra 120×80 con foro ellittico 40×60 (asse maggiore verticale)', () => dxfPart(dxfFile([dPoly([[-60, -40], [60, -40], [60, 40], [-60, 40]], true), dEll(0, 0, 0, 30, 2 / 3)])),
+  { V: 10 * (9600 - PI * 30 * 20), A: 2 * (9600 - 600 * PI) + 10 * 400 + 10 * ellP(30, 20), C: [0, 0, 5] });
+T('DXF: ellisse molto schiacciata 200×2 (rapporto 1:100)', () => dxfPart(dxfFile([dEll(0, 0, 100, 0, 0.01)])),
+  { V: 10 * PI * 100, A: 2 * PI * 100 + 10 * ellP(100, 1), bb: [[-100, -1, 0], [100, 1, 10]] });
+// blocco «E»: mezza ellisse 50×30 sopra l'asse (a 25, b 15) chiusa dal diametro, punto base (0, 0)
+const dBlockE = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'E', '10', '0', '20', '0', ...[dEll(0, 0, 25, 0, 0.6, 0, PI), dLine(-25, 0, 25, 0)].flat().map(String), '0', 'ENDBLK', '0', 'ENDSEC'];
+T('DXF: blocco con mezza ellisse, scala 2, ruotato 90° (va a sinistra)', () => dxfPart(dxfFile([['0', 'INSERT', '2', 'E', '10', '0', '20', '0', '41', '2', '42', '2', '50', '90']], { blocks: dBlockE })),
+  { V: 10 * PI * 1500 / 2, C: [-4 * 30 / (3 * PI), 0, 5], bb: [[-30, -50, 0], [0, 50, 10]] });
+// spline di Bézier quadratica (0,0) (50,100) (100,0): arco di parabola alto 50; area = 2/3 del triangolo dei punti di controllo, baricentro a 2/5 dell'altezza
+T('DXF: SPLINE quadratica (arco di parabola) chiusa da una LINE', () => dxfPart(dxfFile([dSpl(2, [0, 0, 0, 1, 1, 1], [[0, 0], [50, 100], [100, 0]]), dLine(0, 0, 100, 0)])),
+  { V: 10 * 2 / 3 * 5000, C: [50, 2 / 5 * 50, 5], bb: [[0, 0, 0], [100, 50, 10]] });
+// Bézier cubica (0,0) (0,60) (100,60) (100,0): x = 100(3t² − 2t³), y = 180 t(1 − t); area = ∫y dx = 108 000 ∫t²(1−t)² dt = 3600,
+// baricentro y = ∫y²/2 dx / A = 9 720 000 ∫t³(1−t)³ dt / 3600 = 135/7
+T('DXF: SPLINE cubica (Bézier) chiusa da una LINE', () => dxfPart(dxfFile([dSpl(3, [0, 0, 0, 0, 1, 1, 1, 1], [[0, 0], [0, 60], [100, 60], [100, 0]]), dLine(0, 0, 100, 0)])),
+  { V: 36000, C: [50, 135 / 7, 5], bb: [[0, 0, 0], [100, 45, 10]] });
+// cerchio esatto come NURBS razionale di grado 2: 9 punti di controllo, pesi 1 e √2/2 alternati, nodi doppi ogni quarto
+T('DXF: cerchio R25 come SPLINE razionale (pesi √2/2) = cerchio vero', () => {
+  const R = 25, w = Math.SQRT1_2;
+  return dxfPart(dxfFile([dSpl(2, [0, 0, 0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1, 1, 1], [[R, 0], [R, R], [0, R], [-R, R], [-R, 0], [-R, -R], [0, -R], [R, -R], [R, 0]], [1, w, 1, w, 1, w, 1, w, 1], 8 + 4 + 1)]));
+}, { V: 10 * PI * 625, A: 2 * PI * 625 + 10 * 2 * PI * 25, C: [0, 0, 5], bb: [[-25, -25, 0], [25, 25, 10]] });
+T('DXF: quadrato 40 da una SPLINE di grado 1 (4 linee)', () => dxfPart(dxfFile([dSpl(1, [0, 0, 1, 2, 3, 4, 4], [[0, 0], [40, 0], [40, 40], [0, 40], [0, 0]], null, 8 + 1)])),
+  { V: 16000, A: 3200 + 1600, C: [20, 20, 5], E: 12 });
+// spline per 3 punti di passaggio (−a,0) (0,b) (a,0), estremi liberi: corde uguali h, M1 = −3b/h², x lineare;
+// nel primo tratto y = b(3u − u³)/2, x = −a + a·u  →  area = 2·(5/8)ab = 5ab/4, baricentro y = (17ab²/35)/(5ab/4) = 68b/175
+T('DXF: SPLINE per 3 punti di passaggio (estremi liberi) chiusa da una LINE', () => dxfPart(dxfFile([dFit([[-50, 0], [0, 40], [50, 0]]), dLine(-50, 0, 50, 0)])),
+  { V: 10 * 5 / 4 * 50 * 40, C: [0, 68 * 40 / 175, 5], bb: [[-50, 0, 0], [50, 40, 10]] });
+// spline chiusa per 4 punti (R,0) (0,R) (−R,0) (0,−R): ogni tratto P(u) = A(u)·Pi + B(u)·Pi+1 con B = (3u − u³)/2, A(u) = B(1−u);
+// area = 4 · ½ R² ∫(A B′ − B A′) du = 2 R² · 61/40 = 61/20 R²
+T('DXF: SPLINE chiusa per 4 punti di passaggio (R 20)', () => dxfPart(dxfFile([dFit([[20, 0], [0, 20], [-20, 0], [0, -20]], 8 + 1)])),
+  { V: 10 * 61 / 20 * 400, C: [0, 0, 5] });
+// spline per 2 punti (0,0) (100,0) con tangenti (1,1) e (1,−1): curva di Hermite, h = 100;
+// y = h/√2 (u − u²), x = h[3u² − 2u³ + (u − 3u² + 2u³)/√2]  →  area = ∫y x′ du = h²(1/(5√2) − 1/60);
+// con w = u − u² (e 1 − 6u + 6u² = 1 − 6w): momento ½∫y² x′ du = h³/4 (3/70 − 1/(105√2)); punto più alto a u = ½: y = h/(4√2)
+T('DXF: SPLINE per 2 punti con le tangenti agli estremi, chiusa da una LINE', () => dxfPart(dxfFile([dFit([[0, 0], [100, 0]], 8, [1, 1], [1, -1]), dLine(0, 0, 100, 0)])),
+  (() => { const h = 100, S2 = Math.SQRT2, A = h * h * (1 / (5 * S2) - 1 / 60), Mx = h ** 3 / 4 * (3 / 70 - 1 / (105 * S2));
+    return { V: 10 * A, C: [50, Mx / A, 5], bb: [[0, 0, 0], [100, h / (4 * S2), 10]] }; })());
+// estrusione con percorso lungo una spline importata: Bézier quadratica (0,0) (0,−100) (100,−100) sul piano superiore, che parte
+// perpendicolare al piano frontale del profilo. B′(t) = 200 (t, −(1 − t)), |B′| = 200 √(2t² − 2t + 1); con s = t − ½:
+// L = 200√2 ∫₋½^½ √(s² + ¼) ds = 100 + 50√2·arcsinh 1; tubo R2 → V = π·4·L (teorema di Pappo-Guldino; raggio di curvatura minimo 70,7)
+const parabolaPath = p => MI.dxfToSketch(p.s, MI.parseDXF(dxfFile([dSpl(2, [0, 0, 0, 1, 1, 1], [[0, 0], [0, -100], [100, -100]])])).geo, {});
+T('Sweep: cerchio R2 lungo una SPLINE importata da DXF (arco di parabola)', () => sweepDoc(parabolaPath, b => b.circle(0, 0, 2)),
+  { V: 4 * PI * (100 + 50 * Math.SQRT2 * Math.asinh(1)) });
+
 /* ---------- schizzo: risolutore ---------- */
 const SK = [];
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
@@ -11026,10 +11479,87 @@ SK.push(['Retta inclinata: lunghezza 30, angolo 30° dall\'orizzontale', () => {
   const r = Sketch.solve(b.s); const E = Sketch.byId(b.s); return { ok: r.ok, got: [E.get(e).x, E.get(e).y], exp: [30 * Math.cos(PI / 6), 15] };
 }]);
 
-SK.push(['DXF: testi e quote ignorati, linee contate (3 LINE, 1 TEXT, 1 DIMENSION, 1 SPLINE)', () => {
+SK.push(['DXF: testi e quote ignorati, linee contate (3 LINE, 1 TEXT, 1 DIMENSION, 1 SPLINE vuota)', () => {
   const r = MI.parseDXF(dxfFile([dLine(0, 0, 10, 0), dLine(10, 0, 10, 10), dLine(10, 10, 0, 0), ['0', 'TEXT', '8', '0', '10', '0', '20', '0', '1', 'ciao'], ['0', 'DIMENSION', '8', '0'], ['0', 'SPLINE', '8', '0']]));
   const b = SB(); const info = MI.dxfToSketch(b.s, r.geo, {});
   return { ok: true, got: [info.count.line, r.skipped.testi, r.skipped.quote, r.skipped['curve spline'], info.points], exp: [3, 1, 1, 1, 3] };
+}]);
+
+// ellissi e spline: controlli indipendenti sugli archi ottenuti
+const arcPt = (g, a) => [g.c[0] + g.r * Math.cos(a), g.c[1] + g.r * Math.sin(a)];
+const endsOf = g => g.t === 'line' ? [g.a, g.b] : [arcPt(g, g.a0), arcPt(g, g.a1)];
+// direzione della tangente di un tratto nel suo estremo q (a meno del verso)
+const tanAt = (g, q) => g.t === 'line' ? [g.b[0] - g.a[0], g.b[1] - g.a[1]] : [-(q[1] - g.c[1]), q[0] - g.c[0]];
+// massimo angolo (seno) tra le tangenti di due tratti che si toccano, e numero di giunzioni trovate
+function joints(geo) {
+  let worst = 0, n = 0;
+  for (let i = 0; i < geo.length; i++) for (let j = i + 1; j < geo.length; j++) for (const p of endsOf(geo[i])) for (const q of endsOf(geo[j])) {
+    if (Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-9) continue;
+    const u = tanAt(geo[i], p), v = tanAt(geo[j], p);
+    worst = Math.max(worst, Math.abs(u[0] * v[1] - u[1] * v[0]) / (Math.hypot(...u) * Math.hypot(...v))); n++;
+  }
+  return { worst, n };
+}
+SK.push(['DXF: ellisse 100×60 → archi tangenti tra loro, sulla curva entro 1/10 000 del diametro minore', () => {
+  const r = MI.parseDXF(dxfFile([dEll(0, 0, 50, 0, 0.6)])), a = 50, b = 30, tol = MI.DXF_CURVE_TOL * 2 * b;
+  // distanza dall'ellisse vera: |f| / |∇f| con f = x²/a² + y²/b² − 1 (esatta al primo ordine, qui le distanze sono di millesimi)
+  let dmax = 0;
+  for (const g of r.geo) for (let k = 0; k <= 8; k++) {
+    const [x, y] = arcPt(g, g.a0 + (g.a1 - g.a0) * k / 8);
+    dmax = Math.max(dmax, Math.abs(x * x / (a * a) + y * y / (b * b) - 1) / Math.hypot(2 * x / (a * a), 2 * y / (b * b)));
+  }
+  const j = joints(r.geo);
+  return { ok: true, got: [r.geo.every(g => g.t === 'arc') ? 1 : 0, dmax <= tol ? 1 : 0, r.approx.err <= tol ? 1 : 0, j.worst < 1e-8 ? 1 : 0, j.n, r.approx.ellipses], exp: [1, 1, 1, 1, r.geo.length, 1] };
+}]);
+SK.push(['DXF: ELLIPSE con rapporto 1 = cerchio vero; arco di ELLIPSE con rapporto 1 = arco vero', () => {
+  const r = MI.parseDXF(dxfFile([dEll(10, 20, 0, 15, 1), dEll(0, 0, 10, 0, 1, 0, PI / 2)]));
+  const c = r.geo.find(g => g.t === 'circle'), a = r.geo.find(g => g.t === 'arc');
+  return { ok: true, got: [r.geo.length, c.r, c.c[0], c.c[1], a.r, a.a0 + 1, a.a1], exp: [2, 15, 10, 20, 10, 1, PI / 2] };
+}]);
+SK.push(['DXF: centri degli archi di ellissi e spline nascosti, quelli degli ARC del file no', () => {
+  const r = MI.parseDXF(dxfFile([dEll(0, 0, 50, 0, 0.6), dArc(200, 0, 10, 0, 90)])); const b = SB(); MI.dxfToSketch(b.s, r.geo, {});
+  const E = Sketch.byId(b.s), arcs = b.s.ents.filter(e => e.t === 'ar');
+  const hidden = arcs.filter(e => E.get(e.c).hc).length;
+  return { ok: true, got: [hidden, arcs.length - hidden, b.s.ents.filter(e => e.hc).length], exp: [r.approx.arcs, 1, r.approx.arcs] };
+}]);
+// spigoli vivi tra due facce laterali di un'estrusione (spigoli «verticali»)
+const sideEdges = doc => { const st = Model.regen(doc); if (st.errors.size || !st.body.length) throw new Error('pezzo non costruito: ' + [...st.errors.values()].join('; ')); return st.topo.edges.filter(e => e.sharp && e.polys.length === 2 && e.polys.every(p => st.tags.get(st.body[p].t).ent)).length; };
+SK.push(['DXF: nessuno spigolo tra le facce di un\'ellisse estrusa; restano quelli veri di una spline con un angolo; nessun anello nel tubo lungo una spline', () => {
+  // spline di grado 2 con nodo doppio: punta in (50, 60) (due archi di parabola che si incontrano ad angolo), chiusa da una LINE
+  const kink = dSpl(2, [0, 0, 0, 1, 1, 2, 2, 2], [[0, 0], [10, 50], [50, 60], [90, 50], [100, 0]]);
+  return { ok: true, got: [sideEdges(dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6)]))), sideEdges(dxfPart(dxfFile([kink, dLine(0, 0, 100, 0)]))), sideEdges(sweepDoc(parabolaPath, b => b.circle(0, 0, 2)))], exp: [0, 3, 0] };
+}]);
+SK.push(['DXF: SPLINE per 5 punti di passaggio irregolari: la curva passa per tutti i punti', () => {
+  const P = [[0, 0], [13, 21], [37, 18], [52, -6], [80, 4]];
+  const r = MI.parseDXF(dxfFile([dFit(P)]));
+  const dist = (q, g) => { if (g.t === 'line') return Math.min(...[g.a, g.b].map(e => Math.hypot(e[0] - q[0], e[1] - q[1])));
+    return Math.min(...endsOf(g).map(e => Math.hypot(e[0] - q[0], e[1] - q[1]))); };
+  const worst = Math.max(...P.map(q => Math.min(...r.geo.map(g => dist(q, g)))));
+  return { ok: true, got: [worst < 1e-9 ? 1 : 0, joints(r.geo).worst < 1e-8 ? 1 : 0, r.approx.splines], exp: [1, 1, 1] };
+}]);
+SK.push(['DXF: SPLINE con i nodi sbagliati saltata; SPLINE non piana appiattita e segnalata', () => {
+  const bad = dSpl(2, [0, 0, 1, 1], [[0, 0], [5, 5], [10, 0]]);   // 4 nodi invece di 6
+  const skew = ['0', 'SPLINE', '8', '0', '70', 0, '71', 1, '40', 0, '40', 0, '40', 1, '40', 1, '10', 0, '20', 0, '30', 0, '10', 10, '20', 0, '30', 5];
+  const r = MI.parseDXF(dxfFile([bad, skew]));
+  return { ok: true, got: [r.skipped['curve spline'], r.curves3d, r.geo.length, r.geo[0].b[0]], exp: [1, 1, 1, 10] };
+}]);
+
+// stato dello schizzo con meno vincoli che incognite (si scompone la trasposta della matrice dei vincoli)
+SK.push(['Stato: rettangolo con un vertice nell\'origine e lati orizz./vert. → 2 gradi di libertà', () => {
+  const b = SB(); const [p1, p2, p3, p4] = b.rect(0, 0, 70, 45); const L = b.s.ents.filter(e => e.t === 'ln');
+  b.s.cons.push({ t: 'coincident', e: [p1, 'O'] }, { t: 'horizontal', e: [L[0].id] }, { t: 'vertical', e: [L[1].id] }, { t: 'horizontal', e: [L[2].id] }, { t: 'vertical', e: [L[3].id] });
+  const a = Sketch.analyze(b.s);   // 8 incognite, 6 equazioni indipendenti
+  return { ok: a.status === 'under', got: [a.dof, a.free.has(p1) ? 1 : 0, a.free.has(p3) ? 1 : 0, a.free.size], exp: [2, 0, 1, 7] };
+}]);
+SK.push(['Stato: ellisse importata (anello chiuso di archi) → 3 gradi di libertà per arco', () => {
+  const r = MI.parseDXF(dxfFile([dEll(0, 0, 50, 0, 0.6)])); const b = SB(); MI.dxfToSketch(b.s, r.geo, {});
+  const n = b.s.ents.filter(e => e.t === 'ar').length, a = Sketch.analyze(b.s);
+  return { ok: a.status === 'under', got: [a.dof, a.m], exp: [3 * n, n] };
+}]);
+SK.push(['Schizzo con due linee incrociate (più un\'altra): messaggio «si intersecano», senza blocchi', () => {
+  const b = SB(); b.line(b.pt(0, 0), b.pt(10, 10)); b.line(b.pt(0, 10), b.pt(10, 0)); b.line(b.pt(20, 0), b.pt(30, 0));
+  const p = Sketch.profiles(b.s);
+  return { ok: true, got: [p.errors.some(e => /si intersecano/.test(e)) ? 1 : 0], exp: [1] };
 }]);
 
 // STEP: se i triangoli sono troppi si rilegge il file con triangoli più grandi (livello successivo)
@@ -11304,11 +11834,11 @@ if (isNode) {
       'Nel programma d\'origine salva il disegno come [[File DXF]], meglio se con il solo contorno del pezzo (senza cartiglio, quote e tratteggi).',
       'Scheda **Schizzo › Inserisci DXF** (oppure **Progetto › Importa DXF (schizzo)**). Fuori da uno schizzo scegli il **piano**; dentro uno schizzo la geometria va in quello aperto.',
       'Scegli il file, l\'[[Unità del file]] (di solito «dal file») e la **posizione**: come nel file, oppure con l\'angolo in basso a sinistra o il centro sull\'origine. Premi **Importa**.',
-      'Le entità arrivano selezionate e blu ([[Sotto definito]]): controlla che i contorni siano chiusi, poi premi ✓.',
+      'Le entità arrivano selezionate e blu ([[Sotto definito]]): controlla che i contorni siano chiusi, poi premi ✓. Le [[Ellisse|ellissi]] e le [[Spline|spline]] arrivano come catene di archi tangenti ([[Biarco|biarchi]]).',
       'Seleziona lo schizzo e usa **Estrusione base**, oppure **Rivoluzione base** se c\'è una [[Linea di mezzeria]].',
     ],
-    tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Al massimo 3000 entità: i disegni più grandi vanno puliti prima.'],
-    terms: ['Inserisci DXF', 'File DXF', 'Tipo di linea', 'Unità del file'],
+    tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Il messaggio finale dice in quanti archi è stata divisa ogni ellisse o spline e lo [[Scostamento dalla curva]]: di solito pochi millesimi di millimetro.', 'Al massimo 3000 entità: i disegni più grandi vanno puliti prima (una spline lunga e tortuosa può diventare molti archi).'],
+    terms: ['Inserisci DXF', 'File DXF', 'Tipo di linea', 'Unità del file', 'Ellisse', 'Spline', 'Biarco', 'Scostamento dalla curva'],
   });
   add('Schizzo', 'sk-converti', 'Converti entità', {
     why: 'Usare gli spigoli del pezzo nello schizzo (per esempio per una borchia sul bordo).',

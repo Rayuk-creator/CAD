@@ -440,6 +440,69 @@ T('DXF: flangia con angoli raggiati R10 (LWPOLYLINE), 4 fori Ø8 e foro Ø28', (
   const doc = D0('flangia'); feat(doc, { type: 'extrude', sketch: sketch(doc, STD('top'), b), end: 'blind', depth: 12 }); return doc;
 }, { V: 12 * (6000 - (4 - PI) * 100 - 4 * PI * 16 - PI * 196), C: [50, 6, -30], bb: [[0, 0, -60], [100, 12, 0]] });
 
+/* ---------- DXF: ellissi e spline (diventano archi tangenti) ---------- */
+// ELLIPSE: centro, estremo del semiasse maggiore (relativo al centro), rapporto minore/maggiore, parametri iniziale e finale (radianti)
+const dEll = (cx, cy, mx, my, ratio, t0 = 0, t1 = 2 * PI, nz = 1) => ['0', 'ELLIPSE', '8', '0', '10', cx, '20', cy, '30', 0, '11', mx, '21', my, '31', 0, '210', 0, '220', 0, '230', nz, '40', ratio, '41', t0, '42', t1];
+// SPLINE con punti di controllo (NURBS): grado, nodi, punti, pesi (facoltativi); 70: 1 chiusa, 4 razionale, 8 piana
+const dSpl = (deg, knots, ctrl, w, flags = 8) => ['0', 'SPLINE', '8', '0', '210', 0, '220', 0, '230', 1, '70', flags, '71', deg, '72', knots.length, '73', ctrl.length, '74', 0,
+  ...knots.flatMap(k => ['40', k]), ...(w ? w.flatMap(x => ['41', x]) : []), ...ctrl.flatMap(p => ['10', p[0], '20', p[1], '30', 0])];
+// SPLINE con i soli punti di passaggio (ed eventualmente le tangenti agli estremi)
+const dFit = (pts, flags = 8, t0, t1) => ['0', 'SPLINE', '8', '0', '70', flags, '71', 3, '72', 0, '73', 0, '74', pts.length,
+  ...(t0 ? ['12', t0[0], '22', t0[1], '32', 0] : []), ...(t1 ? ['13', t1[0], '23', t1[1], '33', 0] : []), ...pts.flatMap(p => ['11', p[0], '21', p[1], '31', 0])];
+// perimetro dell'ellisse (formula di Ramanujan, errore relativo < 10⁻¹⁰ per questi rapporti)
+const ellP = (a, b) => { const h = ((a - b) / (a + b)) ** 2; return PI * (a + b) * (1 + 3 * h / (10 + Math.sqrt(4 - 3 * h))); };
+T('DXF: ellisse intera 100×60 (ELLIPSE), estrusa 10', () => dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6)])),
+  { V: 10 * PI * 50 * 30, A: 2 * PI * 50 * 30 + 10 * ellP(50, 30), C: [0, 0, 5], bb: [[-50, -30, 0], [50, 30, 10]] });
+T('DXF: ellisse 100×60 ruotata di 30°, centro (100, 50)', () => dxfPart(dxfFile([dEll(100, 50, 50 * Math.cos(PI / 6), 50 * Math.sin(PI / 6), 0.6)])),
+  (() => { const wx = Math.sqrt(2500 * 0.75 + 900 * 0.25), wy = Math.sqrt(2500 * 0.25 + 900 * 0.75); // semiampiezze dell'ingombro: √(a²cos²θ + b²sin²θ), √(a²sin²θ + b²cos²θ)
+    return { V: 10 * PI * 1500, C: [100, 50, 5], bb: [[100 - wx, 50 - wy, 0], [100 + wx, 50 + wy, 10]] }; })());
+T('DXF: quarto di ellisse (parametri 0…π/2) chiuso da due LINE', () => dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6, 0, PI / 2), dLine(0, 0, 50, 0), dLine(0, 0, 0, 30)])),
+  { V: 10 * PI * 1500 / 4, C: [4 * 50 / (3 * PI), 4 * 30 / (3 * PI), 5], bb: [[0, 0, 0], [50, 30, 10]] });
+T('DXF: mezza ellisse con normale (0,0,−1): parametri 0…π vanno sotto l\'asse', () => dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6, 0, PI, -1), dLine(-50, 0, 50, 0)])),
+  { V: 10 * PI * 1500 / 2, C: [0, -4 * 30 / (3 * PI), 5], bb: [[-50, -30, 0], [50, 0, 10]] });
+T('DXF: piastra 120×80 con foro ellittico 40×60 (asse maggiore verticale)', () => dxfPart(dxfFile([dPoly([[-60, -40], [60, -40], [60, 40], [-60, 40]], true), dEll(0, 0, 0, 30, 2 / 3)])),
+  { V: 10 * (9600 - PI * 30 * 20), A: 2 * (9600 - 600 * PI) + 10 * 400 + 10 * ellP(30, 20), C: [0, 0, 5] });
+T('DXF: ellisse molto schiacciata 200×2 (rapporto 1:100)', () => dxfPart(dxfFile([dEll(0, 0, 100, 0, 0.01)])),
+  { V: 10 * PI * 100, A: 2 * PI * 100 + 10 * ellP(100, 1), bb: [[-100, -1, 0], [100, 1, 10]] });
+// blocco «E»: mezza ellisse 50×30 sopra l'asse (a 25, b 15) chiusa dal diametro, punto base (0, 0)
+const dBlockE = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'E', '10', '0', '20', '0', ...[dEll(0, 0, 25, 0, 0.6, 0, PI), dLine(-25, 0, 25, 0)].flat().map(String), '0', 'ENDBLK', '0', 'ENDSEC'];
+T('DXF: blocco con mezza ellisse, scala 2, ruotato 90° (va a sinistra)', () => dxfPart(dxfFile([['0', 'INSERT', '2', 'E', '10', '0', '20', '0', '41', '2', '42', '2', '50', '90']], { blocks: dBlockE })),
+  { V: 10 * PI * 1500 / 2, C: [-4 * 30 / (3 * PI), 0, 5], bb: [[-30, -50, 0], [0, 50, 10]] });
+// spline di Bézier quadratica (0,0) (50,100) (100,0): arco di parabola alto 50; area = 2/3 del triangolo dei punti di controllo, baricentro a 2/5 dell'altezza
+T('DXF: SPLINE quadratica (arco di parabola) chiusa da una LINE', () => dxfPart(dxfFile([dSpl(2, [0, 0, 0, 1, 1, 1], [[0, 0], [50, 100], [100, 0]]), dLine(0, 0, 100, 0)])),
+  { V: 10 * 2 / 3 * 5000, C: [50, 2 / 5 * 50, 5], bb: [[0, 0, 0], [100, 50, 10]] });
+// Bézier cubica (0,0) (0,60) (100,60) (100,0): x = 100(3t² − 2t³), y = 180 t(1 − t); area = ∫y dx = 108 000 ∫t²(1−t)² dt = 3600,
+// baricentro y = ∫y²/2 dx / A = 9 720 000 ∫t³(1−t)³ dt / 3600 = 135/7
+T('DXF: SPLINE cubica (Bézier) chiusa da una LINE', () => dxfPart(dxfFile([dSpl(3, [0, 0, 0, 0, 1, 1, 1, 1], [[0, 0], [0, 60], [100, 60], [100, 0]]), dLine(0, 0, 100, 0)])),
+  { V: 36000, C: [50, 135 / 7, 5], bb: [[0, 0, 0], [100, 45, 10]] });
+// cerchio esatto come NURBS razionale di grado 2: 9 punti di controllo, pesi 1 e √2/2 alternati, nodi doppi ogni quarto
+T('DXF: cerchio R25 come SPLINE razionale (pesi √2/2) = cerchio vero', () => {
+  const R = 25, w = Math.SQRT1_2;
+  return dxfPart(dxfFile([dSpl(2, [0, 0, 0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1, 1, 1], [[R, 0], [R, R], [0, R], [-R, R], [-R, 0], [-R, -R], [0, -R], [R, -R], [R, 0]], [1, w, 1, w, 1, w, 1, w, 1], 8 + 4 + 1)]));
+}, { V: 10 * PI * 625, A: 2 * PI * 625 + 10 * 2 * PI * 25, C: [0, 0, 5], bb: [[-25, -25, 0], [25, 25, 10]] });
+T('DXF: quadrato 40 da una SPLINE di grado 1 (4 linee)', () => dxfPart(dxfFile([dSpl(1, [0, 0, 1, 2, 3, 4, 4], [[0, 0], [40, 0], [40, 40], [0, 40], [0, 0]], null, 8 + 1)])),
+  { V: 16000, A: 3200 + 1600, C: [20, 20, 5], E: 12 });
+// spline per 3 punti di passaggio (−a,0) (0,b) (a,0), estremi liberi: corde uguali h, M1 = −3b/h², x lineare;
+// nel primo tratto y = b(3u − u³)/2, x = −a + a·u  →  area = 2·(5/8)ab = 5ab/4, baricentro y = (17ab²/35)/(5ab/4) = 68b/175
+T('DXF: SPLINE per 3 punti di passaggio (estremi liberi) chiusa da una LINE', () => dxfPart(dxfFile([dFit([[-50, 0], [0, 40], [50, 0]]), dLine(-50, 0, 50, 0)])),
+  { V: 10 * 5 / 4 * 50 * 40, C: [0, 68 * 40 / 175, 5], bb: [[-50, 0, 0], [50, 40, 10]] });
+// spline chiusa per 4 punti (R,0) (0,R) (−R,0) (0,−R): ogni tratto P(u) = A(u)·Pi + B(u)·Pi+1 con B = (3u − u³)/2, A(u) = B(1−u);
+// area = 4 · ½ R² ∫(A B′ − B A′) du = 2 R² · 61/40 = 61/20 R²
+T('DXF: SPLINE chiusa per 4 punti di passaggio (R 20)', () => dxfPart(dxfFile([dFit([[20, 0], [0, 20], [-20, 0], [0, -20]], 8 + 1)])),
+  { V: 10 * 61 / 20 * 400, C: [0, 0, 5] });
+// spline per 2 punti (0,0) (100,0) con tangenti (1,1) e (1,−1): curva di Hermite, h = 100;
+// y = h/√2 (u − u²), x = h[3u² − 2u³ + (u − 3u² + 2u³)/√2]  →  area = ∫y x′ du = h²(1/(5√2) − 1/60);
+// con w = u − u² (e 1 − 6u + 6u² = 1 − 6w): momento ½∫y² x′ du = h³/4 (3/70 − 1/(105√2)); punto più alto a u = ½: y = h/(4√2)
+T('DXF: SPLINE per 2 punti con le tangenti agli estremi, chiusa da una LINE', () => dxfPart(dxfFile([dFit([[0, 0], [100, 0]], 8, [1, 1], [1, -1]), dLine(0, 0, 100, 0)])),
+  (() => { const h = 100, S2 = Math.SQRT2, A = h * h * (1 / (5 * S2) - 1 / 60), Mx = h ** 3 / 4 * (3 / 70 - 1 / (105 * S2));
+    return { V: 10 * A, C: [50, Mx / A, 5], bb: [[0, 0, 0], [100, h / (4 * S2), 10]] }; })());
+// estrusione con percorso lungo una spline importata: Bézier quadratica (0,0) (0,−100) (100,−100) sul piano superiore, che parte
+// perpendicolare al piano frontale del profilo. B′(t) = 200 (t, −(1 − t)), |B′| = 200 √(2t² − 2t + 1); con s = t − ½:
+// L = 200√2 ∫₋½^½ √(s² + ¼) ds = 100 + 50√2·arcsinh 1; tubo R2 → V = π·4·L (teorema di Pappo-Guldino; raggio di curvatura minimo 70,7)
+const parabolaPath = p => MI.dxfToSketch(p.s, MI.parseDXF(dxfFile([dSpl(2, [0, 0, 0, 1, 1, 1], [[0, 0], [0, -100], [100, -100]])])).geo, {});
+T('Sweep: cerchio R2 lungo una SPLINE importata da DXF (arco di parabola)', () => sweepDoc(parabolaPath, b => b.circle(0, 0, 2)),
+  { V: 4 * PI * (100 + 50 * Math.SQRT2 * Math.asinh(1)) });
+
 /* ---------- schizzo: risolutore ---------- */
 const SK = [];
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
@@ -460,10 +523,87 @@ SK.push(['Retta inclinata: lunghezza 30, angolo 30° dall\'orizzontale', () => {
   const r = Sketch.solve(b.s); const E = Sketch.byId(b.s); return { ok: r.ok, got: [E.get(e).x, E.get(e).y], exp: [30 * Math.cos(PI / 6), 15] };
 }]);
 
-SK.push(['DXF: testi e quote ignorati, linee contate (3 LINE, 1 TEXT, 1 DIMENSION, 1 SPLINE)', () => {
+SK.push(['DXF: testi e quote ignorati, linee contate (3 LINE, 1 TEXT, 1 DIMENSION, 1 SPLINE vuota)', () => {
   const r = MI.parseDXF(dxfFile([dLine(0, 0, 10, 0), dLine(10, 0, 10, 10), dLine(10, 10, 0, 0), ['0', 'TEXT', '8', '0', '10', '0', '20', '0', '1', 'ciao'], ['0', 'DIMENSION', '8', '0'], ['0', 'SPLINE', '8', '0']]));
   const b = SB(); const info = MI.dxfToSketch(b.s, r.geo, {});
   return { ok: true, got: [info.count.line, r.skipped.testi, r.skipped.quote, r.skipped['curve spline'], info.points], exp: [3, 1, 1, 1, 3] };
+}]);
+
+// ellissi e spline: controlli indipendenti sugli archi ottenuti
+const arcPt = (g, a) => [g.c[0] + g.r * Math.cos(a), g.c[1] + g.r * Math.sin(a)];
+const endsOf = g => g.t === 'line' ? [g.a, g.b] : [arcPt(g, g.a0), arcPt(g, g.a1)];
+// direzione della tangente di un tratto nel suo estremo q (a meno del verso)
+const tanAt = (g, q) => g.t === 'line' ? [g.b[0] - g.a[0], g.b[1] - g.a[1]] : [-(q[1] - g.c[1]), q[0] - g.c[0]];
+// massimo angolo (seno) tra le tangenti di due tratti che si toccano, e numero di giunzioni trovate
+function joints(geo) {
+  let worst = 0, n = 0;
+  for (let i = 0; i < geo.length; i++) for (let j = i + 1; j < geo.length; j++) for (const p of endsOf(geo[i])) for (const q of endsOf(geo[j])) {
+    if (Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-9) continue;
+    const u = tanAt(geo[i], p), v = tanAt(geo[j], p);
+    worst = Math.max(worst, Math.abs(u[0] * v[1] - u[1] * v[0]) / (Math.hypot(...u) * Math.hypot(...v))); n++;
+  }
+  return { worst, n };
+}
+SK.push(['DXF: ellisse 100×60 → archi tangenti tra loro, sulla curva entro 1/10 000 del diametro minore', () => {
+  const r = MI.parseDXF(dxfFile([dEll(0, 0, 50, 0, 0.6)])), a = 50, b = 30, tol = MI.DXF_CURVE_TOL * 2 * b;
+  // distanza dall'ellisse vera: |f| / |∇f| con f = x²/a² + y²/b² − 1 (esatta al primo ordine, qui le distanze sono di millesimi)
+  let dmax = 0;
+  for (const g of r.geo) for (let k = 0; k <= 8; k++) {
+    const [x, y] = arcPt(g, g.a0 + (g.a1 - g.a0) * k / 8);
+    dmax = Math.max(dmax, Math.abs(x * x / (a * a) + y * y / (b * b) - 1) / Math.hypot(2 * x / (a * a), 2 * y / (b * b)));
+  }
+  const j = joints(r.geo);
+  return { ok: true, got: [r.geo.every(g => g.t === 'arc') ? 1 : 0, dmax <= tol ? 1 : 0, r.approx.err <= tol ? 1 : 0, j.worst < 1e-8 ? 1 : 0, j.n, r.approx.ellipses], exp: [1, 1, 1, 1, r.geo.length, 1] };
+}]);
+SK.push(['DXF: ELLIPSE con rapporto 1 = cerchio vero; arco di ELLIPSE con rapporto 1 = arco vero', () => {
+  const r = MI.parseDXF(dxfFile([dEll(10, 20, 0, 15, 1), dEll(0, 0, 10, 0, 1, 0, PI / 2)]));
+  const c = r.geo.find(g => g.t === 'circle'), a = r.geo.find(g => g.t === 'arc');
+  return { ok: true, got: [r.geo.length, c.r, c.c[0], c.c[1], a.r, a.a0 + 1, a.a1], exp: [2, 15, 10, 20, 10, 1, PI / 2] };
+}]);
+SK.push(['DXF: centri degli archi di ellissi e spline nascosti, quelli degli ARC del file no', () => {
+  const r = MI.parseDXF(dxfFile([dEll(0, 0, 50, 0, 0.6), dArc(200, 0, 10, 0, 90)])); const b = SB(); MI.dxfToSketch(b.s, r.geo, {});
+  const E = Sketch.byId(b.s), arcs = b.s.ents.filter(e => e.t === 'ar');
+  const hidden = arcs.filter(e => E.get(e.c).hc).length;
+  return { ok: true, got: [hidden, arcs.length - hidden, b.s.ents.filter(e => e.hc).length], exp: [r.approx.arcs, 1, r.approx.arcs] };
+}]);
+// spigoli vivi tra due facce laterali di un'estrusione (spigoli «verticali»)
+const sideEdges = doc => { const st = Model.regen(doc); if (st.errors.size || !st.body.length) throw new Error('pezzo non costruito: ' + [...st.errors.values()].join('; ')); return st.topo.edges.filter(e => e.sharp && e.polys.length === 2 && e.polys.every(p => st.tags.get(st.body[p].t).ent)).length; };
+SK.push(['DXF: nessuno spigolo tra le facce di un\'ellisse estrusa; restano quelli veri di una spline con un angolo; nessun anello nel tubo lungo una spline', () => {
+  // spline di grado 2 con nodo doppio: punta in (50, 60) (due archi di parabola che si incontrano ad angolo), chiusa da una LINE
+  const kink = dSpl(2, [0, 0, 0, 1, 1, 2, 2, 2], [[0, 0], [10, 50], [50, 60], [90, 50], [100, 0]]);
+  return { ok: true, got: [sideEdges(dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6)]))), sideEdges(dxfPart(dxfFile([kink, dLine(0, 0, 100, 0)]))), sideEdges(sweepDoc(parabolaPath, b => b.circle(0, 0, 2)))], exp: [0, 3, 0] };
+}]);
+SK.push(['DXF: SPLINE per 5 punti di passaggio irregolari: la curva passa per tutti i punti', () => {
+  const P = [[0, 0], [13, 21], [37, 18], [52, -6], [80, 4]];
+  const r = MI.parseDXF(dxfFile([dFit(P)]));
+  const dist = (q, g) => { if (g.t === 'line') return Math.min(...[g.a, g.b].map(e => Math.hypot(e[0] - q[0], e[1] - q[1])));
+    return Math.min(...endsOf(g).map(e => Math.hypot(e[0] - q[0], e[1] - q[1]))); };
+  const worst = Math.max(...P.map(q => Math.min(...r.geo.map(g => dist(q, g)))));
+  return { ok: true, got: [worst < 1e-9 ? 1 : 0, joints(r.geo).worst < 1e-8 ? 1 : 0, r.approx.splines], exp: [1, 1, 1] };
+}]);
+SK.push(['DXF: SPLINE con i nodi sbagliati saltata; SPLINE non piana appiattita e segnalata', () => {
+  const bad = dSpl(2, [0, 0, 1, 1], [[0, 0], [5, 5], [10, 0]]);   // 4 nodi invece di 6
+  const skew = ['0', 'SPLINE', '8', '0', '70', 0, '71', 1, '40', 0, '40', 0, '40', 1, '40', 1, '10', 0, '20', 0, '30', 0, '10', 10, '20', 0, '30', 5];
+  const r = MI.parseDXF(dxfFile([bad, skew]));
+  return { ok: true, got: [r.skipped['curve spline'], r.curves3d, r.geo.length, r.geo[0].b[0]], exp: [1, 1, 1, 10] };
+}]);
+
+// stato dello schizzo con meno vincoli che incognite (si scompone la trasposta della matrice dei vincoli)
+SK.push(['Stato: rettangolo con un vertice nell\'origine e lati orizz./vert. → 2 gradi di libertà', () => {
+  const b = SB(); const [p1, p2, p3, p4] = b.rect(0, 0, 70, 45); const L = b.s.ents.filter(e => e.t === 'ln');
+  b.s.cons.push({ t: 'coincident', e: [p1, 'O'] }, { t: 'horizontal', e: [L[0].id] }, { t: 'vertical', e: [L[1].id] }, { t: 'horizontal', e: [L[2].id] }, { t: 'vertical', e: [L[3].id] });
+  const a = Sketch.analyze(b.s);   // 8 incognite, 6 equazioni indipendenti
+  return { ok: a.status === 'under', got: [a.dof, a.free.has(p1) ? 1 : 0, a.free.has(p3) ? 1 : 0, a.free.size], exp: [2, 0, 1, 7] };
+}]);
+SK.push(['Stato: ellisse importata (anello chiuso di archi) → 3 gradi di libertà per arco', () => {
+  const r = MI.parseDXF(dxfFile([dEll(0, 0, 50, 0, 0.6)])); const b = SB(); MI.dxfToSketch(b.s, r.geo, {});
+  const n = b.s.ents.filter(e => e.t === 'ar').length, a = Sketch.analyze(b.s);
+  return { ok: a.status === 'under', got: [a.dof, a.m], exp: [3 * n, n] };
+}]);
+SK.push(['Schizzo con due linee incrociate (più un\'altra): messaggio «si intersecano», senza blocchi', () => {
+  const b = SB(); b.line(b.pt(0, 0), b.pt(10, 10)); b.line(b.pt(0, 10), b.pt(10, 0)); b.line(b.pt(20, 0), b.pt(30, 0));
+  const p = Sketch.profiles(b.s);
+  return { ok: true, got: [p.errors.some(e => /si intersecano/.test(e)) ? 1 : 0], exp: [1] };
 }]);
 
 // STEP: se i triangoli sono troppi si rilegge il file con triangoli più grandi (livello successivo)
