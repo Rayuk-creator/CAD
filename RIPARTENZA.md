@@ -132,7 +132,8 @@ package.json          npm test / test:kernel (comprende step.test.js) / test:ui
 
 ## 6. Cose aperte
 
-- Tutto quello che c'è in `IDEE.md`; prossimo passo previsto: il cablaggio 3D semi-automatico da PDF (che userà il lettore DXF), da confermare con l'utente.
+- Tutto quello che c'è in `IDEE.md`. **Prossimo lavoro deciso dall'utente: il disegno 2D libero** (vedi `IDEE.md`, sezione «Disegno 2D libero»). Dopo, forse, il cablaggio 3D semi-automatico da PDF.
+- File DWG: deciso di **non** aggiungere un lettore (gli unici liberi sono GPL e renderebbero GPL tutto il Banco CAD). Idea alternativa, rimandata: un convertitore DWG → DXF in una pagina **separata** (solo quella GPL).
 - Un'ellisse diventa ≈ 50–60 archi (tolleranza 1/10 000): va bene fino a qualche decina di curve per disegno (massimo 3000 entità). Se servisse, si possono ridurre gli archi scegliendo meglio il punto di giunzione dei biarchi.
 - Raccordo su uno spigolo curvo **aperto** (spline che finisce contro una linea): l'utensile finisce piatto alla fine della curva, non si raccorda con lo spigolo vicino (in SolidWorks si propagherebbe lungo gli spigoli tangenti). Le prove usano curve chiuse.
 - Il raccordo di uno spigolo **ad arco** normale (non da DXF) non si propaga da solo agli spigoli tangenti: per un'asola si scelgono i 4 spigoli.

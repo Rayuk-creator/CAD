@@ -33,6 +33,15 @@ Versione **semi-automatica** fattibile (il lettore DXF ora c'è: `Import.parseDX
 
 Risultato: il cablaggio 3D steso in piano. Ellissi e spline del DXF sono pronte: è il prossimo lavoro grande, da confermare con l'utente.
 
+## Disegno 2D libero (come in AutoCAD), da aggiungere a ciò che esiste
+
+Deciso con l'utente il 21 ottobre 2026: **prossimo lavoro grande**, da fare in una chat nuova. Si **aggiunge** al programma: schizzo, funzioni 3D, messa in tavola, esercitazioni, importazioni e progetti già salvati restano come sono, e tutte le prove esistenti devono continuare a passare.
+
+- **Stile**: base SolidWorks («tavola senza modello»: gli stessi strumenti dello schizzo, con relazioni e quote che comandano il disegno), più i comandi AutoCAD utili: **Offset, Copia, Sposta, Ruota** (e dove serve Taglia, Estendi).
+- **Contenuto** (l'utente ha detto «sì a tutto»): linee, archi, cerchi, rettangoli; quote; testi; tratteggi; tipi di linea (continua, tratteggiata, mezzeria); cartiglio e fogli A4–A2; stampa e salvataggio in DXF (e SVG); **layer**; **blocchi**; **tolleranze**; **rugosità**.
+- **Collegamento al 3D**: poter usare un disegno 2D come schizzo per fare un pezzo.
+- Da chiarire all'inizio della chat nuova: dove sta il comando (scheda nuova o dentro «Messa in tavola»), come si salva insieme al progetto, ordine dei lavori (prima le basi, poi layer, blocchi, tolleranze e rugosità). Ogni comando nuovo nella Guida, ogni termine nel Glossario, prove con valori calcolati a mano.
+
 ## Altro ancora da fare
 
 - La pagina pubblicata su claude.ai (artifact «Banco CAD») è aggiornata al 21 ottobre sera (tutto compreso); la versione di riferimento resta `index.html` in questo repository.
