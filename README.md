@@ -30,11 +30,11 @@ Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo
 
 Il lavoro si salva da solo nel browser. Per portarlo su un altro computer usa **Progetto › Esporta il progetto** e poi **Importa un progetto**.
 
-Con **Progetto › Importa STEP o IGES** si apre un pezzo (o un piccolo assieme) fatto con un altro programma CAD (SolidWorks, Inventor, Fusion, FreeCAD… salvato in STEP o IGES): arriva con le sue facce vere e l'unità del file, si misura, si mette in tavola, se ne calcolano volume e massa con un errore molto sotto l'1 %, e sopra si aggiungono schizzi e funzioni. Il lettore è OpenCascade, compresso dentro la pagina: funziona anche senza internet.
+Con **Progetto › Importa STEP o IGES** si apre un pezzo (o un piccolo assieme) fatto con un altro programma CAD (SolidWorks, Inventor, Fusion, FreeCAD… salvato in STEP o IGES): arriva con le sue facce vere e l'unità del file, si misura, si mette in tavola, se ne calcolano volume e massa con un errore molto sotto l'1 %, e sopra si aggiungono schizzi e funzioni. Se il file contiene più corpi si sceglie quali importare; i colori delle facce scritti nel file si vedono sul pezzo. Il lettore è OpenCascade, compresso dentro la pagina: funziona anche senza internet, e legge il file a parte, così la pagina non si blocca (la lettura si può annullare).
 
 Con **Progetto › Importa STL o OBJ** si apre anche un pezzo fatto con un altro programma (SolidWorks, Inventor, Tinkercad… salvato in STL o OBJ): arriva come corpo a faccette che si misura, si mette in tavola, se ne calcolano volume e massa, e sulle cui facce piane si possono aggiungere schizzi e funzioni.
 
-Con **Progetto › Importa DXF (schizzo)**, o con **Inserisci DXF** nella scheda Schizzo, un disegno 2D (AutoCAD, DraftSight, LibreCAD, tavola di SolidWorks…) entra in uno schizzo: linee, archi, cerchi, polilinee, ellissi, spline e blocchi, con l'unità del file; ellissi e spline diventano archi tangenti tra loro (biarchi) lontani pochi millesimi di millimetro dalla curva vera, gli assi tratto-punto diventano linee di mezzeria. Poi si estrude o si fa ruotare.
+Con **Progetto › Importa DXF (schizzo)**, o con **Inserisci DXF** nella scheda Schizzo, un disegno 2D (AutoCAD, DraftSight, LibreCAD, tavola di SolidWorks…) entra in uno schizzo: linee, archi, cerchi, polilinee, ellissi, spline e blocchi, con l'unità del file; ellissi e spline diventano archi tangenti tra loro (biarchi) lontani pochi millesimi di millimetro dalla curva vera, gli assi tratto-punto diventano linee di mezzeria. Nella finestra si vede l'anteprima del disegno e si scelgono i layer da importare (per esempio senza cartiglio e quote). Poi si estrude o si fa ruotare.
 
 ## Il primo pezzo in 6 passi
 
@@ -79,7 +79,7 @@ Linea, rettangolo e rettangolo centrale, cerchio, archi (centro-estremi, 3 punti
 - **Estrusione con percorso** e **Taglio con percorso** (sweep) lungo linee e archi tangenti.
 - **Nervatura** da una linea aperta, prolungata da sola fino al pezzo.
 - **Creazione guidata fori** secondo le norme: passanti per vite (ISO 273), lamati (DIN 974-1), svasati (ISO 15065), filettati (foro di preparazione), da M3 a M20.
-- **Raccordo** e **Smusso** degli spigoli, lavorati **tutti insieme** come in SolidWorks: dove due raccordi si incontrano si raccordano tra loro, dove se ne incontrano tre ad angolo retto l'angolo diventa una porzione di sfera.
+- **Raccordo** e **Smusso** degli spigoli, lavorati **tutti insieme** come in SolidWorks: dove due raccordi si incontrano si raccordano tra loro, dove se ne incontrano tre ad angolo retto l'angolo diventa una porzione di sfera. Si raccordano anche gli archi (asole) e il bordo di un'ellisse o di una spline importata, che con un clic si sceglie tutto.
 - **Serie lineare** (anche a griglia), **Serie circolare**, **Specchio**, **Piano di riferimento**.
 - Albero di progettazione con modifica, soppressione, barra di ripristino, annulla e ripeti.
 
@@ -105,7 +105,7 @@ Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nasc
 
 ## Calcoli verificati
 
-Ogni calcolo del programma è controllato da prove automatiche: 93 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 10 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, file danneggiati).
+Ogni calcolo del programma è controllato da prove automatiche: 102 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, su archi e sul bordo di ellissi e spline, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 14 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, assiemi con colori, file danneggiati).
 
 Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifica**.
 
@@ -119,7 +119,7 @@ Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScr
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (85 + 10 prove STEP/IGES, pochi secondi)
+npm run test:kernel               # solo i calcoli (120 + 14 prove STEP/IGES, pochi secondi)
 npm run test:ui                   # solo l'interfaccia in Chromium (39 prove)
 ```
 

@@ -32,11 +32,11 @@ Designed for technical secondary schools (mechanical and mechatronic engineering
 
 Your work is saved automatically in the browser. To move it to another computer use **Progetto › Esporta il progetto** (Project › Export) and then **Importa un progetto** (Import).
 
-With **Progetto › Importa STEP o IGES** (Project › Import STEP or IGES) you can open a part (or a small assembly) made with another CAD program (SolidWorks, Inventor, Fusion, FreeCAD… saved as STEP or IGES): it arrives with its real faces and the file's units; you can measure it, put it on a drawing, get volume and mass with an error well below 1 %, and add sketches and features on it. The reader is OpenCascade, compressed inside the page: it works offline too.
+With **Progetto › Importa STEP o IGES** (Project › Import STEP or IGES) you can open a part (or a small assembly) made with another CAD program (SolidWorks, Inventor, Fusion, FreeCAD… saved as STEP or IGES): it arrives with its real faces and the file's units; you can measure it, put it on a drawing, get volume and mass with an error well below 1 %, and add sketches and features on it. If the file holds several bodies you choose which ones to import; face colours written in the file show on the part. The reader is OpenCascade, compressed inside the page: it works offline too, and reads the file in the background so the page never freezes (reading can be cancelled).
 
 With **Progetto › Importa STL o OBJ** (Project › Import STL or OBJ) you can also open a part made with another program (SolidWorks, Inventor, Tinkercad… saved as STL or OBJ): it arrives as a faceted body that you can measure, put on a drawing and weigh, and you can add sketches and features on its flat faces.
 
-With **Progetto › Importa DXF (schizzo)** (Project › Import DXF), or **Inserisci DXF** (Insert DXF) in the Sketch tab, a 2D drawing (AutoCAD, DraftSight, LibreCAD, a SolidWorks drawing…) becomes a sketch: lines, arcs, circles, polylines, ellipses, splines and blocks, in the file's units; ellipses and splines become chains of tangent arcs (biarcs) within a few thousandths of a millimetre of the true curve; dash-dot axes become centerlines. Then you extrude or revolve it.
+With **Progetto › Importa DXF (schizzo)** (Project › Import DXF), or **Inserisci DXF** (Insert DXF) in the Sketch tab, a 2D drawing (AutoCAD, DraftSight, LibreCAD, a SolidWorks drawing…) becomes a sketch: lines, arcs, circles, polylines, ellipses, splines and blocks, in the file's units; ellipses and splines become chains of tangent arcs (biarcs) within a few thousandths of a millimetre of the true curve; dash-dot axes become centerlines. The dialog shows a preview of the drawing and lets you pick the layers to import (for example without the title block and dimensions). Then you extrude or revolve it.
 
 ## Your first part in 6 steps
 
@@ -81,7 +81,7 @@ Line, corner and centre rectangle, circle, arcs (centre-ends, 3-point, tangent),
 - **Swept boss** and **Swept cut** along tangent lines and arcs.
 - **Rib** from an open line, automatically extended to the part.
 - **Hole wizard** to standards: clearance (ISO 273), counterbore (DIN 974-1), countersink (ISO 15065), tapped (tap drill), M3 to M20.
-- **Fillet** and **Chamfer** on edges, all processed **together** as in SolidWorks: where two fillets meet they blend, where three meet at a right angle the corner becomes a spherical patch.
+- **Fillet** and **Chamfer** on edges, all processed **together** as in SolidWorks: where two fillets meet they blend, where three meet at a right angle the corner becomes a spherical patch. Arcs (slots) and the edge of an imported ellipse or spline can be filleted too; one click picks the whole curved edge.
 - **Linear pattern** (also as a grid), **Circular pattern**, **Mirror**, **Reference plane**.
 - Feature tree with edit, suppress, rollback bar, undo and redo.
 
@@ -107,7 +107,7 @@ Orthographic views in **first-angle projection** (ISO 5456-2), hidden lines, cen
 
 ## Verified calculations
 
-Every calculation is checked by automatic tests: 93 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL, OBJ, STEP and IGES, sketches imported from DXF including ellipses and splines, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero. Another 10 tests run the real reader on STEP and IGES files written for the purpose (blocks, cylinder, plate with a hole, different units, damaged files).
+Every calculation is checked by automatic tests: 102 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, arcs and the edges of ellipses and splines, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL, OBJ, STEP and IGES, sketches imported from DXF including ellipses and splines, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero. Another 14 tests run the real reader on STEP and IGES files written for the purpose (blocks, cylinder, plate with a hole, different units, assemblies with colours, damaged files).
 
 The same tests can be run inside the program: **Valuta › Autoverifica** (Evaluate › Self-check).
 
@@ -121,7 +121,7 @@ The program is one file, `index.html` (about 5 MB), with HTML, CSS and JavaScrip
 npm install
 npx playwright install chromium   # first time only
 npm test                          # all tests
-npm run test:kernel               # calculations only (85 + 10 STEP/IGES tests, a few seconds)
+npm run test:kernel               # calculations only (120 + 14 STEP/IGES tests, a few seconds)
 npm run test:ui                   # interface only, in Chromium (39 tests)
 ```
 

@@ -8732,7 +8732,7 @@ self.onmessage = async ev => {
         }
         body.append(grp('Spigoli da ' + (f.type === 'fillet' ? 'raccordare' : 'smussare'),
           selBox('edges', f.edges.map((e, i) => ({ label: 'Spigolo ' + (i + 1), remove: () => { f.edges.splice(i, 1); A().refreshPM(); pm.update(); } })), 'Fai clic sugli spigoli nella vista'),
-          el('p', { class: 'note' }, 'Gli spigoli scelti vengono lavorati tutti insieme, sul pezzo di partenza (come in SolidWorks): conviene sceglierli tutti nella stessa funzione. Spigoli supportati: rettilinei tra due facce piane e circolari tra un cilindro e una faccia piana (alberi, fori, perni).')));
+          el('p', { class: 'note' }, 'Gli spigoli scelti vengono lavorati tutti insieme, sul pezzo di partenza (come in SolidWorks): conviene sceglierli tutti nella stessa funzione. Spigoli supportati: rettilinei tra due facce piane, circolari o ad arco tra un cilindro e una faccia piana (alberi, fori, perni, asole) e il bordo di un\'ellisse o di una spline importata, che si sceglie tutto con un clic.')));
         break;
       }
       case 'lpattern': case 'cpattern': case 'mirror': {
