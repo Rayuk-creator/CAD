@@ -44,4 +44,4 @@ Deciso con l'utente il 21 ottobre 2026: **prossimo lavoro grande**, da fare in u
 
 ## Altro ancora da fare
 
-- La pagina pubblicata su claude.ai (artifact «Banco CAD») è aggiornata al 21 ottobre sera (tutto compreso); la versione di riferimento resta `index.html` in questo repository.
+- La pagina pubblicata su claude.ai (artifact «Banco CAD», versione 10) è aggiornata al 21 ottobre notte (tutto compreso); la versione di riferimento resta `index.html` in questo repository.
