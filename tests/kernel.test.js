@@ -349,6 +349,56 @@ T('Cubo importato + estrusione unita sopra (10 × 10 × 5)', () => {
 // materiale
 T('Massa acciaio S235 (blocco 80×50×10)', () => { const d = box(); d.material = 's235'; return d; }, { V: 40000, M: 40000 * 7.85 / 1000 });
 
+/* ---------- schizzi da file DXF (linee, archi, cerchi) ---------- */
+// file DXF di testo costruiti qui: coppie «codice di gruppo / valore»
+const dxfFile = (ents, opt = {}) => ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', String(opt.units === undefined ? 4 : opt.units), '0', 'ENDSEC',
+  ...(opt.tables || []), ...(opt.blocks || []), '0', 'SECTION', '2', 'ENTITIES', ...ents.flat().map(String), '0', 'ENDSEC', '0', 'EOF'].join('\r\n');
+const dLine = (x0, y0, x1, y1, ly = '0') => ['0', 'LINE', '8', ly, '10', x0, '20', y0, '30', 0, '11', x1, '21', y1, '31', 0];
+const dCircle = (x, y, r) => ['0', 'CIRCLE', '8', '0', '10', x, '20', y, '40', r];
+const dArc = (x, y, r, a0, a1) => ['0', 'ARC', '8', '0', '10', x, '20', y, '40', r, '50', a0, '51', a1];
+const dPoly = (pts, closed) => ['0', 'LWPOLYLINE', '8', '0', '90', pts.length, '70', closed ? 1 : 0, ...pts.flatMap(p => ['10', p[0], '20', p[1], '42', p[2] || 0])];
+// blocco «Q»: quadrato 10×10 con foro Ø4, punto base (5, 5)
+const dBlockQ = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'Q', '10', '5', '20', '5', ...[dPoly([[5, 5], [15, 5], [15, 15], [5, 15]], true), dCircle(10, 10, 2)].flat().map(String), '0', 'ENDBLK', '0', 'ENDSEC'];
+// schizzo sul piano frontale importato dal DXF, poi estrusione cieca o rivoluzione di 360°
+function dxfPart(text, fn = 'extrude', opts = {}) {
+  const r = MI.parseDXF(text); const b = SB();
+  MI.dxfToSketch(b.s, r.geo, { scale: MI.DXF_SCALE[r.unit || 'mm'], ...opts });
+  const doc = D0('dxf'); const s = sketch(doc, STD('front'), b);
+  if (fn === 'extrude') feat(doc, { type: 'extrude', sketch: s, end: 'blind', depth: 10 });
+  else feat(doc, { type: 'revolve', sketch: s, angle: 360, axis: Sketch.profiles(b.s).axes[0].id });
+  return doc;
+}
+T('DXF: piastra 100×60 (4 LINE) con foro Ø20 (CIRCLE), estrusa 10', () => dxfPart(dxfFile([dLine(0, 0, 100, 0), dLine(100, 0, 100, 60), dLine(100, 60, 0, 60), dLine(0, 60, 0, 0), dCircle(30, 30, 10)])),
+  { V: 10 * (6000 - PI * 100), A: 2 * (6000 - PI * 100) + 10 * 320 + 10 * 20 * PI, C: [(6000 * 50 - 100 * PI * 30) / (6000 - 100 * PI), (6000 * 30 - 100 * PI * 30) / (6000 - 100 * PI), 5], bb: [[0, 0, 0], [100, 60, 10]] });
+T('DXF: asola da LWPOLYLINE con bulge 1 (semicerchi R10, interasse 40)', () => dxfPart(dxfFile([dPoly([[0, 0], [40, 0, 1], [40, 20], [0, 20, 1]], true)])),
+  { V: 10 * (800 + PI * 100), bb: [[-10, 0, 0], [50, 20, 10]], C: [20, 10, 5] });
+T('DXF: forma a D (LINE + ARC da -90° a 90°)', () => dxfPart(dxfFile([dLine(0, 0, 0, 40), dArc(0, 20, 20, -90, 90)])),
+  { V: 10 * PI * 400 / 2, bb: [[0, 0, 0], [20, 40, 10]], C: [4 * 20 / (3 * PI), 20, 5] });
+T('DXF in centimetri ($INSUNITS 5): quadrato 5 cm = 50 mm', () => dxfPart(dxfFile([dPoly([[0, 0], [5, 0], [5, 5], [0, 5]], true)], { units: 5 })),
+  { V: 25000, bb: [[0, 0, 0], [50, 50, 10]] });
+T('DXF: blocco inserito in (100, 0), scala 2, ruotato 90°', () => dxfPart(dxfFile([['0', 'INSERT', '2', 'Q', '10', '100', '20', '0', '41', '2', '42', '2', '50', '90']], { blocks: dBlockQ })),
+  { V: 10 * (400 - PI * 16), bb: [[80, 0, 0], [100, 20, 10]], C: [90, 10, 5] });
+T('DXF: estremi staccati di 0,00002 mm e contorno doppio (uniti e tolti)', () => dxfPart(dxfFile([dLine(0, 0, 50, 0), dLine(50.00001, 0, 50, 30), dLine(50, 30, 0, 30.00002), dLine(0, 30, 0, 0), dLine(50, 0, 0, 0), dLine(0, 30, 50, 30)])),
+  { V: 15000, bb: [[0, 0, 0], [50, 30, 10]] });
+T('DXF: rivoluzione attorno all\'asse tratto-punto (layer con tipo di linea CENTER)', () => dxfPart(dxfFile([dLine(0, -5, 0, 45, 'ASSI'), dPoly([[20, 0], [30, 0], [30, 40], [20, 40]], true)],
+  { tables: ['0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '0', 'LAYER', '2', 'ASSI', '70', '0', '6', 'CENTER', '0', 'ENDTAB', '0', 'ENDSEC'] }), 'revolve'),
+  { V: PI * (900 - 400) * 40, bb: [[-30, 0, -30], [30, 40, 30]], C: [0, 20, 0] });
+T('DXF: contorno spostato con l\'angolo in basso a sinistra sull\'origine', () => dxfPart(dxfFile([dPoly([[200, 100], [240, 100], [240, 130], [200, 130]], true)]), 'extrude', { origin: 'corner' }),
+  { V: 12000, bb: [[0, 0, 0], [40, 30, 10]] });
+
+T('Piastra 100×60×12 con 4 fori Ø8 allineati a due a due e foro centrale Ø28', () => {
+  const doc = D0('piastra fori'); const b = SB(); b.rect(0, 0, 100, 60);
+  for (const [x, y] of [[15, 15], [85, 15], [85, 45], [15, 45]]) b.circle(x, y, 4);
+  b.circle(50, 30, 14);
+  feat(doc, { type: 'extrude', sketch: sketch(doc, STD('top'), b), end: 'blind', depth: 12 }); return doc;
+}, { V: 12 * (6000 - 4 * PI * 16 - PI * 196), C: [50, 6, -30], bb: [[0, 0, -60], [100, 12, 0]] });
+T('DXF: flangia con angoli raggiati R10 (LWPOLYLINE), 4 fori Ø8 e foro Ø28', () => {
+  const b = SB(), q = Math.SQRT2 - 1;
+  const r = MI.parseDXF(dxfFile([dPoly([[10, 0], [90, 0, q], [100, 10], [100, 50, q], [90, 60], [10, 60, q], [0, 50], [0, 10, q]], true), dCircle(15, 15, 4), dCircle(85, 15, 4), dCircle(85, 45, 4), dCircle(15, 45, 4), dCircle(50, 30, 14)]));
+  MI.dxfToSketch(b.s, r.geo, {});
+  const doc = D0('flangia'); feat(doc, { type: 'extrude', sketch: sketch(doc, STD('top'), b), end: 'blind', depth: 12 }); return doc;
+}, { V: 12 * (6000 - (4 - PI) * 100 - 4 * PI * 16 - PI * 196), C: [50, 6, -30], bb: [[0, 0, -60], [100, 12, 0]] });
+
 /* ---------- schizzo: risolutore ---------- */
 const SK = [];
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
@@ -367,6 +417,12 @@ SK.push(['Retta inclinata: lunghezza 30, angolo 30° dall\'orizzontale', () => {
   const b = SB(); const a = b.pt(0, 0), e = b.pt(20, 15); const l = b.line(a, e); const h = b.line(b.pt(0, -5), b.pt(10, -5));
   b.s.cons.push({ t: 'coincident', e: [a, 'O'] }, { t: 'horizontal', e: [h] }, { t: 'len', e: [l], v: 30 }, { t: 'angle', e: [h, l], v: 30 });
   const r = Sketch.solve(b.s); const E = Sketch.byId(b.s); return { ok: r.ok, got: [E.get(e).x, E.get(e).y], exp: [30 * Math.cos(PI / 6), 15] };
+}]);
+
+SK.push(['DXF: testi e quote ignorati, linee contate (3 LINE, 1 TEXT, 1 DIMENSION, 1 SPLINE)', () => {
+  const r = MI.parseDXF(dxfFile([dLine(0, 0, 10, 0), dLine(10, 0, 10, 10), dLine(10, 10, 0, 0), ['0', 'TEXT', '8', '0', '10', '0', '20', '0', '1', 'ciao'], ['0', 'DIMENSION', '8', '0'], ['0', 'SPLINE', '8', '0']]));
+  const b = SB(); const info = MI.dxfToSketch(b.s, r.geo, {});
+  return { ok: true, got: [info.count.line, r.skipped.testi, r.skipped.quote, r.skipped['curve spline'], info.points], exp: [3, 1, 1, 1, 3] };
 }]);
 
 /* ---------- esecuzione ---------- */

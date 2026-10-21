@@ -32,6 +32,8 @@ Il lavoro si salva da solo nel browser. Per portarlo su un altro computer usa **
 
 Con **Progetto › Importa STL o OBJ** si apre anche un pezzo fatto con un altro programma (SolidWorks, Inventor, Tinkercad… salvato in STL o OBJ): arriva come corpo a faccette che si misura, si mette in tavola, se ne calcolano volume e massa, e sulle cui facce piane si possono aggiungere schizzi e funzioni.
 
+Con **Progetto › Importa DXF (schizzo)**, o con **Inserisci DXF** nella scheda Schizzo, un disegno 2D (AutoCAD, DraftSight, LibreCAD, tavola di SolidWorks…) entra in uno schizzo: linee, archi, cerchi, polilinee e blocchi, con l'unità del file; gli assi tratto-punto diventano linee di mezzeria. Poi si estrude o si fa ruotare.
+
 ## Il primo pezzo in 6 passi
 
 Il percorso di base di ogni modello è sempre lo stesso: **schizzo quotato → funzione**.
@@ -101,7 +103,7 @@ Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nasc
 
 ## Calcoli verificati
 
-Ogni calcolo del programma è controllato da prove automatiche: 66 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL e OBJ, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero.
+Ogni calcolo del programma è controllato da prove automatiche: 77 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL e OBJ, schizzi importati da DXF, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero.
 
 Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifica**.
 

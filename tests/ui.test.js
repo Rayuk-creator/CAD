@@ -242,6 +242,56 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     rec('Interfaccia: file di formato non ammesso spiegato', /SolidWorks/.test(msg) && nAfter === nBefore, msg);
   } catch (e) { rec('Interfaccia: importa STL dal menu (unità, modifica, annulla)', false, e.message.split('\n')[0]); }
 
+  // 3m. importazione DXF: dal menu Progetto in uno schizzo nuovo (centimetri, angolo sull'origine), poi estrusione;
+  //     dalla scheda Schizzo dentro uno schizzo aperto; file DWG spiegato
+  const dxfText = (ents, units) => ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', String(units), '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES', ...ents.flat().map(String), '0', 'ENDSEC', '0', 'EOF'].join('\r\n');
+  try {
+    await fresh();
+    // piastra 10 × 6 cm con foro Ø2 cm, lontana dall'origine, più un testo e una quota da saltare
+    const L = (a, b, c, d) => ['0', 'LINE', '8', '0', '10', a, '20', b, '11', c, '21', d];
+    const file = dxfText([L(50, 20, 60, 20), L(60, 20, 60, 26), L(60, 26, 50, 26), L(50, 26, 50, 20), ['0', 'CIRCLE', '8', '0', '10', 53, '20', 23, '40', 1], ['0', 'TEXT', '8', '0', '10', 0, '20', 0, '1', 'PIASTRA'], ['0', 'DIMENSION', '8', '0']], 5);
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', { name: 'piastra.dxf', mimeType: 'application/dxf', buffer: Buffer.from(file) });
+    await page.selectOption('#dxfPlane', 'top'); await page.selectOption('#dxfOrigin', 'corner');
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    const info = await page.evaluate(() => { const s = Sketcher.session(); return { plane: s.f.plane.id, sel: s.sel.size, n: s.sk.ents.filter(e => e.t !== 'pt').length, toast: document.querySelector('#toast').textContent, status: Sketch.analyze(s.sk).status }; });
+    await page.waitForTimeout(1200);
+    await tool('exitSketch');
+    await page.evaluate(() => App.setCmdTab('features'));
+    await tool('extrude');
+    const dep = page.locator('.pm-body .row', { hasText: 'Profondità' }).first().locator('input');
+    await dep.fill('10'); await dep.press('Tab');
+    await page.click('.pm-ok'); await page.waitForTimeout(300);
+    const p = await props();
+    const Ve = 10 * (6000 - Math.PI * 100);
+    const ok = info.plane === 'top' && info.n === 5 && info.sel === 5 && /100 × 60 mm/.test(info.toast) && /centimetri/.test(info.toast) && /1 testo, 1 quota/.test(info.toast) && p && !p.err.length && rel(p.V, Ve) < TOL
+      && Math.abs(p.bb[0][0]) < 1e-6 && Math.abs(p.bb[1][0] - 100) < 1e-6 && Math.abs(p.bb[0][2] + 60) < 1e-6;
+    rec('Interfaccia: importa DXF dal menu (schizzo nuovo, cm, origine) ed estrusione', ok, `piano ${info.plane}, entità ${info.n}, selezionate ${info.sel}, V ${p && p.V.toFixed(1)} (${Ve.toFixed(1)}), ingombro ${p && JSON.stringify(p.bb)}; «${info.toast}»`);
+    // dentro uno schizzo aperto, dal pulsante «Inserisci DXF»: asola da polilinea con tratti curvi
+    await startSketchOn('Piano frontale');
+    const slot = dxfText([['0', 'LWPOLYLINE', '8', '0', '90', 4, '70', 1, '10', 0, '20', 0, '42', 0, '10', 40, '20', 0, '42', 1, '10', 40, '20', 20, '42', 0, '10', 0, '20', 20, '42', 1]], 4);
+    await tool('dxf');
+    const noPlane = await page.evaluate(() => !document.querySelector('#dxfPlane'));
+    await page.setInputFiles('#dxfFile', { name: 'asola.dxf', mimeType: 'application/dxf', buffer: Buffer.from(slot) });
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    const s2 = await page.evaluate(() => { const s = Sketcher.session(); const pr = Sketch.profiles(s.sk); return { feats: App.doc.features.filter(f => f.type === 'sketch').length, ln: s.sk.ents.filter(e => e.t === 'ln').length, ar: s.sk.ents.filter(e => e.t === 'ar').length, regions: pr.regions.length, err: pr.errors.length }; });
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
+    const afterUndo = await page.evaluate(() => Sketcher.session().sk.ents.filter(e => e.t !== 'pt').length);
+    await page.evaluate(() => Sketcher.exit(false));
+    rec('Interfaccia: «Inserisci DXF» nello schizzo aperto (asola, annulla)', noPlane && s2.feats === 2 && s2.ln === 2 && s2.ar === 2 && s2.regions === 1 && !s2.err && afterUndo === 0, JSON.stringify({ noPlane, ...s2, afterUndo }));
+    // file DWG: messaggio nella finestra, niente schizzo nuovo
+    const nBefore = await page.evaluate(() => App.doc.features.length);
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', { name: 'pezzo.dwg', mimeType: 'application/octet-stream', buffer: Buffer.from('AC1032') });
+    await page.click('#modalActions .btn-primary'); await page.waitForTimeout(300);
+    const msg = await page.evaluate(() => { const e = document.querySelector('#dxfErr'); return e && !e.hidden ? e.textContent : ''; });
+    const nAfter = await page.evaluate(() => App.doc.features.length);
+    await page.click('#modalActions .btn:not(.btn-primary)').catch(() => page.evaluate(() => { document.querySelector('#modal').hidden = true; }));
+    rec('Interfaccia: file DWG spiegato (va salvato come DXF)', /salvalo come DXF/.test(msg) && nAfter === nBefore && (await page.evaluate(() => App.mode)) === 'part', msg);
+  } catch (e) { rec('Interfaccia: importa DXF dal menu (schizzo nuovo, cm, origine) ed estrusione', false, e.message.split('\n')[0]); }
+
   // 4. glossario: ogni comando e ogni titolo dei pannelli ha la sua spiegazione
   try {
     await fresh();

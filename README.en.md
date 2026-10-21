@@ -34,6 +34,8 @@ Your work is saved automatically in the browser. To move it to another computer 
 
 With **Progetto › Importa STL o OBJ** (Project › Import STL or OBJ) you can also open a part made with another program (SolidWorks, Inventor, Tinkercad… saved as STL or OBJ): it arrives as a faceted body that you can measure, put on a drawing and weigh, and you can add sketches and features on its flat faces.
 
+With **Progetto › Importa DXF (schizzo)** (Project › Import DXF), or **Inserisci DXF** (Insert DXF) in the Sketch tab, a 2D drawing (AutoCAD, DraftSight, LibreCAD, a SolidWorks drawing…) becomes a sketch: lines, arcs, circles, polylines and blocks, in the file's units; dash-dot axes become centerlines. Then you extrude or revolve it.
+
 ## Your first part in 6 steps
 
 Every model follows the same path: **dimensioned sketch → feature**.
@@ -103,7 +105,7 @@ Orthographic views in **first-angle projection** (ISO 5456-2), hidden lines, cen
 
 ## Verified calculations
 
-Every calculation is checked by automatic tests: 66 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL and OBJ, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero.
+Every calculation is checked by automatic tests: 77 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL and OBJ, sketches imported from DXF, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero.
 
 The same tests can be run inside the program: **Valuta › Autoverifica** (Evaluate › Self-check).
 

@@ -378,6 +378,7 @@ label.chk .gl-i { margin-left: 2px; }
           <button type="button" data-act="export">Esporta il progetto</button>
           <button type="button" data-act="import">Importa un progetto</button>
           <button type="button" data-act="importMesh">Importa STL o OBJ</button>
+          <button type="button" data-act="importDxf">Importa DXF (schizzo)</button>
           <button type="button" data-act="stl">Esporta STL (stampa 3D)</button>
           <button type="button" data-act="help">Guida (come si fa)</button>
         </div>
@@ -741,14 +742,60 @@ label.chk .gl-i { margin-left: 2px; }
     if (area2(poly) < 0) poly.reverse();
     const hs = holes.map(h => { const c = h.map(p => p.slice()); if (area2(c) > 0) c.reverse(); return c; });
     hs.sort((a, b) => Math.max(...b.map(p => p[0])) - Math.max(...a.map(p => p[0])));
-    for (const h of hs) poly = bridge(poly, h);
+    for (let k = 0; k < hs.length; k++) poly = bridge(poly, hs[k], hs.slice(k + 1));
     return earClip(poly);
   }
-  function bridge(poly, hole) {
+  // il segmento M–P si può usare come ponte: non taglia lati del contorno né dei fori e passa dentro la faccia
+  function segCross(a, b, c, d) {
+    const o = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+    const d1 = o(c, d, a), d2 = o(c, d, b), d3 = o(a, b, c), d4 = o(a, b, d);
+    const e = 1e-12 * (1 + Math.abs(a[0]) + Math.abs(a[1]) + Math.abs(b[0]) + Math.abs(b[1]));
+    if (((d1 > e && d2 < -e) || (d1 < -e && d2 > e)) && ((d3 > e && d4 < -e) || (d3 < -e && d4 > e))) return true;
+    // punti allineati: c o d sul segmento a–b (tocca un vertice o corre lungo un lato)
+    const on = (p, q, r) => Math.min(p[0], q[0]) - e <= r[0] && r[0] <= Math.max(p[0], q[0]) + e && Math.min(p[1], q[1]) - e <= r[1] && r[1] <= Math.max(p[1], q[1]) + e;
+    if (Math.abs(d3) <= e && on(a, b, c)) return true;
+    if (Math.abs(d4) <= e && on(a, b, d)) return true;
+    return false;
+  }
+  function inPolyEO(pt, poly) {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c;
+    }
+    return c;
+  }
+  function bridgeOk(M, P, poly, hole, others) {
+    const same = (u, v) => u[0] === v[0] && u[1] === v[1];
+    if (same(M, P)) return false;
+    for (const ring of [poly, hole, ...others]) {
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i], b = ring[(i + 1) % ring.length];
+        if (same(a, M) || same(b, M) || same(a, P) || same(b, P)) continue;
+        if (segCross(M, P, a, b)) return false;
+      }
+    }
+    const mid = [(M[0] + P[0]) / 2, (M[1] + P[1]) / 2];
+    if (!inPolyEO(mid, poly) || inPolyEO(mid, hole)) return false;
+    for (const h of others) if (inPolyEO(mid, h)) return false;
+    return true;
+  }
+  function bridge(poly, hole, others = []) {
     // vertice più a destra del foro
     let hi = 0;
     for (let i = 1; i < hole.length; i++) if (hole[i][0] > hole[hi][0]) hi = i;
     const M = hole[hi];
+    // ponte verso il vertice del contorno più vicino che si vede senza tagliare niente
+    const order = poly.map((_, i) => i).sort((i, j) => ((poly[i][0] - M[0]) ** 2 + (poly[i][1] - M[1]) ** 2) - ((poly[j][0] - M[0]) ** 2 + (poly[j][1] - M[1]) ** 2));
+    for (const i of order) {
+      if (!bridgeOk(M, poly[i], poly, hole, others)) continue;
+      const out = [];
+      for (let k = 0; k <= i; k++) out.push(poly[k]);
+      for (let k = 0; k <= hole.length; k++) out.push(hole[(hi + k) % hole.length]);
+      out.push(poly[i]);
+      for (let k = i + 1; k < poly.length; k++) out.push(poly[k]);
+      return out;
+    }
     // raggio verso +x: trova il lato del contorno più vicino
     let best = -1, bx = Infinity;
     for (let i = 0; i < poly.length; i++) {
@@ -2292,7 +2339,300 @@ label.chk .gl-i { margin-left: 2px; }
     return { P, T, N, groups, open, nonManifold, reoriented, flippedComp, parts: nComp, volume, area, bbox: { mn, mx }, size };
   }
 
-  const api = { parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS };
+  /* ---------------- DXF: linee, archi e cerchi in uno schizzo ---------------- */
+  // $INSUNITS del file DXF → unità dello schizzo (0 = non dichiarata)
+  const DXF_UNITS = { 1: 'in', 2: 'ft', 4: 'mm', 5: 'cm', 6: 'm', 8: 'uin', 9: 'mil', 13: 'um', 14: 'dm' };
+  const DXF_SCALE = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8, uin: 25.4e-6, mil: 0.0254, um: 0.001, dm: 100 };
+  const DXF_IGNORED = { TEXT: 'testi', MTEXT: 'testi', DIMENSION: 'quote', HATCH: 'tratteggi', SOLID: 'riempimenti', POINT: 'punti', ELLIPSE: 'ellissi', SPLINE: 'curve spline', LEADER: 'richiami', MLEADER: 'richiami', '3DFACE': 'facce 3D', ATTRIB: 'attributi', ATTDEF: 'attributi', IMAGE: 'immagini', VIEWPORT: 'finestre', WIPEOUT: 'mascherature', RAY: 'semirette', XLINE: 'rette infinite', TOLERANCE: 'tolleranze', INSERT: 'blocchi' };
+  const DXF_MAXENT = 3000;
+  // geometria del file in coordinate del disegno: {t:'line',a,b} | {t:'circle',c,r} | {t:'arc',c,r,a0,a1} (radianti, antiorario da a0 ad a1, a1 > a0)
+  function parseDXF(data) {
+    let text;
+    if (typeof data === 'string') text = data;
+    else {
+      const u8 = u8of(data);
+      if (u8.length >= 22 && String.fromCharCode(...u8.subarray(0, 18)) === 'AutoCAD Binary DXF') throw new Error('Questo è un DXF binario: salvalo come DXF di testo (ASCII) dal programma d\'origine e riprova.');
+      text = new TextDecoder('latin1').decode(u8);
+    }
+    const lines = text.split(/\r\n|\r|\n/);
+    const pairs = [];
+    for (let i = 0; i + 1 < lines.length; i += 2) {
+      const code = parseInt(lines[i].trim(), 10);
+      if (!Number.isFinite(code)) { if (!lines[i].trim() && i === lines.length - 2) break; throw new Error('Il file non è un DXF valido (riga ' + (i + 1) + ').'); }
+      pairs.push([code, lines[i + 1].trim()]);
+    }
+    if (!pairs.some(p => p[0] === 0 && p[1] === 'SECTION')) throw new Error('Il file non è un DXF: manca la sezione delle entità.');
+    let insunits = 0;
+    const blocks = new Map(), layerLt = new Map();
+    const top = [];
+    let i = 0;
+    // legge un'entità a partire da pairs[i] (codice 0); restituisce {type, g: [[codice, valore], ...]}
+    const readEnt = () => {
+      const type = pairs[i][1]; const g = []; i++;
+      while (i < pairs.length && pairs[i][0] !== 0) { g.push(pairs[i]); i++; }
+      return { type, g };
+    };
+    while (i < pairs.length) {
+      const [c, v] = pairs[i];
+      if (c === 0 && v === 'SECTION') {
+        const name = (pairs[i + 1] || [])[1]; i += 2;
+        if (name === 'HEADER') {
+          while (i < pairs.length && !(pairs[i][0] === 0 && pairs[i][1] === 'ENDSEC')) {
+            if (pairs[i][0] === 9 && pairs[i][1] === '$INSUNITS') { const q = pairs[i + 1]; if (q && q[0] === 70) insunits = parseInt(q[1], 10) || 0; }
+            i++;
+          }
+        } else if (name === 'TABLES') {
+          // tipo di linea di ogni layer (per riconoscere assi e linee nascoste)
+          while (i < pairs.length && !(pairs[i][0] === 0 && pairs[i][1] === 'ENDSEC')) {
+            if (pairs[i][0] !== 0) { i++; continue; }
+            const e = readEnt();
+            if (e.type === 'LAYER') layerLt.set(val(e.g, 2, ''), val(e.g, 6, ''));
+          }
+        } else if (name === 'BLOCKS') {
+          let cur = null;
+          while (i < pairs.length && !(pairs[i][0] === 0 && pairs[i][1] === 'ENDSEC')) {
+            if (pairs[i][0] !== 0) { i++; continue; }
+            const e = readEnt();
+            if (e.type === 'BLOCK') { const nm = val(e.g, 2, ''); cur = { name: nm, base: [num(e.g, 10), num(e.g, 20)], ents: [] }; blocks.set(nm, cur); }
+            else if (e.type === 'ENDBLK') cur = null;
+            else if (cur) collect(e, cur.ents);
+          }
+        } else if (name === 'ENTITIES') {
+          while (i < pairs.length && !(pairs[i][0] === 0 && pairs[i][1] === 'ENDSEC')) {
+            if (pairs[i][0] !== 0) { i++; continue; }
+            collect(readEnt(), top);
+          }
+        }
+        continue;
+      }
+      i++;
+    }
+    // POLYLINE: i VERTEX seguono fino a SEQEND
+    function collect(e, list) {
+      if (e.type === 'VERTEX' && list.length && list[list.length - 1].type === 'POLYLINE' && !list[list.length - 1].done) { list[list.length - 1].verts.push(e.g); return; }
+      if (e.type === 'SEQEND') { if (list.length && list[list.length - 1].type === 'POLYLINE') list[list.length - 1].done = true; return; }
+      if (e.type === 'POLYLINE') e.verts = [];
+      list.push(e);
+    }
+    const geo = [], skipped = {}, layers = new Set();
+    let curves3d = 0;
+    const skip = (t, n = 1) => { const k = DXF_IGNORED[t] || t.toLowerCase(); skipped[k] = (skipped[k] || 0) + n; };
+    // tr: trasformazione dei blocchi {m: [a,b,c,d,e,f]} con x' = a x + b y + e, y' = c x + d y + f (rotazione, scala uniforme, specchio)
+    const ID = [1, 0, 0, 1, 0, 0];
+    const app = (m, p) => [m[0] * p[0] + m[1] * p[1] + m[4], m[2] * p[0] + m[3] * p[1] + m[5]];
+    const mmul = (A, B) => [A[0] * B[0] + A[1] * B[2], A[0] * B[1] + A[1] * B[3], A[2] * B[0] + A[3] * B[2], A[2] * B[1] + A[3] * B[3], A[0] * B[4] + A[1] * B[5] + A[4], A[2] * B[4] + A[3] * B[5] + A[5]];
+    // tipo di linea: «center» (tratto-punto: asse) o «cons» (tratteggiata: linea nascosta) diventano costruzione
+    let kind = null;
+    const ltKind = (g, inh) => {
+      let lt = val(g, 6, 'BYLAYER');
+      const ly = val(g, 8, '0');
+      if (/^BYBLOCK$/i.test(lt)) return inh;
+      if (/^BYLAYER$/i.test(lt)) { if (ly === '0' && inh) return inh; lt = layerLt.get(ly) || ''; }
+      if (/CENTER|CENTRE|DASHDOT|DASH_DOT|CHAIN|AXIS|ASSE|MEZZ|PHANTOM/i.test(lt)) return 'center';
+      if (/HIDDEN|DASHED|NASCOST|TRATTEGG/i.test(lt)) return 'cons';
+      return null;
+    };
+    const pushLine = (m, a, b) => { geo.push(kind ? { t: 'line', a: app(m, a), b: app(m, b), kind } : { t: 'line', a: app(m, a), b: app(m, b) }); };
+    const pushArc = (m, c, r, a0, a1) => {
+      // a0 → a1 antiorario nel sistema locale; con la trasformazione: rotazione + eventuale specchio
+      const det = m[0] * m[3] - m[1] * m[2], s = Math.sqrt(Math.abs(det));
+      const rot = Math.atan2(m[2], m[0]);
+      const cc = app(m, c), rr = r * s;
+      if (a1 - a0 >= 2 * Math.PI - 1e-9) { geo.push(kind ? { t: 'circle', c: cc, r: rr, kind } : { t: 'circle', c: cc, r: rr }); return; }
+      let b0, b1;
+      if (det > 0) { b0 = a0 + rot; b1 = a1 + rot; }
+      else { // specchio: l'arco cambia verso
+        const p0 = app(m, [c[0] + r * Math.cos(a0), c[1] + r * Math.sin(a0)]), p1 = app(m, [c[0] + r * Math.cos(a1), c[1] + r * Math.sin(a1)]);
+        b0 = Math.atan2(p1[1] - cc[1], p1[0] - cc[0]); b1 = Math.atan2(p0[1] - cc[1], p0[0] - cc[0]);
+      }
+      b0 = normAng(b0); b1 = normAng(b1); if (b1 <= b0 + 1e-12) b1 += 2 * Math.PI;
+      geo.push(kind ? { t: 'arc', c: cc, r: rr, a0: b0, a1: b1, kind } : { t: 'arc', c: cc, r: rr, a0: b0, a1: b1 });
+    };
+    // sistema di coordinate dell'oggetto (OCS): con normale (0,0,-1) la x è rovesciata
+    const ocs = g => {
+      const nx = num(g, 210, 0), ny = num(g, 220, 0), nz = num(g, 230, 1);
+      if (Math.abs(nx) > 1e-9 || Math.abs(ny) > 1e-9) return null;
+      return nz < 0 ? [-1, 0, 0, 1, 0, 0] : ID;
+    };
+    const bulgeArc = (m, p, q, bu) => {
+      if (Math.abs(bu) < 1e-12) { pushLine(m, p, q); return; }
+      if (bu < 0) { const t = p; p = q; q = t; bu = -bu; }
+      const dx = q[0] - p[0], dy = q[1] - p[1], d = Math.hypot(dx, dy);
+      if (d < 1e-12) return;
+      const h = (d / 2) * (1 - bu * bu) / (2 * bu);   // distanza del centro dalla corda (cotangente di metà angolo)
+      const c = [(p[0] + q[0]) / 2 - h * dy / d, (p[1] + q[1]) / 2 + h * dx / d];
+      const r = Math.hypot(p[0] - c[0], p[1] - c[1]);
+      pushArc(m, c, r, Math.atan2(p[1] - c[1], p[0] - c[0]), unwrapAfter(Math.atan2(p[1] - c[1], p[0] - c[0]), Math.atan2(q[1] - c[1], q[0] - c[0])));
+    };
+    const walk = (list, m, depth, inh) => {
+      for (const e of list) {
+        const g = e.g;
+        if (e.type !== 'INSERT') layers.add(val(g, 8, '0'));
+        kind = ltKind(g, inh);
+        switch (e.type) {
+          case 'LINE': {
+            if (Math.abs(num(g, 30) - num(g, 31)) > 1e-9) curves3d++;
+            pushLine(m, [num(g, 10), num(g, 20)], [num(g, 11), num(g, 21)]); break;
+          }
+          case 'CIRCLE': case 'ARC': {
+            const o = ocs(g); if (!o) { curves3d++; break; }
+            const mm = mmul(m, o);
+            const c = [num(g, 10), num(g, 20)], r = num(g, 40);
+            if (!(r > 0)) break;
+            if (e.type === 'CIRCLE') { pushArc(mm, c, r, 0, 2 * Math.PI); break; }
+            const a0 = num(g, 50) * Math.PI / 180, a1 = unwrapAfter(a0, num(g, 51) * Math.PI / 180);
+            pushArc(mm, c, r, a0, a1); break;
+          }
+          case 'LWPOLYLINE': {
+            const o = ocs(g); if (!o) { curves3d++; break; }
+            const mm = mmul(m, o);
+            const vs = [];
+            for (const [code, v] of g) {
+              if (code === 10) vs.push({ p: [parseFloat(v), 0], b: 0 });
+              else if (code === 20 && vs.length) vs[vs.length - 1].p[1] = parseFloat(v);
+              else if (code === 42 && vs.length) vs[vs.length - 1].b = parseFloat(v);
+            }
+            const closed = (num(g, 70) & 1) === 1;
+            polyline(mm, vs, closed); break;
+          }
+          case 'POLYLINE': {
+            const fl = num(g, 70);
+            if (fl & (16 | 64)) { skip('MESH'); break; }
+            const o = (fl & 8) ? ID : ocs(g); if (!o) { curves3d++; break; }
+            const mm = mmul(m, o);
+            const vs = e.verts.filter(vg => !(num(vg, 70) & 16)).map(vg => ({ p: [num(vg, 10), num(vg, 20)], b: num(vg, 42) }));
+            polyline(mm, vs, (fl & 1) === 1); break;
+          }
+          case 'INSERT': {
+            const b = blocks.get(val(g, 2, ''));
+            if (!b || depth > 8) { skip('INSERT'); break; }
+            const sx = num(g, 41, 1), sy = num(g, 42, 1), rot = num(g, 50) * Math.PI / 180;
+            if (Math.abs(Math.abs(sx) - Math.abs(sy)) > 1e-9 * Math.max(1, Math.abs(sx))) { skip('INSERT'); break; }
+            const o = ocs(g); if (!o) { curves3d++; break; }
+            const nc = Math.max(1, num(g, 70, 1)), nr = Math.max(1, num(g, 71, 1)), cs = num(g, 44), rs = num(g, 45);
+            const cr = Math.cos(rot), sr = Math.sin(rot);
+            for (let ir = 0; ir < nr; ir++) for (let ic = 0; ic < nc; ic++) {
+              const ox = ic * cs, oy = ir * rs;
+              // x_mondo = ins + R·(S·(x - base) + (ox, oy))
+              const R = [cr, -sr, sr, cr, num(g, 10), num(g, 20)];
+              const S = [sx, 0, 0, sy, -sx * b.base[0] + ox, -sy * b.base[1] + oy];
+              walk(b.ents, mmul(mmul(m, o), mmul(R, S)), depth + 1, kind);
+            }
+            break;
+          }
+          default: skip(e.type);
+        }
+      }
+    };
+    function polyline(m, vs, closed) {
+      // vertici consecutivi doppi: si salta il secondo
+      const v2 = vs.filter((v, k) => k === 0 || Math.hypot(v.p[0] - vs[k - 1].p[0], v.p[1] - vs[k - 1].p[1]) > 1e-12);
+      const n = v2.length; if (n < 2) return;
+      for (let k = 0; k < (closed ? n : n - 1); k++) bulgeArc(m, v2[k].p, v2[(k + 1) % n].p, v2[k].b);
+    }
+    walk(top, ID, 0, null);
+    const unit = DXF_UNITS[insunits] || null;
+    return { geo, unit, insunits, skipped, layers: [...layers], curves3d };
+  }
+  function normAng(a) { const t = 2 * Math.PI; a %= t; if (a < 0) a += t; return a; }
+  function unwrapAfter(a0, a1) { while (a1 <= a0 + 1e-12) a1 += 2 * Math.PI; while (a1 > a0 + 2 * Math.PI + 1e-12) a1 -= 2 * Math.PI; return a1; }
+  function num(g, code, def = 0) { for (const [c, v] of g) if (c === code) { const x = parseFloat(v); return Number.isFinite(x) ? x : def; } return def; }
+  function val(g, code, def) { for (const [c, v] of g) if (c === code) return v; return def; }
+
+  // dimensioni della geometria (per l'origine e per il messaggio)
+  function dxfBox(geo) {
+    const mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
+    const P = p => { for (let k = 0; k < 2; k++) { if (p[k] < mn[k]) mn[k] = p[k]; if (p[k] > mx[k]) mx[k] = p[k]; } };
+    for (const g of geo) {
+      if (g.t === 'line') { P(g.a); P(g.b); }
+      else if (g.t === 'circle') { P([g.c[0] - g.r, g.c[1] - g.r]); P([g.c[0] + g.r, g.c[1] + g.r]); }
+      else {
+        P([g.c[0] + g.r * Math.cos(g.a0), g.c[1] + g.r * Math.sin(g.a0)]); P([g.c[0] + g.r * Math.cos(g.a1), g.c[1] + g.r * Math.sin(g.a1)]);
+        for (let k = Math.ceil(g.a0 / (Math.PI / 2)); k * Math.PI / 2 < g.a1; k++) { const q = k * Math.PI / 2; P([g.c[0] + g.r * Math.cos(q), g.c[1] + g.r * Math.sin(q)]); }
+      }
+    }
+    return { mn, mx };
+  }
+  /* Inserisce la geometria nello schizzo sk (formato di Sketch): punti uniti se distano meno di tol,
+     entità doppie tolte. opts: {scale (mm per unità del file), origin: 'file' | 'corner' | 'center', tol} */
+  function dxfToSketch(sk, geo, opts = {}) {
+    const sc = opts.scale || 1;
+    if (!geo.length) throw new Error('Nel file non ci sono linee, archi o cerchi da importare.');
+    if (geo.length > DXF_MAXENT) throw new Error(`Il file ha ${geo.length.toLocaleString('it-IT')} entità: il massimo è ${DXF_MAXENT.toLocaleString('it-IT')}. Tieni nel DXF solo il contorno del pezzo (senza cartiglio, quote e tratteggi) e riprova.`);
+    // ingombro e origine dal contorno vero (gli assi spesso sporgono)
+    const solid = geo.filter(g => !g.kind);
+    const bb = dxfBox(solid.length ? solid : geo);
+    let ox = 0, oy = 0;
+    if (opts.origin === 'corner') { ox = bb.mn[0]; oy = bb.mn[1]; }
+    else if (opts.origin === 'center') { ox = (bb.mn[0] + bb.mx[0]) / 2; oy = (bb.mn[1] + bb.mx[1]) / 2; }
+    const size = Math.max(bb.mx[0] - bb.mn[0], bb.mx[1] - bb.mn[1]) * sc;
+    const tol = opts.tol !== undefined ? opts.tol : Math.max(1e-4, size * 1e-6);
+    const T = p => [(p[0] - ox) * sc, (p[1] - oy) * sc];
+    // punti: griglia di passo tol per trovare i vicini
+    const grid = new Map(), pts = [];
+    const key = (x, y) => Math.round(x / tol) + ',' + Math.round(y / tol);
+    let next = sk.next;
+    const newId = p => p + (next++);
+    const pointAt = p => {
+      const gx = Math.round(p[0] / tol), gy = Math.round(p[1] / tol);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const l = grid.get((gx + dx) + ',' + (gy + dy)); if (!l) continue;
+        for (const q of l) if (Math.hypot(q.x - p[0], q.y - p[1]) <= tol) return q.id;
+      }
+      const e = { id: newId('p'), t: 'pt', x: p[0], y: p[1] };
+      pts.push(e); const k = key(p[0], p[1]); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(e);
+      return e.id;
+    };
+    const out = [], seen = new Set();
+    // assi (tratto-punto) → linee di mezzeria; linee tratteggiate e archi d'asse → costruzione
+    const cx = g => !g.kind ? {} : (g.kind === 'center' && g.t === 'line') ? { cons: true, center: true } : { cons: true };
+    let dup = 0, tiny = 0;
+    const r6 = x => Math.round(x / tol);
+    for (const g of geo) {
+      if (g.t === 'line') {
+        const a = pointAt(T(g.a)), b = pointAt(T(g.b));
+        if (a === b) { tiny++; continue; }
+        const k = 'l' + [a, b].sort().join('|');
+        if (seen.has(k)) { dup++; continue; } seen.add(k);
+        out.push({ id: newId('l'), t: 'ln', a, b, ...cx(g) });
+      } else if (g.t === 'circle') {
+        const c = T(g.c), r = g.r * sc;
+        if (r < tol) { tiny++; continue; }
+        const k = 'c' + r6(c[0]) + ',' + r6(c[1]) + ',' + r6(r);
+        if (seen.has(k)) { dup++; continue; } seen.add(k);
+        // il centro non si unisce agli altri punti: è un punto a sé, come nei cerchi disegnati
+        const cid = newId('p'); pts.push({ id: cid, t: 'pt', x: c[0], y: c[1] });
+        out.push({ id: newId('c'), t: 'ci', c: cid, r, ...cx(g) });
+      } else {
+        const c = T(g.c), r = g.r * sc;
+        if (r < tol || (g.a1 - g.a0) * r < tol) { tiny++; continue; }
+        const pa = pointAt([c[0] + r * Math.cos(g.a0), c[1] + r * Math.sin(g.a0)]), pb = pointAt([c[0] + r * Math.cos(g.a1), c[1] + r * Math.sin(g.a1)]);
+        if (pa === pb) { tiny++; continue; }
+        const k = 'a' + r6(c[0]) + ',' + r6(c[1]) + ',' + r6(r) + ',' + pa + ',' + pb;
+        if (seen.has(k)) { dup++; continue; } seen.add(k);
+        const cid = newId('p'); pts.push({ id: cid, t: 'pt', x: c[0], y: c[1] });
+        out.push({ id: newId('a'), t: 'ar', c: cid, a: pa, b: pb, ...cx(g) });
+      }
+    }
+    // centri degli archi: il raggio verso i due estremi (uniti) può differire di poco; il centro va sull'asse della corda
+    const P = new Map(pts.map(p => [p.id, p]));
+    for (const e of out) if (e.t === 'ar') {
+      const c = P.get(e.c), a = P.get(e.a), b = P.get(e.b);
+      const ra = Math.hypot(a.x - c.x, a.y - c.y), rb = Math.hypot(b.x - c.x, b.y - c.y);
+      if (Math.abs(ra - rb) < 1e-12) continue;
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+      const t = ((c.x - mx) * -dy + (c.y - my) * dx) / d;   // distanza con segno dal punto medio lungo la normale
+      c.x = mx - t * dy / d; c.y = my + t * dx / d;
+    }
+    for (const p of pts) sk.ents.push(p);
+    for (const e of out) sk.ents.push(e);
+    sk.next = next;
+    const count = { line: 0, arc: 0, circle: 0, center: 0, cons: 0 };
+    for (const e of out) { if (e.center) count.center++; else if (e.cons) count.cons++; else count[e.t === 'ln' ? 'line' : e.t === 'ar' ? 'arc' : 'circle']++; }
+    return { count, dup, tiny, points: pts.length, box: { mn: T(bb.mn), mx: T(bb.mx) }, ids: out.map(e => e.id) };
+  }
+
+  const api = { parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS, parseDXF, dxfToSketch, DXF_SCALE, DXF_UNITS, DXF_MAXENT };
   if (typeof module !== 'undefined') module.exports = api; else root.Import = api;
 })(this);
 
@@ -3871,6 +4211,7 @@ label.chk .gl-i { margin-left: 2px; }
     trim: I('<path d="M3 12h18M12 3v18"/><path d="M15 9l6-6" stroke-dasharray="1.5 1.5"/><circle cx="7" cy="17" r="2"/><circle cx="7" cy="7" r="2"/><path d="M8.5 15.5L13 11M8.5 8.5L13 13"/>'),
     smirror: I('<path d="M12 3v18" stroke-dasharray="6 2 1.5 2"/><path d="M4 6l5 3-5 6z"/><path d="M20 6l-5 3 5 6z" stroke-dasharray="1.5 1.5"/>'),
     convert: I('<path d="M4 9l8-4 8 4v7l-8 4-8-4z" opacity=".5"/><path d="M4 9l8 4 8-4" stroke-width="2.4"/>'),
+    dxf: I('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 17v-5h6M12 12a3 3 0 013 3"/>'),
     offset: I('<path d="M4 18V8a4 4 0 014-4h12"/><path d="M8 18v-8a2 2 0 012-2h10" stroke-dasharray="1.5 1.5"/>'),
     dim: I('<path d="M4 8v10M20 8v10M4 13h16M7 10.5L4 13l3 2.5M17 10.5l3 2.5-3 2.5"/><path d="M9 6h6" stroke-width="2.2"/>'),
     relation: I('<path d="M5 17L17 5"/><path d="M8 19L19 8"/><path d="M3 6l3-3M18 21l3-3" stroke-dasharray="1.5 1.5"/>'),
@@ -4674,6 +5015,7 @@ label.chk .gl-i { margin-left: 2px; }
       case 'measure': return Features.measure();
       case 'section': return toggleSection();
       case 'selftest': return selfTestDialog();
+      case 'dxf': return importDxfDialog();
     }
   };
   // chiede di scegliere un piano/faccia nella vista (con i piani visibili)
@@ -5014,6 +5356,63 @@ label.chk .gl-i { margin-left: 2px; }
     return { f, info, error: e || null, warn: w || null, msg };
   }
   App.importMeshData = importMeshData;
+  /* ---------- importazione DXF in uno schizzo (come «Importa in un nuovo schizzo 2D» e «Inserisci DXF» di SolidWorks) ---------- */
+  const DXF_UNIT_NAMES = { mm: 'millimetri', cm: 'centimetri', dm: 'decimetri', m: 'metri', in: 'pollici', ft: 'piedi', mil: 'millesimi di pollice', uin: 'milionesimi di pollice', um: 'micrometri' };
+  function importDxfDialog() {
+    const inSketch = App.mode === 'sketch';
+    if (inSketch && Sketcher.session() && Sketcher.session().opts.hole) { toast('Nello schizzo delle posizioni dei fori non si importano file DXF.'); return; }
+    modal('Importa un file DXF', `<p class="note">Linee, archi e cerchi del disegno entrano ${inSketch ? 'nello <b>schizzo aperto</b>' : 'in uno <b>schizzo nuovo</b>'}: poi li estrudi, o li fai ruotare attorno a una linea di mezzeria. Testi, quote, tratteggi, ellissi e curve spline non si importano.</p>
+      <p><input type="file" id="dxfFile" accept=".dxf"></p>
+      ${inSketch ? '' : '<div class="row"><label for="dxfPlane">Piano dello schizzo</label><select id="dxfPlane"><option value="front">Piano frontale</option><option value="top">Piano superiore</option><option value="right">Piano destro</option></select></div>'}
+      <div class="row"><label for="dxfUnit">Unità del file</label><select id="dxfUnit"><option value="file">dal file</option><option value="mm">millimetri</option><option value="cm">centimetri</option><option value="m">metri</option><option value="in">pollici</option></select></div>
+      <div class="row"><label for="dxfOrigin">Posizione</label><select id="dxfOrigin"><option value="file">come nel file</option><option value="corner">angolo in basso a sinistra sull'origine</option><option value="center">centro sull'origine</option></select></div>
+      <p class="note">Le linee tratto-punto (assi) diventano <b>linee di mezzeria</b>, quelle tratteggiate <b>geometria di costruzione</b>. Gli estremi molto vicini vengono uniti e le entità doppie tolte. Se il file non dice l'unità si usano i millimetri. Un file DWG va prima salvato come DXF.</p>
+      <p class="note err" id="dxfErr" hidden></p>`, [
+      { label: 'Annulla' },
+      { label: 'Importa', primary: true, keep: true, fn: () => {
+        const inp = $('#dxfFile'), file = inp && inp.files[0];
+        const err = t => { const e = $('#dxfErr'); e.textContent = t; e.hidden = false; };
+        if (!file) { err('Scegli prima il file.'); return; }
+        const opts = { unit: $('#dxfUnit').value, origin: $('#dxfOrigin').value, plane: $('#dxfPlane') ? $('#dxfPlane').value : null };
+        const rd = new FileReader();
+        rd.onload = () => {
+          try { const r = importDxfData(file.name, new Uint8Array(rd.result), opts); closeModal(); toast(r.msg, 8000); }
+          catch (e) { err(e.message); }
+        };
+        rd.onerror = () => err('Il file non si riesce a leggere.');
+        rd.readAsArrayBuffer(file);
+      } },
+    ]);
+  }
+  function importDxfData(name, data, opts = {}) {
+    const ext = (String(name).split('.').pop() || '').toLowerCase();
+    if (ext === 'dwg') throw new Error('I file DWG sono un formato chiuso di AutoCAD: salvalo come DXF (da AutoCAD, DraftSight o con ODA File Converter, gratuito) e importa quello.');
+    if (ext !== 'dxf') throw new Error('Qui si importano file .dxf. Per i pezzi 3D usa «Importa STL o OBJ».');
+    const r = Import.parseDXF(data);
+    const unit = opts.unit && opts.unit !== 'file' ? opts.unit : (r.unit || 'mm');
+    const scale = Import.DXF_SCALE[unit];
+    if (!r.geo.length) throw new Error('Nel file non ci sono linee, archi o cerchi da importare' + (Object.keys(r.skipped).length ? ' (solo ' + Object.keys(r.skipped).join(', ') + ').' : '.'));
+    if (r.geo.length > Import.DXF_MAXENT) throw new Error(`Il file ha ${r.geo.length.toLocaleString('it-IT')} entità: il massimo è ${Import.DXF_MAXENT.toLocaleString('it-IT')}. Tieni nel DXF solo il contorno del pezzo (senza cartiglio, quote e tratteggi) e riprova.`);
+    if (App.mode === 'drawing') App.setCmdTab('features');
+    if (App.mode !== 'sketch') {
+      if (App.pm) App.closePM(false);
+      Sketcher.start({ kind: 'std', id: Model.STD_PLANES[opts.plane] ? opts.plane : 'front' });
+    }
+    const info = Sketcher.insertDXF(r.geo, { scale, origin: opts.origin || 'file' });
+    const c = info.count, parts = [];
+    const n = (k, one, many) => { if (c[k]) parts.push(c[k] + ' ' + (c[k] === 1 ? one : many)); };
+    n('line', 'linea', 'linee'); n('arc', 'arco', 'archi'); n('circle', 'cerchio', 'cerchi'); n('center', 'linea di mezzeria', 'linee di mezzeria'); n('cons', 'entità di costruzione', 'entità di costruzione');
+    const fmt = x => (Math.round(x * 100) / 100).toLocaleString('it-IT');
+    let msg = `Importato «${name}»: ${parts.join(', ')}. Ingombro ${fmt(info.box.mx[0] - info.box.mn[0])} × ${fmt(info.box.mx[1] - info.box.mn[1])} mm (unità: ${DXF_UNIT_NAMES[unit] || unit}${r.unit || (opts.unit && opts.unit !== 'file') ? '' : ', il file non la dice'}).`;
+    const ONE = { testi: 'testo', quote: 'quota', tratteggi: 'tratteggio', riempimenti: 'riempimento', punti: 'punto', ellissi: 'ellisse', 'curve spline': 'curva spline', richiami: 'richiamo', 'facce 3D': 'faccia 3D', attributi: 'attributo', immagini: 'immagine', finestre: 'finestra', mascherature: 'mascheratura', semirette: 'semiretta', 'rette infinite': 'retta infinita', tolleranze: 'tolleranza', blocchi: 'blocco' };
+    const sk = Object.entries(r.skipped).map(([k, v]) => v + ' ' + (v === 1 && ONE[k] ? ONE[k] : k));
+    if (sk.length) msg += ' Non importati: ' + sk.join(', ') + '.';
+    if (info.dup) msg += ` Tolte ${info.dup} entità doppie.`;
+    if (r.curves3d) msg += ` ${r.curves3d} entità fuori dal piano del disegno sono state saltate o appiattite.`;
+    return { info, parsed: r, unit, msg };
+  }
+  App.importDxfData = importDxfData;
+  App.importDxfDialog = importDxfDialog;
   function newPart() {
     confirmModal('Nuova parte', 'La parte attuale verrà sostituita da una parte vuota. Se ti serve, esportala prima.', 'Nuova parte', () => {
       if (App.mode === 'sketch') Sketcher.exit(false);
@@ -5053,7 +5452,7 @@ label.chk .gl-i { margin-left: 2px; }
     $('#btnFile').addEventListener('click', e => { e.stopPropagation(); const m = $('#menuFile'); const open = m.hidden; hideMenus(); m.hidden = !open; });
     $('#menuFile').addEventListener('click', e => {
       const b = e.target.closest('[data-act]'); if (!b) return; hideMenus();
-      ({ new: newPart, export: exportProject, import: importProject, importMesh: importMeshDialog, stl: exportSTL, help: () => (window.Guide ? window.Guide.open(null) : help()) })[b.dataset.act]();
+      ({ new: newPart, export: exportProject, import: importProject, importMesh: importMeshDialog, importDxf: importDxfDialog, stl: exportSTL, help: () => (window.Guide ? window.Guide.open(null) : help()) })[b.dataset.act]();
     });
     $('#btnViews').addEventListener('click', e => { e.stopPropagation(); const m = $('#viewsMenu'); const o = m.hidden; hideMenus(); m.hidden = !o; });
     $('#btnStyle').addEventListener('click', e => { e.stopPropagation(); const m = $('#styleMenu'); const o = m.hidden; hideMenus(); m.hidden = !o; document.querySelectorAll('#styleMenu [data-s]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.s === App.r.mode))); });
@@ -5132,6 +5531,24 @@ label.chk .gl-i { margin-left: 2px; }
     document.querySelector('#modifyInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commitModify(); } if (e.key === 'Escape') { e.preventDefault(); closeModify(true); } });
   };
   SK.frame = () => ss && ss.F;
+  // geometria di un file DXF (Import.parseDXF) nello schizzo aperto; le entità nuove restano selezionate
+  SK.insertDXF = function (geo, opts) {
+    const App = A();
+    if (!ss) throw new Error('Apri prima uno schizzo.');
+    if (ss.opts.hole) throw new Error('Nello schizzo delle posizioni dei fori non si importano file DXF.');
+    if (ss.tool !== 'select') setTool('select');
+    const info = edit(() => window.Import.dxfToSketch(ss.sk, geo, opts));
+    ss.sel = new Set(info.ids);
+    // inquadra lo schizzo con la geometria nuova
+    const b3 = { mn: [Infinity, Infinity, Infinity], mx: [-Infinity, -Infinity, -Infinity] };
+    for (const p of ss.sk.ents) if (p.t === 'pt' && !p.ext) { const q = Geom.to3(ss.F, [p.x, p.y]); for (let k = 0; k < 3; k++) { b3.mn[k] = Math.min(b3.mn[k], q[k]); b3.mx[k] = Math.max(b3.mx[k], q[k]); } }
+    for (const k of [0, 1]) { const q = Geom.to3(ss.F, k ? info.box.mx : info.box.mn); for (let j = 0; j < 3; j++) { b3.mn[j] = Math.min(b3.mn[j], q[j]); b3.mx[j] = Math.max(b3.mx[j], q[j]); } }
+    App.r.targetQ = GLView.Renderer.normalQ(ss.F);
+    App.r.fit(true, App.st.body.length ? { mn: b3.mn.map((v, k) => Math.min(v, App.r.bbox.mn[k])), mx: b3.mx.map((v, k) => Math.max(v, App.r.bbox.mx[k])) } : b3);
+    showProps();
+    App.redraw();
+    return info;
+  };
   SK.refresh = () => { if (ss) solveAndAnalyze(); };
   SK.session = () => ss;
   SK.start = function (planeRef, opts = {}) {
@@ -5240,6 +5657,7 @@ label.chk .gl-i { margin-left: 2px; }
     ['trim', 'Taglia entità', 'Clic sulla parte di entità da togliere (fino alle intersezioni)'],
     ['smirror', 'Specchia entità', 'Seleziona le entità e una linea di mezzeria, poi premi qui'],
     ['convert', 'Converti entità', 'Copia nello schizzo gli spigoli selezionati della faccia (in grigio)'],
+    ['dxf', 'Inserisci DXF', 'Porta nello schizzo linee, archi e cerchi di un file DXF'],
     ['construction', 'Costruzione', 'Trasforma le entità selezionate in geometria di costruzione (e viceversa)'],
     '-',
     ['dim', 'Quota intelligente', 'Clic su una o due entità, poi clic per posizionare la quota e scrivi il valore'],
@@ -5249,7 +5667,7 @@ label.chk .gl-i { margin-left: 2px; }
   SK.toolbar = function () {
     const App = A();
     if (App.mode !== 'sketch') {
-      return [['sketch', 'Schizzo', 'Nuovo schizzo: scegli un piano o una faccia piana'], '-', ...TOOLS.filter(t => t !== '-' && t[0] !== 'exitSketch').map(t => [t[0], t[1], 'Entra prima in uno schizzo', { disabled: true }])];
+      return [['sketch', 'Schizzo', 'Nuovo schizzo: scegli un piano o una faccia piana'], ['dxf', 'Inserisci DXF', 'Schizzo nuovo con linee, archi e cerchi di un file DXF'], '-', ...TOOLS.filter(t => t !== '-' && t[0] !== 'exitSketch' && t[0] !== 'dxf').map(t => [t[0], t[1], 'Entra prima in uno schizzo', { disabled: true }])];
     }
     if (ss.opts.hole) return [['point', 'Punto', 'Posizione del foro', { pressed: ss.tool === 'point' }], ['dim', 'Quota intelligente', 'Quota la posizione dei fori', { pressed: ss.tool === 'dim' }], ['relation', 'Aggiungi relazione', 'Relazioni tra i punti e gli spigoli', { pressed: ss.tool === 'relation' }], '-', ['exitSketch', 'Conferma le posizioni', 'Torna al pannello del foro']];
     return TOOLS.map(t => t === '-' ? t : [t[0], t[1], t[2], { pressed: ss.tool === t[0] }]);
@@ -5263,6 +5681,7 @@ label.chk .gl-i { margin-left: 2px; }
       case 'construction': toggleConstruction(); return;
       case 'smirror': mirrorSelected(); return;
       case 'convert': convertSelected(); return;
+      case 'dxf': setTool('select'); App.importDxfDialog(); return;
     }
     setTool(ss.tool === id && id !== 'select' ? 'select' : id);
   };
@@ -9820,6 +10239,9 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Importazione', 'Asse Z del file verso l\'alto', ['z verso l\'alto', 'asse z'], 'Nel Banco CAD (come in SolidWorks) la verticale è l\'asse Y; molti programmi per la stampa 3D usano invece la Z. Con questa casella la Z del file diventa la verticale e il pezzo non arriva coricato.'],
     ['Importazione', 'Opzioni di importazione', [], 'Le scelte che servono per leggere bene il file: l\'unità di misura e quale asse è verso l\'alto. Si possono cambiare in ogni momento con doppio clic su «Importato» nell\'albero.'],
     ['Importazione', 'Corpo chiuso', ['corpo non chiuso', 'lati liberi'], 'Un corpo a faccette è chiuso quando ogni lato di triangolo è in comune con esattamente un altro triangolo: allora racchiude un volume. Se ci sono lati liberi (buchi nella superficie) volume e massa non sono attendibili e le funzioni aggiunte sopra possono fallire.'],
+    ['Importazione', 'Inserisci DXF', ['importa dxf', 'importa dxf (schizzo)', 'importare un dxf'], 'Porta in uno schizzo le linee, gli archi e i cerchi di un disegno 2D fatto con un altro programma (AutoCAD, DraftSight, LibreCAD, la messa in tavola di SolidWorks…). Fuori da uno schizzo, o da Progetto › Importa DXF (schizzo), crea uno schizzo nuovo sul piano scelto; dentro uno schizzo aggiunge la geometria a quello aperto. Le entità arrivano senza quote, quindi blu (sotto definite): si possono estrudere o far ruotare subito, oppure quotare.'],
+    ['Importazione', 'File DXF', ['.dxf', 'dwg', 'formato dxf'], 'Formato di scambio dei disegni 2D, nato con AutoCAD e letto da quasi tutti i CAD. Qui si leggono i file DXF di testo (ASCII): linee, archi, cerchi, polilinee (anche con tratti curvi) e blocchi. Testi, quote, tratteggi, ellissi e spline si saltano. Il DWG è il formato chiuso di AutoCAD: va prima salvato come DXF.'],
+    ['Importazione', 'Tipo di linea', ['tratto-punto', 'tratteggiata', 'linetype'], 'Il modo in cui è disegnata una linea: continua, tratteggiata (spigoli nascosti) o tratto-punto (assi). Nell\'importazione DXF le linee tratto-punto diventano linee di mezzeria, le tratteggiate geometria di costruzione; le continue formano i contorni.'],
     ['Importazione', 'File importato', [], 'Il nome e il formato del file da cui viene il corpo, con il numero di triangoli, le facce piane riconosciute e l\'ingombro. Le facce piane (fatte da più triangoli sullo stesso piano) si possono usare per gli schizzi, come le facce di un pezzo disegnato qui.'],
   ];
 
@@ -10307,6 +10729,56 @@ T('Cubo importato + estrusione unita sopra (10 × 10 × 5)', () => {
 // materiale
 T('Massa acciaio S235 (blocco 80×50×10)', () => { const d = box(); d.material = 's235'; return d; }, { V: 40000, M: 40000 * 7.85 / 1000 });
 
+/* ---------- schizzi da file DXF (linee, archi, cerchi) ---------- */
+// file DXF di testo costruiti qui: coppie «codice di gruppo / valore»
+const dxfFile = (ents, opt = {}) => ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', String(opt.units === undefined ? 4 : opt.units), '0', 'ENDSEC',
+  ...(opt.tables || []), ...(opt.blocks || []), '0', 'SECTION', '2', 'ENTITIES', ...ents.flat().map(String), '0', 'ENDSEC', '0', 'EOF'].join('\r\n');
+const dLine = (x0, y0, x1, y1, ly = '0') => ['0', 'LINE', '8', ly, '10', x0, '20', y0, '30', 0, '11', x1, '21', y1, '31', 0];
+const dCircle = (x, y, r) => ['0', 'CIRCLE', '8', '0', '10', x, '20', y, '40', r];
+const dArc = (x, y, r, a0, a1) => ['0', 'ARC', '8', '0', '10', x, '20', y, '40', r, '50', a0, '51', a1];
+const dPoly = (pts, closed) => ['0', 'LWPOLYLINE', '8', '0', '90', pts.length, '70', closed ? 1 : 0, ...pts.flatMap(p => ['10', p[0], '20', p[1], '42', p[2] || 0])];
+// blocco «Q»: quadrato 10×10 con foro Ø4, punto base (5, 5)
+const dBlockQ = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'Q', '10', '5', '20', '5', ...[dPoly([[5, 5], [15, 5], [15, 15], [5, 15]], true), dCircle(10, 10, 2)].flat().map(String), '0', 'ENDBLK', '0', 'ENDSEC'];
+// schizzo sul piano frontale importato dal DXF, poi estrusione cieca o rivoluzione di 360°
+function dxfPart(text, fn = 'extrude', opts = {}) {
+  const r = MI.parseDXF(text); const b = SB();
+  MI.dxfToSketch(b.s, r.geo, { scale: MI.DXF_SCALE[r.unit || 'mm'], ...opts });
+  const doc = D0('dxf'); const s = sketch(doc, STD('front'), b);
+  if (fn === 'extrude') feat(doc, { type: 'extrude', sketch: s, end: 'blind', depth: 10 });
+  else feat(doc, { type: 'revolve', sketch: s, angle: 360, axis: Sketch.profiles(b.s).axes[0].id });
+  return doc;
+}
+T('DXF: piastra 100×60 (4 LINE) con foro Ø20 (CIRCLE), estrusa 10', () => dxfPart(dxfFile([dLine(0, 0, 100, 0), dLine(100, 0, 100, 60), dLine(100, 60, 0, 60), dLine(0, 60, 0, 0), dCircle(30, 30, 10)])),
+  { V: 10 * (6000 - PI * 100), A: 2 * (6000 - PI * 100) + 10 * 320 + 10 * 20 * PI, C: [(6000 * 50 - 100 * PI * 30) / (6000 - 100 * PI), (6000 * 30 - 100 * PI * 30) / (6000 - 100 * PI), 5], bb: [[0, 0, 0], [100, 60, 10]] });
+T('DXF: asola da LWPOLYLINE con bulge 1 (semicerchi R10, interasse 40)', () => dxfPart(dxfFile([dPoly([[0, 0], [40, 0, 1], [40, 20], [0, 20, 1]], true)])),
+  { V: 10 * (800 + PI * 100), bb: [[-10, 0, 0], [50, 20, 10]], C: [20, 10, 5] });
+T('DXF: forma a D (LINE + ARC da -90° a 90°)', () => dxfPart(dxfFile([dLine(0, 0, 0, 40), dArc(0, 20, 20, -90, 90)])),
+  { V: 10 * PI * 400 / 2, bb: [[0, 0, 0], [20, 40, 10]], C: [4 * 20 / (3 * PI), 20, 5] });
+T('DXF in centimetri ($INSUNITS 5): quadrato 5 cm = 50 mm', () => dxfPart(dxfFile([dPoly([[0, 0], [5, 0], [5, 5], [0, 5]], true)], { units: 5 })),
+  { V: 25000, bb: [[0, 0, 0], [50, 50, 10]] });
+T('DXF: blocco inserito in (100, 0), scala 2, ruotato 90°', () => dxfPart(dxfFile([['0', 'INSERT', '2', 'Q', '10', '100', '20', '0', '41', '2', '42', '2', '50', '90']], { blocks: dBlockQ })),
+  { V: 10 * (400 - PI * 16), bb: [[80, 0, 0], [100, 20, 10]], C: [90, 10, 5] });
+T('DXF: estremi staccati di 0,00002 mm e contorno doppio (uniti e tolti)', () => dxfPart(dxfFile([dLine(0, 0, 50, 0), dLine(50.00001, 0, 50, 30), dLine(50, 30, 0, 30.00002), dLine(0, 30, 0, 0), dLine(50, 0, 0, 0), dLine(0, 30, 50, 30)])),
+  { V: 15000, bb: [[0, 0, 0], [50, 30, 10]] });
+T('DXF: rivoluzione attorno all\'asse tratto-punto (layer con tipo di linea CENTER)', () => dxfPart(dxfFile([dLine(0, -5, 0, 45, 'ASSI'), dPoly([[20, 0], [30, 0], [30, 40], [20, 40]], true)],
+  { tables: ['0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '0', 'LAYER', '2', 'ASSI', '70', '0', '6', 'CENTER', '0', 'ENDTAB', '0', 'ENDSEC'] }), 'revolve'),
+  { V: PI * (900 - 400) * 40, bb: [[-30, 0, -30], [30, 40, 30]], C: [0, 20, 0] });
+T('DXF: contorno spostato con l\'angolo in basso a sinistra sull\'origine', () => dxfPart(dxfFile([dPoly([[200, 100], [240, 100], [240, 130], [200, 130]], true)]), 'extrude', { origin: 'corner' }),
+  { V: 12000, bb: [[0, 0, 0], [40, 30, 10]] });
+
+T('Piastra 100×60×12 con 4 fori Ø8 allineati a due a due e foro centrale Ø28', () => {
+  const doc = D0('piastra fori'); const b = SB(); b.rect(0, 0, 100, 60);
+  for (const [x, y] of [[15, 15], [85, 15], [85, 45], [15, 45]]) b.circle(x, y, 4);
+  b.circle(50, 30, 14);
+  feat(doc, { type: 'extrude', sketch: sketch(doc, STD('top'), b), end: 'blind', depth: 12 }); return doc;
+}, { V: 12 * (6000 - 4 * PI * 16 - PI * 196), C: [50, 6, -30], bb: [[0, 0, -60], [100, 12, 0]] });
+T('DXF: flangia con angoli raggiati R10 (LWPOLYLINE), 4 fori Ø8 e foro Ø28', () => {
+  const b = SB(), q = Math.SQRT2 - 1;
+  const r = MI.parseDXF(dxfFile([dPoly([[10, 0], [90, 0, q], [100, 10], [100, 50, q], [90, 60], [10, 60, q], [0, 50], [0, 10, q]], true), dCircle(15, 15, 4), dCircle(85, 15, 4), dCircle(85, 45, 4), dCircle(15, 45, 4), dCircle(50, 30, 14)]));
+  MI.dxfToSketch(b.s, r.geo, {});
+  const doc = D0('flangia'); feat(doc, { type: 'extrude', sketch: sketch(doc, STD('top'), b), end: 'blind', depth: 12 }); return doc;
+}, { V: 12 * (6000 - (4 - PI) * 100 - 4 * PI * 16 - PI * 196), C: [50, 6, -30], bb: [[0, 0, -60], [100, 12, 0]] });
+
 /* ---------- schizzo: risolutore ---------- */
 const SK = [];
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
@@ -10325,6 +10797,12 @@ SK.push(['Retta inclinata: lunghezza 30, angolo 30° dall\'orizzontale', () => {
   const b = SB(); const a = b.pt(0, 0), e = b.pt(20, 15); const l = b.line(a, e); const h = b.line(b.pt(0, -5), b.pt(10, -5));
   b.s.cons.push({ t: 'coincident', e: [a, 'O'] }, { t: 'horizontal', e: [h] }, { t: 'len', e: [l], v: 30 }, { t: 'angle', e: [h, l], v: 30 });
   const r = Sketch.solve(b.s); const E = Sketch.byId(b.s); return { ok: r.ok, got: [E.get(e).x, E.get(e).y], exp: [30 * Math.cos(PI / 6), 15] };
+}]);
+
+SK.push(['DXF: testi e quote ignorati, linee contate (3 LINE, 1 TEXT, 1 DIMENSION, 1 SPLINE)', () => {
+  const r = MI.parseDXF(dxfFile([dLine(0, 0, 10, 0), dLine(10, 0, 10, 10), dLine(10, 10, 0, 0), ['0', 'TEXT', '8', '0', '10', '0', '20', '0', '1', 'ciao'], ['0', 'DIMENSION', '8', '0'], ['0', 'SPLINE', '8', '0']]));
+  const b = SB(); const info = MI.dxfToSketch(b.s, r.geo, {});
+  return { ok: true, got: [info.count.line, r.skipped.testi, r.skipped.quote, r.skipped['curve spline'], info.points], exp: [3, 1, 1, 1, 3] };
 }]);
 
 /* ---------- esecuzione ---------- */
@@ -10555,6 +11033,19 @@ if (isNode) {
     cmd: { tab: 'sketch', id: 'smirror' },
     steps: ['Disegna una [[Linea di mezzeria]] e metà profilo.', 'Seleziona le entità da copiare e la mezzeria (Ctrl+clic).', 'Premi **Specchia entità**: la copia ha le relazioni di simmetria.'],
     terms: ['Specchia entità', 'Simmetrica', 'Linea di mezzeria'],
+  });
+  add('Schizzo', 'sk-dxf', 'Importare un disegno DXF in uno schizzo', {
+    why: 'Usare il contorno di un pezzo disegnato con un altro programma (AutoCAD, DraftSight, LibreCAD, la tavola di SolidWorks…) senza ridisegnarlo.',
+    cmd: { tab: 'sketch', id: 'dxf' },
+    steps: [
+      'Nel programma d\'origine salva il disegno come [[File DXF]], meglio se con il solo contorno del pezzo (senza cartiglio, quote e tratteggi).',
+      'Scheda **Schizzo › Inserisci DXF** (oppure **Progetto › Importa DXF (schizzo)**). Fuori da uno schizzo scegli il **piano**; dentro uno schizzo la geometria va in quello aperto.',
+      'Scegli il file, l\'[[Unità del file]] (di solito «dal file») e la **posizione**: come nel file, oppure con l\'angolo in basso a sinistra o il centro sull\'origine. Premi **Importa**.',
+      'Le entità arrivano selezionate e blu ([[Sotto definito]]): controlla che i contorni siano chiusi, poi premi ✓.',
+      'Seleziona lo schizzo e usa **Estrusione base**, oppure **Rivoluzione base** se c\'è una [[Linea di mezzeria]].',
+    ],
+    tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Al massimo 3000 entità: i disegni più grandi vanno puliti prima.'],
+    terms: ['Inserisci DXF', 'File DXF', 'Tipo di linea', 'Unità del file'],
   });
   add('Schizzo', 'sk-converti', 'Converti entità', {
     why: 'Usare gli spigoli del pezzo nello schizzo (per esempio per una borchia sul bordo).',
