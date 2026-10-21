@@ -30,7 +30,7 @@ Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo
 
 Il lavoro si salva da solo nel browser. Per portarlo su un altro computer usa **Progetto › Esporta il progetto** e poi **Importa un progetto**.
 
-Con **Progetto › Importa STEP o IGES** si apre un pezzo (o un piccolo assieme) fatto con un altro programma CAD (SolidWorks, Inventor, Fusion, FreeCAD… salvato in STEP o IGES): arriva con le sue facce vere e l'unità del file, si misura, si mette in tavola, se ne calcolano volume e massa con un errore molto sotto l'1 %, e sopra si aggiungono schizzi e funzioni. Se il file contiene più corpi si sceglie quali importare; i colori delle facce scritti nel file si vedono sul pezzo. Il lettore è OpenCascade, compresso dentro la pagina: funziona anche senza internet, e legge il file a parte, così la pagina non si blocca (la lettura si può annullare).
+Con **Progetto › Importa STEP o IGES** si apre un pezzo (o un piccolo assieme) fatto con un altro programma CAD (SolidWorks, Inventor, Fusion, FreeCAD… salvato in STEP o IGES): arriva con le sue facce vere e l'unità del file, si misura, si mette in tavola, se ne calcolano volume e massa con un errore molto sotto l'1 %, e sopra si aggiungono schizzi e funzioni. Se il file contiene più corpi si sceglie quali importare, e ognuno arriva nella sua funzione «Importato» (oppure tutti insieme in una); i colori delle facce scritti nel file si vedono sul pezzo. Il lettore è OpenCascade, compresso dentro la pagina: funziona anche senza internet, e legge il file a parte, così la pagina non si blocca (la lettura si può annullare).
 
 Con **Progetto › Importa STL o OBJ** si apre anche un pezzo fatto con un altro programma (SolidWorks, Inventor, Tinkercad… salvato in STL o OBJ): arriva come corpo a faccette che si misura, si mette in tavola, se ne calcolano volume e massa, e sulle cui facce piane si possono aggiungere schizzi e funzioni.
 
@@ -79,7 +79,7 @@ Linea, rettangolo e rettangolo centrale, cerchio, archi (centro-estremi, 3 punti
 - **Estrusione con percorso** e **Taglio con percorso** (sweep) lungo linee e archi tangenti.
 - **Nervatura** da una linea aperta, prolungata da sola fino al pezzo.
 - **Creazione guidata fori** secondo le norme: passanti per vite (ISO 273), lamati (DIN 974-1), svasati (ISO 15065), filettati (foro di preparazione), da M3 a M20.
-- **Raccordo** e **Smusso** degli spigoli, lavorati **tutti insieme** come in SolidWorks: dove due raccordi si incontrano si raccordano tra loro, dove se ne incontrano tre ad angolo retto l'angolo diventa una porzione di sfera. Si raccordano anche gli archi (asole) e il bordo di un'ellisse o di una spline importata, che con un clic si sceglie tutto.
+- **Raccordo** e **Smusso** degli spigoli, lavorati **tutti insieme** come in SolidWorks: dove due raccordi si incontrano si raccordano tra loro, dove se ne incontrano tre ad angolo retto l'angolo diventa una porzione di sfera. Si raccordano anche gli archi (asole) e il bordo di un'ellisse o di una spline importata, che con un clic si sceglie tutto. Con la **propagazione tangente** (come in SolidWorks) un clic su uno spigolo lavora anche quelli che lo continuano senza angolo, per esempio tutto il bordo di un'asola.
 - **Serie lineare** (anche a griglia), **Serie circolare**, **Specchio**, **Piano di riferimento**.
 - Albero di progettazione con modifica, soppressione, barra di ripristino, annulla e ripeti.
 
@@ -91,7 +91,7 @@ Proprietà di massa (volume, area, massa, baricentro, ingombro) calcolate sulle 
 
 ![Tavola della flangia: viste in metodo E, quote, cartiglio](docs/img/messa-in-tavola.png)
 
-Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nascoste, assi, viste in sezione tratteggiate, quote (anche automatiche), cartiglio, fogli da A4 ad A2 con scale unificate. Stampa in scala o PDF, esportazione **SVG** e **DXF** (per AutoCAD). Dal menu Progetto anche l'esportazione **STL** per la stampa 3D.
+Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nascoste, assi, viste in sezione tratteggiate, quote (anche automatiche), cartiglio, fogli da A4 ad A2 con scale unificate. L'assonometria si può avere **ombreggiata**, con i colori del pezzo (anche quelli di un file STEP). Stampa in scala o PDF, esportazione **SVG** e **DXF** (per AutoCAD). Dal menu Progetto anche l'esportazione **STL** per la stampa 3D.
 
 ## Guida, glossario ed esercitazioni
 
@@ -105,7 +105,7 @@ Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nasc
 
 ## Calcoli verificati
 
-Ogni calcolo del programma è controllato da prove automatiche: 102 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, su archi e sul bordo di ellissi e spline, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 14 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, assiemi con colori, file danneggiati).
+Ogni calcolo del programma è controllato da prove automatiche: 110 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, su archi, sul bordo di ellissi e spline e con la propagazione tangente, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 14 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, assiemi con colori, file danneggiati).
 
 Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifica**.
 
@@ -119,8 +119,8 @@ Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScr
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (120 + 14 prove STEP/IGES, pochi secondi)
-npm run test:ui                   # solo l'interfaccia in Chromium (39 prove)
+npm run test:kernel               # solo i calcoli (129 + 14 prove STEP/IGES, pochi secondi)
+npm run test:ui                   # solo l'interfaccia in Chromium (49 prove)
 ```
 
 Se hai già un Chromium installato puoi indicarlo con `CHROMIUM_PATH=/percorso/chrome npm run test:ui`. In caso di errore, le immagini di controllo finiscono in `tests/output/`.

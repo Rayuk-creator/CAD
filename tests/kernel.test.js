@@ -553,6 +553,34 @@ T('Raccordo R3 su un arco (semicerchio R10 di un\'asola)', () => { const d = dxf
 T('Smusso 3 su un arco (semicerchio R10 di un\'asola)', () => { const d = dxfPart(dxfFile([dPoly([[0, 0], [40, 0, 1], [40, 20], [0, 20, 1]], true)])); feat(d, { type: 'chamfer', d: 3, edges: [slotArc(d)] }); return d; },
   { D: -4.5 * PI * (10 - 1) });
 
+/* ---------- propagazione tangente (un clic, tutta la catena di spigoli senza angolo) ---------- */
+// Asola: linee lunghe 40 e semicerchi R10. La linea dei baricentri della sezione è il bordo spostato di c: le linee restano
+// lunghe 40, i due semicerchi diventano un cerchio di raggio 10 − c (verso l'interno, asola in rilievo) o 10 + c (foro).
+const slot = () => dxfPart(dxfFile([dPoly([[0, 0], [40, 0, 1], [40, 20], [0, 20, 1]], true)]));
+const slotLine = d => edge(d, [20, 0, 10], 'line');
+T('Propagazione tangente: raccordo R3 con un clic su una linea dell\'asola (4 spigoli)', () => { const d = slot(); feat(d, { type: 'fillet', r: 3, tangent: true, edges: [slotLine(d)] }); return d; },
+  { D: -filA(3) * (80 + 2 * PI * (10 - filC(3))) });
+T('Propagazione tangente: smusso 2 con un clic su un arco dell\'asola (4 spigoli)', () => { const d = slot(); feat(d, { type: 'chamfer', d: 2, tangent: true, edges: [slotArc(d)] }); return d; },
+  { D: -2 * (80 + 2 * PI * (10 - 2 / 3)) });
+T('Senza propagazione tangente: raccordo R3 solo sulla linea dell\'asola', () => { const d = slot(); feat(d, { type: 'fillet', r: 3, tangent: false, edges: [slotLine(d)] }); return d; },
+  { D: -filA(3) * 40 });
+// foro ad asola in una piastra: lo spigolo è convesso, la linea dei baricentri sta fuori dal foro (raggio 10 + c)
+T('Propagazione tangente: raccordo R3 sul bordo di un foro ad asola', () => { const d = dxfPart(dxfFile([dPoly([[-30, -20], [70, -20], [70, 40], [-30, 40]], true), dPoly([[0, 0], [40, 0, 1], [40, 20], [0, 20, 1]], true)]));
+  feat(d, { type: 'fillet', r: 3, tangent: true, edges: [slotLine(d)] }); return d; },
+  { D: -filA(3) * (80 + 2 * PI * (10 + filC(3))) });
+// rettangolo 60 × 20 chiuso in alto da mezza ellisse (semiassi 30 e 15) tangente ai lati verticali: un clic sull'ellisse
+// propaga ai due lati (20 + 20) ma non alla base (angolo retto). Mezza ellisse spostata verso l'interno di c: P/2 − π·c.
+const ellArch = () => dxfPart(dxfFile([dLine(0, 20, 0, 0), dLine(0, 0, 60, 0), dLine(60, 0, 60, 20), dEll(30, 20, 30, 0, 0.5, 0, PI)]));
+T('Propagazione tangente: raccordo R2 dal bordo di una mezza ellisse ai due lati tangenti', () => { const d = ellArch(); feat(d, { type: 'fillet', r: 2, tangent: true, edges: [curveEdge(d, 10)] }); return d; },
+  { D: -filA(2) * (40 + ellP(30, 15) / 2 - PI * filC(2)) });
+// curva aperta da sola: l'utensile finisce piatto alle due estremità (prima i due tappi avevano lo stesso verso)
+T('Raccordo R2 solo sul bordo di una mezza ellisse (curva aperta, senza propagazione)', () => { const d = ellArch(); feat(d, { type: 'fillet', r: 2, tangent: false, edges: [curveEdge(d, 10)] }); return d; },
+  { D: -filA(2) * (ellP(30, 15) / 2 - PI * filC(2)) });
+T('Smusso 2 solo sul bordo di una mezza ellisse (curva aperta, senza propagazione)', () => { const d = ellArch(); feat(d, { type: 'chamfer', d: 2, tangent: false, edges: [curveEdge(d, 10)] }); return d; },
+  { D: -2 * (ellP(30, 15) / 2 - PI * 2 / 3) });
+T('Propagazione tangente: si ferma agli angoli (spigolo del blocco 80 × 50 × 10)', () => { const d = box(); feat(d, { type: 'fillet', r: 5, tangent: true, edges: [edge(d, [40, 10, 0], 'line')] }); return d; },
+  { D: -filA(5) * 80 });
+
 /* ---------- schizzo: risolutore ---------- */
 const SK = [];
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
@@ -655,6 +683,11 @@ SK.push(['Bordo di un foro ellittico: un solo spigolo (tutti gli archi); dopo il
   const smooth = st.topo.edges.filter(e => e.smooth && e.polys.every(p => st.tags.get(st.body[p].t).scg)).length;
   return { ok: !st.errors.size, got: [g0.length, geo.kind === 'curve' ? 1 : 0, geo.parts.every(p => p.kind === 'circle') ? 1 : 0, segs === curve.segs.length ? 1 : 0,
     Math.abs(geo.length / ellP(30, 20) - 1) < 1e-3 ? 1 : 0, Model.edgeGroups(st, st.topo).size, seams, smooth > 50 ? 1 : 0], exp: [14, 1, 1, 1, 1, 15, 0, 1] };
+}]);
+SK.push(['Propagazione tangente: quanti spigoli lavora la funzione (asola 4, mezza ellisse 3, blocco 1, senza propagazione 1)', () => {
+  const n = (d, ref, tangent) => { const id = feat(d, { type: 'fillet', r: 2, tangent, edges: [ref(d)] }); const st = Model.regen(d); return st.errors.size ? -1 : st.edgeCount.get(id); };
+  const a = slot(), e = ellArch(), b = box(), c = slot();
+  return { ok: true, got: [n(a, slotLine, true), n(e, d => curveEdge(d, 10), true), n(b, d => edge(d, [40, 10, 0], 'line'), true), n(c, slotLine, false)], exp: [4, 3, 1, 1] };
 }]);
 // stato dello schizzo con meno vincoli che incognite (si scompone la trasposta della matrice dei vincoli)
 SK.push(['Stato: rettangolo con un vertice nell\'origine e lati orizz./vert. → 2 gradi di libertà', () => {

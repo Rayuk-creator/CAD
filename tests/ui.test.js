@@ -422,6 +422,36 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
       `clic: ${s1.n} spigolo (${s1.segs} tratti evidenziati) → altro punto: ${s2.n} → ${s3.n}; tolti ${D.toFixed(2)} mm³ (${De.toFixed(2)}, ${(100 * rel(D, De)).toFixed(3)}%); righe tra i tratti ${seams}${warn.length ? '; avviso: ' + warn.join(' ') : ''}`);
   } catch (e) { rec('Interfaccia: raccordo sul bordo di un foro ellittico (un clic = tutto il bordo)', false, e.message.split('\n')[0]); }
 
+  // 3m-quater. propagazione tangente: asola (linee 40, semicerchi R10) alta 10, un solo clic su una linea del bordo
+  //            superiore; la casella è già spuntata; raccordo R3 su tutti e 4 gli spigoli: r²(1 − π/4)·(80 + 2π(10 − c))
+  try {
+    await fresh();
+    const file = dxfText([['0', 'LWPOLYLINE', '8', '0', '90', 4, '70', 1, ...[[0, 0, 0], [40, 0, 1], [40, 20, 0], [0, 20, 1]].flatMap(p => ['10', p[0], '20', p[1], '42', p[2]])]], 4);
+    const V0 = await page.evaluate(text => {
+      const s = Sketch.newSketch(); const r = Import.parseDXF(text); Import.dxfToSketch(s, r.geo, {});
+      const d = Model.newDoc(); d.features.push({ id: 'S1', type: 'sketch', name: 'Schizzo1', plane: { kind: 'std', id: 'front' }, sk: s }, { id: 'E1', type: 'extrude', name: 'Estrusione1', sketch: 'S1', end: 'blind', depth: 10 });
+      App.change(() => { App.doc = d; App.sel = []; }); App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false);
+      return Model.massProperties(App.st, App.doc).volume;
+    }, file);
+    await page.waitForTimeout(600);
+    await tool('fillet'); await page.waitForTimeout(300);
+    const box = page.locator('#pm label.chk', { hasText: 'Propagazione tangente' }).locator('input');
+    const checked = await box.isChecked();
+    const [x, y] = await page.evaluate(() => { const p = App.r.project([20, 0, 10]); const c = document.querySelector('.view canvas').getBoundingClientRect(); return [c.left + p[0], c.top + p[1]]; });
+    await page.mouse.move(x, y); await page.waitForTimeout(60); await page.mouse.click(x, y); await page.waitForTimeout(250);
+    const picked = await page.evaluate(() => App.pm.highlight().filter(h => h.kind === 'edge').length);
+    const rr = page.locator('.pm-body .row', { hasText: 'Raggio' }).first().locator('input');
+    await rr.fill('3'); await rr.press('Tab'); await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(OUT, 'propagazione-tangente.png') });
+    await page.click('.pm-ok'); await page.waitForTimeout(400);
+    const p = await props();
+    const info = await page.evaluate(() => { const f = App.doc.features[App.doc.features.length - 1]; return { tangent: f.tangent, n: App.st.edgeCount && App.st.edgeCount.get(f.id), warn: [...App.st.warn.values()] }; });
+    const r = 3, c = r * (10 - 3 * Math.PI) / (3 * (4 - Math.PI)), De = r * r * (1 - Math.PI / 4) * (80 + 2 * Math.PI * (10 - c)), D = p ? V0 - p.V : NaN;
+    const ok = checked && picked === 1 && info.tangent === true && info.n === 4 && p && !p.err.length && !info.warn.length && rel(D, De) < TOL;
+    rec('Interfaccia: propagazione tangente (un clic su una linea dell\'asola = 4 spigoli)', ok,
+      `casella spuntata ${checked}; scelti ${picked}, lavorati ${info.n}; tolti ${D.toFixed(2)} mm³ (${De.toFixed(2)}, ${(100 * rel(D, De)).toFixed(3)}%)${info.warn.length ? '; avviso: ' + info.warn.join(' ') : ''}`);
+  } catch (e) { rec('Interfaccia: propagazione tangente (un clic su una linea dell\'asola = 4 spigoli)', false, e.message.split('\n')[0]); await page.evaluate(() => { if (App.pm) App.closePM(false); }); }
+
   // 3n. importazione STEP e IGES (lettore OpenCascade dentro la pagina): piastra con foro dal menu, pannello, file sbagliati
   try {
     await fresh();
@@ -503,6 +533,68 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     await page.evaluate(() => { App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false); });
     const ok2 = r2.faces === 12 && r2.parts === 2 && c1.red === 2 && c1.blue === 10 && c1.other === 12 && c2.red === 0 && c2.blue === 0;
     rec('Interfaccia: colori delle facce dal file STEP (e casella per toglierli)', ok2, `facce ${r2.faces}, corpi ${r2.parts}; triangoli rossi ${c1.red}, blu ${c1.blue}, altri ${c1.other}; senza colori: rossi ${c2.red}, blu ${c2.blue}`);
+    // assonometria ombreggiata nella tavola, con i colori del file. In assonometria (direzione 1,1,1) di ogni cubo si vedono 3
+    // facce (2 triangoli ciascuna): il primo cubo blu (la faccia rossa è quella di sotto, nascosta), il secondo grigio.
+    // Senza la casella: nessuna faccia piena. Il DXF resta a linee.
+    try {
+      await fresh();
+      await page.evaluate(async bytes => { await App.importCadData('assieme.step', new Uint8Array(bytes), {}); }, [...file]);
+      await page.waitForTimeout(300);
+      await page.evaluate(() => { App.drawingState = null; App.setCmdTab('drawing'); }); await page.waitForTimeout(500);
+      const cls = () => page.evaluate(() => { const d = new DOMParser().parseFromString(document.querySelector('#sheetView svg').outerHTML, 'image/svg+xml');
+        const n = { blue: 0, grey: 0, red: 0, other: 0 };
+        for (const p of d.querySelectorAll('g[data-view="iso"] g[data-shade] polygon')) { const [r, g, b] = p.getAttribute('fill').match(/\d+/g).map(Number);
+          n[r === 0 && g === 0 && b > 0 ? 'blue' : r > 0 && g === 0 && b === 0 ? 'red' : r > 0 && r < g && g < b ? 'grey' : 'other']++; }
+        return n; });
+      const before = await cls();
+      const box = page.locator('#pm label.chk', { hasText: 'Assonometria ombreggiata' }).locator('input');
+      await box.check(); await page.waitForTimeout(600);
+      const after = await cls();
+      await page.screenshot({ path: path.join(OUT, 'tavola-ombreggiata.png') });
+      const dxf = await page.evaluate(() => { const t = Drawing.toDXF(); return { solid: /\nSOLID\n|\nHATCH\n|\n3DFACE\n/.test(t), shaded: !!Drawing.state().shaded }; });
+      await page.evaluate(() => App.setCmdTab('features')); await page.waitForTimeout(300);
+      const ok3 = before.blue + before.grey + before.red + before.other === 0 && after.blue === 6 && after.grey === 6 && after.red === 0 && after.other === 0 && !dxf.solid && dxf.shaded;
+      rec('Interfaccia: assonometria ombreggiata nella tavola con i colori del file STEP', ok3,
+        `senza casella: ${JSON.stringify(before)}; con la casella: blu ${after.blue}, grigie ${after.grey}, rosse ${after.red}, altre ${after.other}; DXF con facce piene: ${dxf.solid}`);
+    } catch (e) { rec('Interfaccia: assonometria ombreggiata nella tavola con i colori del file STEP', false, e.message.split('\n')[0]); await page.evaluate(() => { const m = document.querySelector('#modal'); if (m && !m.hidden) { const b = document.querySelector('#modalActions .btn:not(.btn-primary)'); if (b) b.click(); } if (App.pm) App.closePM(false); if (App.mode === 'drawing') App.setCmdTab('features'); }); }
+    // un «Importato» per ogni corpo: dalla finestra (casella già spuntata) due funzioni, ognuna con il suo cubo da 1000 mm³
+    // (il primo con la faccia rossa e le altre blu, il secondo senza colori); un solo Annulla le toglie tutte e due.
+    // Senza la casella: una funzione sola con i due corpi (2000 mm³). Anche importCadData con separate: true.
+    try {
+      await fresh();
+      await page.click('#btnFile'); await page.click('#menuFile [data-act="importCad"]');
+      await page.setInputFiles('#cadFile', { name: 'assieme.step', mimeType: 'application/step', buffer: file });
+      await page.click('#modalActions .btn-primary');
+      await page.waitForFunction(() => document.querySelectorAll('#modalBody input[data-body]').length === 2, null, { timeout: 30000 });
+      const sepChecked = await page.locator('#cadSeparate').isChecked();
+      await page.click('#modalActions .btn-primary');
+      await page.waitForFunction(() => App.doc.features.filter(f => f.type === 'import').length === 2 && document.querySelector('#modal').hidden, null, { timeout: 30000 });
+      await page.waitForTimeout(300);
+      const two = await page.evaluate(() => {
+        const imp = App.doc.features.filter(f => f.type === 'import');
+        const vol = id => { const d = { ...App.doc, features: App.doc.features.filter(f => f.type !== 'import' || f.id === id) }; const st = Model.regen(d); return Model.massProperties(st, d).volume; };
+        const red = id => { const st = Model.regen({ ...App.doc, features: App.doc.features.filter(f => f.id === id) }); let r = 0, b = 0; for (const p of st.body) { const c = st.tags.get(p.t).rgb; if (c && c[0] === 1 && !c[2]) r++; if (c && c[2] === 1 && !c[0]) b++; } return [r, b]; };
+        return { n: imp.length, names: imp.map(f => f.name), V: imp.map(f => vol(f.id)), Vall: Model.massProperties(App.st, App.doc).volume, col: imp.map(f => red(f.id)), tree: imp.every(f => [...document.querySelectorAll('.tnode')].some(t => t.textContent.includes(f.name))) };
+      });
+      await page.evaluate(() => App.undo()); await page.waitForTimeout(300);
+      const afterUndo = await page.evaluate(() => App.doc.features.filter(f => f.type === 'import').length);
+      await fresh();
+      await page.click('#btnFile'); await page.click('#menuFile [data-act="importCad"]');
+      await page.setInputFiles('#cadFile', { name: 'assieme.step', mimeType: 'application/step', buffer: file });
+      await page.click('#modalActions .btn-primary');
+      await page.waitForFunction(() => document.querySelectorAll('#modalBody input[data-body]').length === 2, null, { timeout: 30000 });
+      await page.locator('#cadSeparate').uncheck();
+      await page.click('#modalActions .btn-primary');
+      await page.waitForFunction(() => App.doc.features.some(f => f.type === 'import') && document.querySelector('#modal').hidden, null, { timeout: 30000 });
+      await page.waitForTimeout(300);
+      const one = await page.evaluate(() => ({ n: App.doc.features.filter(f => f.type === 'import').length, V: Model.massProperties(App.st, App.doc).volume }));
+      await fresh();
+      const api = await page.evaluate(async bytes => { const r = await App.importCadData('assieme.step', new Uint8Array(bytes), { separate: true }); return { n: App.doc.features.filter(f => f.type === 'import').length, fs: r.fs && r.fs.length, msg: r.msg }; }, [...file]);
+      const ok4 = sepChecked && two.n === 2 && two.tree && two.V.every(v => rel(v, 1000) < TOL) && rel(two.Vall, 2000) < TOL && two.col[0][0] === 2 && two.col[0][1] === 10 && two.col[1][0] === 0 && two.col[1][1] === 0
+        && afterUndo === 0 && one.n === 1 && rel(one.V, 2000) < TOL && api.n === 2 && api.fs === 2;
+      rec('Interfaccia: un «Importato» per ogni corpo di un assieme STEP (e uno solo togliendo la casella)', ok4,
+        `casella ${sepChecked}; funzioni ${two.n} (${two.names.join(', ')}), volumi ${two.V.map(v => v.toFixed(1)).join(' + ')} = ${two.Vall.toFixed(1)}; triangoli rossi/blu ${JSON.stringify(two.col)}; dopo un Annulla ${afterUndo}; senza casella ${one.n} funzione, V ${one.V.toFixed(1)}; da codice ${api.n} («${api.msg}»)`);
+    } catch (e) { rec('Interfaccia: un «Importato» per ogni corpo di un assieme STEP (e uno solo togliendo la casella)', false, e.message.split('\n')[0]); await page.evaluate(() => { const m = document.querySelector('#modal'); if (m && !m.hidden) { const b = document.querySelector('#modalActions .btn:not(.btn-primary)'); if (b) b.click(); } if (App.pm) App.closePM(false); if (App.mode === 'drawing') App.setCmdTab('features'); }); }
     // Annulla durante la lettura: niente funzione nuova, niente errori; dopo si importa normalmente
     await fresh();
     await page.evaluate(() => App.cadCancel());

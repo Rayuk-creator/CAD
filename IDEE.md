@@ -16,9 +16,9 @@ Il 20 ottobre 2026 abbiamo valutato l'importazione di altri formati. Il 21 ottob
 
 Limite comune: i pezzi importati arrivano **senza la storia delle funzioni** (le quote originali non si modificano); si possono aggiungere funzioni nuove sopra. Gli schizzi DXF arrivano senza quote (blu): si possono quotare.
 
-Miglioramenti del DXF **fatti** il 21 ottobre: ellissi e spline (biarchi, scostamento ≤ 1/10 000 della dimensione minore), scelta dei layer e anteprima nella finestra, bordo di un foro ellittico o a spline scelto con un clic e raccordato tutto insieme («spigolo curvo»). Resta, eventualmente: meno archi per curva (punto di giunzione dei biarchi scelto meglio); raccordo che si propaga agli spigoli tangenti (curve aperte, asole).
+Miglioramenti del DXF **fatti** il 21 ottobre: ellissi e spline (biarchi, scostamento ≤ 1/10 000 della dimensione minore), scelta dei layer e anteprima nella finestra, bordo di un foro ellittico o a spline scelto con un clic e raccordato tutto insieme («spigolo curvo»). Fatto anche il raccordo che si propaga agli spigoli tangenti (asole, curve aperte), il 21 ottobre notte. Resta, eventualmente: meno archi per curva (punto di giunzione dei biarchi scelto meglio).
 
-Miglioramenti di STEP/IGES **fatti** il 21 ottobre: scelta dei corpi di un assieme, colori delle facce, lettura in un Worker (pagina libera, si può annullare). Restano: spigolo visibile tra due facce vere complanari; colori anche nella messa in tavola; un «Importato» per ogni corpo (oggi i corpi scelti arrivano insieme).
+Miglioramenti di STEP/IGES **fatti** il 21 ottobre: scelta dei corpi di un assieme, colori delle facce, lettura in un Worker (pagina libera, si può annullare). Fatti il 21 ottobre notte: colori nella messa in tavola (assonometria ombreggiata) e un «Importato» per ogni corpo. Resta: spigolo visibile tra due facce vere complanari.
 
 ## Cablaggio 3D da un disegno PDF (harness)
 
