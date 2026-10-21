@@ -341,6 +341,43 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     rec('Interfaccia: DXF con ellisse e spline (archi tangenti) ed estrusione', false, e.message.split('\n')[0] + ' ' + JSON.stringify(why));
   }
 
+  // 3m-ter. raccordo sul bordo di un foro ellittico: un clic sceglie tutto il bordo (≈ 56 archi), un clic in un altro punto
+  //         dello stesso bordo lo toglie; raccordo R3 confermato: materiale tolto = r²(1 − π/4)·(L + 2πc)
+  try {
+    await fresh();
+    const P = (pts) => ['0', 'LWPOLYLINE', '8', '0', '90', pts.length, '70', 1, ...pts.flatMap(p => ['10', p[0], '20', p[1]])];
+    const E = ['0', 'ELLIPSE', '8', '0', '10', 0, '20', 0, '30', 0, '11', 0, '21', 30, '31', 0, '40', 2 / 3, '41', 0, '42', 2 * Math.PI];
+    const file = dxfText([P([[-60, -40], [60, -40], [60, 40], [-60, 40]]), E], 4);
+    const V0 = await page.evaluate(text => {
+      const s = Sketch.newSketch(); const r = Import.parseDXF(text); Import.dxfToSketch(s, r.geo, {});
+      const d = Model.newDoc(); d.features.push({ id: 'S1', type: 'sketch', name: 'Schizzo1', plane: { kind: 'std', id: 'front' }, sk: s }, { id: 'E1', type: 'extrude', name: 'Estrusione1', sketch: 'S1', end: 'blind', depth: 10 });
+      App.change(() => { App.doc = d; App.sel = []; }); App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false);
+      return Model.massProperties(App.st, App.doc).volume;
+    }, file);
+    await page.waitForTimeout(600);
+    await tool('fillet'); await page.waitForTimeout(300);
+    const at = async q => { const [x, y] = await page.evaluate(q => { const p = App.r.project(q); const c = document.querySelector('.view canvas').getBoundingClientRect(); return [c.left + p[0], c.top + p[1]]; }, q); await page.mouse.move(x, y); await page.waitForTimeout(60); await page.mouse.click(x, y); await page.waitForTimeout(250); };
+    const state = () => page.evaluate(() => { const h = App.pm && App.pm.highlight ? App.pm.highlight().filter(x => x.kind === 'edge') : [];
+      const n = h.length;   // un riferimento per spigolo scelto
+      return { n, hl: h.length, segs: h.length ? (App.edgeGroupKeys || []).filter(k => k === h[0].gkey).length : 0, label: (document.querySelector('#status') || {}).textContent || '' }; });
+    await at([20, 0, 10]); const s1 = await state();
+    await at([0, 30, 10]); const s2 = await state();   // stesso bordo, altro punto: lo toglie
+    await at([0, -30, 10]); const s3 = await state();
+    const rr = page.locator('.pm-body .row', { hasText: 'Raggio' }).first().locator('input');
+    await rr.fill('3'); await rr.press('Tab'); await page.waitForTimeout(200);
+    await page.click('.pm-ok'); await page.waitForTimeout(400);
+    const p = await props();
+    const warn = await page.evaluate(() => [...App.st.warn.values()]);
+    const seams = await page.evaluate(() => App.st.topo.edges.filter(e => e.sharp && e.polys.length === 2 && e.polys.every(q => App.st.tags.get(App.st.body[q].t).scg)).length);
+    const k = 1 - Math.PI / 4, r = 3, c = r * (10 - 3 * Math.PI) / (3 * (4 - Math.PI));
+    const h = ((30 - 20) / 50) ** 2, L = Math.PI * 50 * (1 + 3 * h / (10 + Math.sqrt(4 - 3 * h)));
+    const De = r * r * k * (L + 2 * Math.PI * c), D = p ? V0 - p.V : NaN;
+    await page.screenshot({ path: path.join(OUT, 'raccordo-ellisse.png') });
+    const ok = s1.n === 1 && s1.hl === 1 && s1.segs > 50 && s2.n === 0 && s3.n === 1 && p && !p.err.length && !warn.length && seams === 0 && rel(D, De) < TOL;
+    rec('Interfaccia: raccordo sul bordo di un foro ellittico (un clic = tutto il bordo)', ok,
+      `clic: ${s1.n} spigolo (${s1.segs} tratti evidenziati) → altro punto: ${s2.n} → ${s3.n}; tolti ${D.toFixed(2)} mm³ (${De.toFixed(2)}, ${(100 * rel(D, De)).toFixed(3)}%); righe tra i tratti ${seams}${warn.length ? '; avviso: ' + warn.join(' ') : ''}`);
+  } catch (e) { rec('Interfaccia: raccordo sul bordo di un foro ellittico (un clic = tutto il bordo)', false, e.message.split('\n')[0]); }
+
   // 3n. importazione STEP e IGES (lettore OpenCascade dentro la pagina): piastra con foro dal menu, pannello, file sbagliati
   try {
     await fresh();

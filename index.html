@@ -1093,7 +1093,7 @@ label.chk .gl-i { margin-left: 2px; }
 
   /* ---------------- rivoluzione ---------------- */
   // asse nel piano di schizzo: punti A, B (2D). Il profilo deve stare da una parte dell'asse.
-  function revolve(region, F, A2, B2, angle, tags, base, startAngle = 0) {
+  function revolve(region, F, A2, B2, angle, tags, base, startAngle = 0, angles = null) {
     const A = to3(F, A2), B = to3(F, B2);
     const d = norm(sub(B, A));
     const full = Math.abs(angle) >= TAU - 1e-9;
@@ -1111,8 +1111,9 @@ label.chk .gl-i { margin-left: 2px; }
     const rot = (r, z, th) => { const c = Math.cos(th), s = Math.sin(th); return add(A, add(mul(d, z), add(mul(e1, r * c), mul(e2, r * s)))); };
     let maxR = 0;
     for (const t of tl) for (const p of t.pts) maxR = Math.max(maxR, toRZ(p)[0]);
-    const N = segsFor(maxR, ang);
-    const th = i => sgn * (startAngle + ang * i / N);
+    // angles: elenco crescente degli angoli (da 0 ad ang) dove mettere le sezioni, per seguire le faccette di un pezzo già fatto
+    const N = angles ? angles.length - 1 : segsFor(maxR, ang);
+    const th = i => sgn * (startAngle + (angles ? angles[i] : ang * i / N));
     const polys = [];
     const tagCache = new Map();
     const tagFor = (s, rz0, rz1) => {
@@ -1345,7 +1346,10 @@ label.chk .gl-i { margin-left: 2px; }
       e.sharp = sk.size > 1 || list.length < 2;
       out.push(e);
     }
-    return { verts, polyVerts: P, edges: out, surfKeys: keys };
+    // chiavi delle facce per la selezione: le facce di una stessa curva importata (ellisse, spline: gruppo cg della stessa
+    // funzione) e i raccordi lungo quella curva (scg) contano come una faccia sola, come in SolidWorks
+    const faceKeys = tags.list.map((t, i) => t && t.cg && t.feature ? 'G' + t.feature + '|' + t.cg : t && t.scg ? 'S' + t.scg : keys[i]);
+    return { verts, polyVerts: P, edges: out, surfKeys: keys, faceKeys };
   }
 
   /* ---------------- proprietà di massa (esatte sulle superfici di rivoluzione) ---------------- */
@@ -3162,7 +3166,7 @@ label.chk .gl-i { margin-left: 2px; }
         if (!e.userMsg && typeof console !== 'undefined') console.warn(e);
       }
     }
-    st.topo = st.body.length ? G.topology(st.body, tags) : { verts: [], polyVerts: [], edges: [], surfKeys: [] };
+    st.topo = st.body.length ? G.topology(st.body, tags) : { verts: [], polyVerts: [], edges: [], surfKeys: [], faceKeys: [] };
     smoothMeshEdges(st);
     smoothCurveEdges(st);
     return st;
@@ -3177,7 +3181,8 @@ label.chk .gl-i { margin-left: 2px; }
       if (!a || !b || a === b) continue;
       const sameCurve = a.cg && a.cg === b.cg && a.feature === b.feature;
       const samePath = a.pcg && a.pcg === b.pcg && a.ent && a.ent === b.ent;
-      if (sameCurve || samePath) { e.sharp = false; e.smooth = true; }
+      const sameRound = a.scg && a.scg === b.scg;   // raccordo o smusso lungo il bordo di una curva
+      if (sameCurve || samePath || sameRound) { e.sharp = false; e.smooth = true; }
     }
   }
   // corpi importati: tra faccette quasi allineate (meno di 30°) lo spigolo non si disegna, come su una superficie curva.
@@ -3406,12 +3411,13 @@ label.chk .gl-i { margin-left: 2px; }
         for (const ref of f.edges) {
           const ed = resolveEdge(ref, st, topo);
           if (!ed) { st.warn.set(f.id, 'Uno degli spigoli non esiste più'); continue; }
-          const key = ed.kind === 'line' ? ed.a.concat(ed.b).map(x => x.toFixed(5)).join(',') : 'c' + ed.c.map(x => x.toFixed(5)).join(',') + ':' + ed.R.toFixed(5);
+          const key = ed.kind === 'line' ? ed.a.concat(ed.b).map(x => x.toFixed(5)).join(',') : ed.kind === 'curve' ? 'g' + [...ed.parts[0].group.segs.map(e => e.a + ',' + e.b)].join(';')
+            : 'c' + ed.c.map(x => x.toFixed(5)).join(',') + ':' + ed.R.toFixed(5) + (ed.full ? '' : ':' + ed.u0.map(x => x.toFixed(5)).join(','));
           const key2 = ed.kind === 'line' ? ed.b.concat(ed.a).map(x => x.toFixed(5)).join(',') : key;
           if (seen.has(key) || seen.has(key2)) continue; // stesso spigolo scelto due volte
           seen.add(key);
           const tool = edgeTool(ed, f, st);
-          if (!tool) { st.warn.set(f.id, 'Spigolo non supportato: si possono raccordare/smussare spigoli rettilinei tra due facce piane e spigoli circolari tra un cilindro e una faccia piana'); continue; }
+          if (!tool) { st.warn.set(f.id, 'Spigolo non supportato: si possono raccordare/smussare spigoli rettilinei tra due facce piane, spigoli circolari o ad arco tra un cilindro e una faccia piana e il bordo di un\'ellisse o di una spline importata; il raggio (o la distanza) deve essere minore del raggio dell\'arco o della curva'); continue; }
           tools.push(tool);
           if (ed.kind === 'line' && tool.op === 'sub') convexLines.push(ed);
         }
@@ -3661,19 +3667,50 @@ label.chk .gl-i { margin-left: 2px; }
   /* ---------------- spigoli: riferimento e utensili per raccordi/smussi ---------------- */
   // ref: {a: nomeTag, b: nomeTag, p: punto medio [x,y,z]}
   function edgeGroups(st, topo) {
-    // raggruppa i sotto-spigoli vivi per coppia di superfici
+    // raggruppa i sotto-spigoli vivi per coppia di facce; le facce di una curva importata (ellisse, spline) contano come
+    // una faccia sola (faceKeys), quindi il loro bordo è un solo spigolo, fatto di più tratti (curve: true)
     const groups = new Map();
+    const fk = topo.faceKeys || topo.surfKeys;
     for (const e of topo.edges) {
       if (!e.sharp || e.polys.length !== 2) continue;
       const t1 = st.body[e.polys[0]].t, t2 = st.body[e.polys[1]].t;
-      const k1 = topo.surfKeys[t1], k2 = topo.surfKeys[t2];
+      const k1 = fk[t1], k2 = fk[t2];
       const key = k1 < k2 ? k1 + '#' + k2 : k2 + '#' + k1;
-      if (!groups.has(key)) groups.set(key, { t1: k1 < k2 ? t1 : t2, t2: k1 < k2 ? t2 : t1, segs: [] });
-      groups.get(key).segs.push(e);
+      if (!groups.has(key)) groups.set(key, { t1: k1 < k2 ? t1 : t2, t2: k1 < k2 ? t2 : t1, segs: [], names: new Set(), curve: false });
+      const g = groups.get(key);
+      g.segs.push(e);
+      g.names.add(st.tags.get(t1).name); g.names.add(st.tags.get(t2).name);
+      if (k1 !== topo.surfKeys[t1] || k2 !== topo.surfKeys[t2]) g.curve = true;
     }
     return groups;
   }
+  // tratti di uno spigolo curvo: un sotto-gruppo per ogni coppia di superfici vere (un arco o una linea della curva)
+  function curveParts(g, st, topo) {
+    const parts = new Map();
+    for (const e of g.segs) {
+      const t1 = st.body[e.polys[0]].t, t2 = st.body[e.polys[1]].t;
+      const k1 = topo.surfKeys[t1], k2 = topo.surfKeys[t2];
+      const key = k1 < k2 ? k1 + '#' + k2 : k2 + '#' + k1;
+      if (!parts.has(key)) parts.set(key, { t1: k1 < k2 ? t1 : t2, t2: k1 < k2 ? t2 : t1, segs: [] });
+      parts.get(key).segs.push(e);
+    }
+    return [...parts.values()];
+  }
   function edgeGeometry(g, st, topo) {
+    if (g.curve) {
+      // spigolo di una curva importata: tratti rettilinei e archi tangenti uno dopo l'altro
+      const parts = [];
+      for (const pg of curveParts(g, st, topo)) {
+        const geo = edgeGeometry(pg, st, topo);
+        if (!geo) return null;
+        if (geo.kind === 'line') { if (geo.pieces.length !== 1) return null; geo.a = geo.pieces[0][0]; geo.b = geo.pieces[0][1]; }
+        geo.group = pg;
+        parts.push(geo);
+      }
+      let L = 0;
+      for (const e of g.segs) L += len(sub(topo.verts[e.b], topo.verts[e.a]));
+      return { kind: 'curve', parts, length: L, verts: topo.verts, group: g };
+    }
     // rettilineo o circolare?
     const V = topo.verts;
     const A = st.tags.get(g.t1), B = st.tags.get(g.t2);
@@ -3700,7 +3737,26 @@ label.chk .gl-i { margin-left: 2px; }
       // archi: arco intero se l'insieme dei sotto-spigoli copre 2π
       let tot = 0;
       for (const [a, b] of segs) { const va = sub(a, c), vb = sub(b, c); tot += Math.acos(Math.max(-1, Math.min(1, dot(va, vb) / (len(va) * len(vb))))); }
-      return { kind: 'circle', c, axis: cyl.d, R: cyl.R, full: tot > TAU - 1e-3, cyl, pl, z0 };
+      const out = { kind: 'circle', c, axis: cyl.d, R: cyl.R, full: tot > TAU - 1e-3, cyl, pl, z0 };
+      if (!out.full) {
+        // arco: angoli dei vertici (riferimento u, v perpendicolare all'asse), inizio dopo il vuoto più grande
+        let u = Math.abs(cyl.d[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+        u = norm(sub(u, mul(cyl.d, dot(u, cyl.d))));
+        const v = cross(cyl.d, u);
+        const angs = [];
+        for (const [a, b] of segs) for (const p of [a, b]) { const r = sub(p, c); let t = Math.atan2(dot(r, v), dot(r, u)); if (t < 0) t += TAU; angs.push(t); }
+        angs.sort((x, y) => x - y);
+        const uniq = [];
+        for (const t of angs) if (!uniq.length || t - uniq[uniq.length - 1] > 1e-9) uniq.push(t);
+        let gi = uniq.length - 1, gap = uniq[0] + TAU - uniq[uniq.length - 1];
+        for (let i = 0; i < uniq.length - 1; i++) if (uniq[i + 1] - uniq[i] > gap) { gap = uniq[i + 1] - uniq[i]; gi = i; }
+        const t0 = uniq[(gi + 1) % uniq.length];
+        const rel = uniq.map(t => { let d = t - t0; if (d < -1e-12) d += TAU; return Math.max(0, d); }).sort((x, y) => x - y);
+        out.sweep = TAU - gap;
+        out.angles = rel;
+        out.u0 = add(mul(u, Math.cos(t0)), mul(v, Math.sin(t0)));
+      }
+      return out;
     }
     return null;
   }
@@ -3717,7 +3773,7 @@ label.chk .gl-i { margin-left: 2px; }
     let best = null, bd = Infinity;
     for (const g of groups.values()) {
       const n1 = st.tags.get(g.t1).name, n2 = st.tags.get(g.t2).name;
-      const byName = (n1 === ref.a && n2 === ref.b) || (n1 === ref.b && n2 === ref.a);
+      const byName = (n1 === ref.a && n2 === ref.b) || (n1 === ref.b && n2 === ref.a) || (g.curve && g.names.has(ref.a) && g.names.has(ref.b));
       // distanza del punto di riferimento dal gruppo
       let dmin = Infinity;
       for (const e of g.segs) { const a = topo.verts[e.a], b = topo.verts[e.b]; dmin = Math.min(dmin, distPtSeg(ref.p, a, b)); }
@@ -3768,6 +3824,7 @@ label.chk .gl-i { margin-left: 2px; }
   }
   function edgeTool(ed, f, st) {
     const isF = f.type === 'fillet';
+    if (ed.kind === 'curve') return curveTool(ed, f, st);
     const r = +f.r || +f.d || 1;
     if (ed.kind === 'line') {
       const A = ed.A, B = ed.B, d = ed.d;
@@ -3820,7 +3877,6 @@ label.chk .gl-i { margin-left: 2px; }
       return { polys, op: convex ? 'sub' : 'add' };
     }
     if (ed.kind === 'circle') {
-      if (!ed.full) return null;
       const cyl = ed.cyl, pl = ed.pl;
       // nel semipiano (r, z): angolo in (R, z0). Direzioni delle facce:
       // il cilindro si estende verso +z o -z; la faccia piana verso +r o -r
@@ -3845,6 +3901,16 @@ label.chk .gl-i { margin-left: 2px; }
         const relc = sub(pc, cyl.o); const rc = len(sub(relc, mul(ax, dot(relc, ax))));
         if (Math.abs(rc - ed.R) > 1e-6) { rdir = Math.sign(rc - ed.R); break; }
       }
+      if (!ed.full) {
+        // arco: il lato della faccia piana si prova accanto al punto medio dell'arco (altri punti della faccia possono
+        // stare sia dentro sia fuori dal cerchio)
+        rdir = 0;
+        const m = ed.angles[Math.floor(ed.angles.length / 2)], w = cross(ax, ed.u0);   // un vertice dello spigolo (sta sul cerchio)
+        const dm = add(mul(ed.u0, Math.cos(m)), mul(w, Math.sin(m)));
+        const eps = Math.min(1e-3, ed.R * 1e-3);
+        const inPl = q => st.body.some(poly => { const t = st.tags.get(poly.t); return (poly.t === pl.id || (t.kind === 'plane' && dot(t.n, pl.n) > 1 - 1e-9 && Math.abs(t.w - pl.w) < 1e-7)) && pointInPoly3(q, poly); });
+        if (inPl(add(ed.c, mul(dm, ed.R + eps)))) rdir = 1; else if (inPl(add(ed.c, mul(dm, ed.R - eps)))) rdir = -1;
+      }
       if (!zdir || !rdir || !nr) return null;
       const nz = Math.sign(dot(pl.n, ax)); // normale del piano lungo l'asse
       // convesso se il piano si estende dal lato opposto alla normale uscente del cilindro e il cilindro dal lato opposto alla normale del piano
@@ -3859,9 +3925,10 @@ label.chk .gl-i { margin-left: 2px; }
         const P1 = [R, ed.z0 + zdir * r], P2 = [R + rdir * r, ed.z0];
         pts = { corner: Pc, P1, P2, C };
       }
-      // costruiamo il loop nel riferimento di un piano meridiano
+      // costruiamo il loop nel riferimento di un piano meridiano (per un arco: quello del punto iniziale)
       let x = Math.abs(ax[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
       x = norm(sub(x, mul(ax, dot(x, ax))));
+      if (!ed.full) x = ed.u0;
       const F = { o: cyl.o, x, y: ax, z: cross(x, ax) };
       let loop;
       if (isF) {
@@ -3884,10 +3951,159 @@ label.chk .gl-i { margin-left: 2px; }
         ];
         if (R + rdir * d1 < 0) return null;
       }
-      const polys = G.revolve({ outer: loop, holes: [] }, F, [0, 0], [0, 1], TAU, st.tags, f.id + '#' + edgeName(ed, st));
+      // arco: le sezioni stanno agli stessi angoli dei vertici dello spigolo, così l'utensile segue le faccette del pezzo
+      const polys = ed.full ? G.revolve({ outer: loop, holes: [] }, F, [0, 0], [0, 1], TAU, st.tags, f.id + '#' + edgeName(ed, st))
+        : G.revolve({ outer: loop, holes: [] }, F, [0, 0], [0, 1], ed.sweep, st.tags, f.id + '#' + edgeName(ed, st), 0, ed.angles);
       return { polys, op: convex ? 'sub' : 'add' };
     }
     return null;
+  }
+  // Raccordo o smusso lungo il bordo di un'ellisse o di una spline importata (archi tangenti e tratti dritti):
+  // un solo utensile che segue tutti i vertici dello spigolo. In ogni vertice la sezione (la stessa del raccordo di uno
+  // spigolo rettilineo) sta nel piano formato dalla normale alla curva (n, nella faccia piana) e dalla direzione della
+  // parete (ez). Tra due vertici dello stesso arco le facce dell'utensile sono quelle di una rivoluzione attorno al centro
+  // dell'arco (quadrilateri piani), lungo un tratto dritto quelle di un'estrusione: i calcoli di volume restano esatti.
+  function curveTool(ed, f, st) {
+    const isF = f.type === 'fillet';
+    const V = ed.verts;
+    // parete (facce con cg) e faccia piana di ogni tratto
+    const parts = ed.parts.map(p => {
+      const a = st.tags.get(p.group.t1), b = st.tags.get(p.group.t2);
+      const wall = a.cg ? a : b, pl = a.cg ? b : a;
+      return { geo: p, wall, pl };
+    });
+    if (parts.some(p => !p.wall.cg || p.pl.cg || p.pl.kind !== 'plane')) return null;
+    const pl = parts[0].pl;
+    for (const p of parts) if (p.geo.kind === 'line' && Math.abs(dot(p.wall.n, pl.n)) > 1e-7) return null;   // parete non perpendicolare
+    // catena ordinata dei vertici
+    const partOf = new Map(), adj = new Map();
+    parts.forEach((p, k) => { for (const e of p.geo.group.segs) partOf.set(Math.min(e.a, e.b) + ',' + Math.max(e.a, e.b), k); });
+    for (const e of ed.group.segs) for (const [u, v] of [[e.a, e.b], [e.b, e.a]]) { if (!adj.has(u)) adj.set(u, []); adj.get(u).push(v); }
+    for (const l of adj.values()) if (l.length > 2) return null;
+    let start = [...adj.keys()].find(u => adj.get(u).length === 1);
+    const closed = start === undefined;
+    if (closed) start = adj.keys().next().value;
+    const chain = [start];
+    for (let prev = -1, cur = start; ;) {
+      const nx = adj.get(cur).find(v => v !== prev);
+      if (nx === undefined || nx === start) break;
+      chain.push(nx); prev = cur; cur = nx;
+      if (chain.length > ed.group.segs.length + 1) return null;
+    }
+    if (chain.length !== (closed ? ed.group.segs.length : ed.group.segs.length + 1)) return null;   // spigolo in più pezzi
+    const nV = chain.length, nE = closed ? nV : nV - 1;
+    const segPart = i => partOf.get(Math.min(chain[i], chain[(i + 1) % nV]) + ',' + Math.max(chain[i], chain[(i + 1) % nV]));
+    // direzione della parete: dal piano verso il pezzo, letta su un poligono della parete del primo tratto
+    let zs = 0;
+    for (const poly of st.body) {
+      if (poly.t !== parts[0].wall.id) continue;
+      for (const v of poly.v) { const z = dot(v, pl.n) - pl.w; if (Math.abs(z) > 1e-6) { zs = Math.sign(z); break; } }
+      if (zs) break;
+    }
+    if (!zs) return null;
+    const ez = mul(pl.n, zs);
+    // normale alla curva in ogni vertice (media dei tratti che vi arrivano), nel piano della faccia
+    const nrm = (k, P) => {
+      const g = parts[k].geo;
+      let n = g.kind === 'circle' ? sub(P, g.c) : cross(ez, g.d);
+      n = sub(n, mul(ez, dot(n, ez)));
+      return norm(n);
+    };
+    const N = chain.map((vi, i) => {
+      const P = V[vi], ks = new Set();
+      if (closed || i < nE) ks.add(segPart(i));
+      if (closed || i > 0) ks.add(segPart((i - 1 + nV) % nV));
+      let n = [0, 0, 0], ref = null;
+      for (const k of ks) { let m = nrm(k, P); if (ref && dot(m, ref) < 0) m = mul(m, -1); ref = ref || m; n = add(n, m); }
+      return norm(n);
+    });
+    for (let i = 1; i < nV; i++) if (dot(N[i], N[i - 1]) < 0) N[i] = mul(N[i], -1);
+    // verso della normale: dentro la faccia piana (provato accanto a un vertice della catena)
+    const inPl = q => st.body.some(poly => { const t = st.tags.get(poly.t); return (poly.t === pl.id || (t.kind === 'plane' && dot(t.n, pl.n) > 1 - 1e-9 && Math.abs(t.w - pl.w) < 1e-7)) && pointInPoly3(q, poly); });
+    const im = Math.floor(nV / 2), eps = 1e-3;
+    let side = 0;
+    if (inPl(add(V[chain[im]], mul(N[im], eps)))) side = 1; else if (inPl(add(V[chain[im]], mul(N[im], -eps)))) side = -1;
+    if (!side) return null;
+    if (side < 0) for (let i = 0; i < nV; i++) N[i] = mul(N[i], -1);
+    // spigolo convesso (si toglie materiale) se la parete va dal lato opposto alla normale della faccia piana
+    const convex = zs < 0;
+    // sezione nel riferimento (s lungo n, t lungo ez), con l'angolo nello spigolo
+    const r = +f.r || +f.d || 1;
+    let prof, kinds;   // kinds[j]: tipo del lato j → j+1 ('wall', 'face', 'plane')
+    if (isF) {
+      const m = Math.max(2, G.segsFor(r, Math.PI / 2));
+      prof = [[0, 0], [0, r]]; kinds = ['wall'];
+      for (let j = 1; j <= m; j++) { const th = Math.PI + Math.PI / 2 * j / m; prof.push([r + r * Math.cos(th), r + r * Math.sin(th)]); kinds.push('face'); }
+      prof[prof.length - 1] = [r, 0]; kinds.push('plane');
+    } else {
+      const d1 = +f.d || r, d2 = f.mode === 'dd' ? (+f.d2 || d1) : (f.mode === 'da' ? d1 * Math.tan((+f.angle || 45) * Math.PI / 180) : d1);
+      prof = [[0, 0], [0, d2], [d1, 0]]; kinds = ['wall', 'face', 'plane'];
+    }
+    const sMax = Math.max(...prof.map(p => p[0]));
+    // archi: raggio, centro e verso (sg = +1 se n si allontana dal centro); la sezione non deve superare il centro
+    for (const p of parts) {
+      if (p.geo.kind !== 'circle') continue;
+      const k = parts.indexOf(p), i = [...Array(nE).keys()].find(j => segPart(j) === k);
+      if (i === undefined) return null;
+      p.sg = dot(N[i], sub(V[chain[i]], p.geo.c)) > 0 ? 1 : -1;
+      if (p.sg < 0 && sMax >= p.geo.R - 1e-9) return null;
+    }
+    const S = chain.map((vi, i) => prof.map(([a, b]) => add(V[vi], add(mul(N[i], a), mul(ez, b)))));
+    // tag delle facce dell'utensile, uno per tratto e per tipo; le facce del raccordo hanno lo stesso scg (una faccia sola)
+    const base = f.id + '#' + st.tags.get(parts[0].geo.group.t1).name + '~' + st.tags.get(parts[0].geo.group.t2).name;
+    const scg = base;
+    const tagCache = new Map();
+    const tagFor = (k, kind, i) => {
+      const key = k + ':' + kind;
+      if (tagCache.has(key)) return tagCache.get(key);
+      const p = parts[k], g = p.geo, name = base + '|p' + k + '|' + (kind === 'face' ? (isF ? 'fa' : 'cs') : kind);
+      let tg;
+      if (kind === 'plane') tg = { kind: 'plane', name, feature: base };
+      else if (g.kind === 'circle') {
+        const R = g.R, sg = p.sg, o = g.c;
+        if (kind === 'wall') tg = { kind: 'rev', o, d: ez, prof: { pt: 'line', r0: R, z0: 0, r1: R, z1: r * 2 }, R };
+        else if (isF) tg = { kind: 'rev', o, d: ez, prof: { pt: 'arc', rc: R + sg * r, zc: r, a: r } };
+        else { const d1 = prof[2][0], d2 = prof[1][1]; tg = { kind: 'rev', o, d: ez, prof: { pt: 'line', r0: R, z0: d2, r1: R + sg * d1, z1: 0 } }; }
+        Object.assign(tg, { name, feature: base });
+      } else {
+        if (kind === 'wall' || !isF) tg = { kind: 'plane', name, feature: base };
+        else {
+          const P0 = V[chain[i]], d = g.d, o = add(P0, add(mul(N[i], r), mul(ez, r)));
+          const z1 = dot(sub(V[chain[(i + 1) % nV]], P0), d);
+          tg = { kind: 'rev', o, d, prof: { pt: 'line', r0: r, z0: Math.min(0, z1), r1: r, z1: Math.max(0, z1) }, R: r, name, feature: base };
+        }
+      }
+      if (kind === 'face') tg.scg = scg;
+      tagCache.set(key, tg);
+      return tg;
+    };
+    const raw = [];
+    const np = prof.length;
+    for (let i = 0; i < nE; i++) {
+      const k = segPart(i), A = S[i], B = S[(i + 1) % nV];
+      for (let j = 0; j < np; j++) {
+        const j1 = (j + 1) % np;
+        raw.push({ v: [A[j], A[j1], B[j1], B[j]], tagObj: tagFor(k, kinds[j], i) });
+      }
+    }
+    if (!closed) {
+      const e0 = { kind: 'plane', name: base + '|end0', feature: base }, e1 = { kind: 'plane', name: base + '|end1', feature: base };
+      for (const [Sx, tg] of [[S[0], e0], [S[nV - 1], e1]]) for (let j = 1; j < np - 1; j++) raw.push({ v: [Sx[0], Sx[j], Sx[j + 1]], tagObj: tg });
+    }
+    // verso delle facce: volume positivo
+    let vol = 0;
+    for (const p of raw) for (let j = 1; j < p.v.length - 1; j++) vol += dot(p.v[0], cross(p.v[j], p.v[j + 1]));
+    const polys = [];
+    for (const p of raw) {
+      if (vol < 0) p.v.reverse();
+      const tg = p.tagObj;
+      if (tg.id === undefined) {
+        if (tg.kind === 'plane') { const q = CSG.planeOf(p.v); tg.n = q.n; tg.w = q.w; }
+        st.tags.add(tg);
+      }
+      polys.push(CSG.poly(p.v, tg.id));
+    }
+    return { polys, op: convex ? 'sub' : 'add' };
   }
   // angoli sferici: nel cubetto di lato r al vertice resta solo l'ottante di sfera di raggio r
   function filletCorners(lines, r, st, f) {
@@ -4791,7 +5007,7 @@ label.chk .gl-i { margin-left: 2px; }
   function highlighter() {
     const faceSel = new Set(), faceHov = new Set(), edgeSel = new Set(), edgeHov = new Set();
     const st = App.st;
-    const keyOfPoly = pi => st.topo.surfKeys[App.r.cpu ? App.r.cpu.body[pi].t : st.body[pi].t];
+    const keyOfPoly = pi => st.topo.faceKeys[App.r.cpu ? App.r.cpu.body[pi].t : st.body[pi].t];
     const addFace = (set, it) => { if (it && it.kind === 'face') set.add(it.key); };
     const addEdge = (set, it) => { if (it && it.kind === 'edge') set.add(it.gkey); };
     App.sel.forEach(s => { addFace(faceSel, s); addEdge(edgeSel, s); });
@@ -4813,7 +5029,7 @@ label.chk .gl-i { margin-left: 2px; }
     const st = App.st, r = App.r;
     App.edgeGroupKeys = r.sharp.map(e => {
       if (e.polys.length !== 2) return '';
-      const k1 = st.topo.surfKeys[st.body[e.polys[0]].t], k2 = st.topo.surfKeys[st.body[e.polys[1]].t];
+      const k1 = st.topo.faceKeys[st.body[e.polys[0]].t], k2 = st.topo.faceKeys[st.body[e.polys[1]].t];
       return k1 < k2 ? k1 + '#' + k2 : k2 + '#' + k1;
     });
   }
@@ -5026,7 +5242,7 @@ label.chk .gl-i { margin-left: 2px; }
   App.faceItem = function (pi) {
     const st = App.st, poly = st.body[pi];
     const tg = st.tags.get(poly.t);
-    return { kind: 'face', poly: pi, tag: tg, key: st.topo.surfKeys[poly.t], name: tg.name, planar: tg.kind === 'plane', n: tg.n, w: tg.w, label: tg.kind === 'plane' ? 'Faccia piana' : (tg.R !== undefined ? 'Faccia cilindrica Ø' + fmt(tg.R * 2) : 'Faccia curva') };
+    return { kind: 'face', poly: pi, tag: tg, key: st.topo.faceKeys[poly.t], name: tg.name, planar: tg.kind === 'plane', n: tg.n, w: tg.w, label: tg.kind === 'plane' ? 'Faccia piana' : tg.cg || tg.scg ? 'Faccia curva' : (tg.R !== undefined ? 'Faccia cilindrica Ø' + fmt(tg.R * 2) : 'Faccia curva') };
   };
   App.edgeItem = function (idx, point) {
     const st = App.st, e = App.r.sharp[idx];
@@ -5038,7 +5254,8 @@ label.chk .gl-i { margin-left: 2px; }
     const geo = g ? Model.edgeGeometry(g, st, st.topo) : null;
     let label = 'Spigolo';
     if (geo && geo.kind === 'line') label = 'Spigolo rettilineo';
-    if (geo && geo.kind === 'circle') label = 'Spigolo circolare Ø' + fmt(geo.R * 2);
+    if (geo && geo.kind === 'circle') label = (geo.full ? 'Spigolo circolare Ø' : 'Spigolo ad arco R') + fmt(geo.full ? geo.R * 2 : geo.R);
+    if (geo && geo.kind === 'curve') label = 'Spigolo curvo (ellisse o spline)';
     return { kind: 'edge', idx, gkey, ref: { a: st.tags.get(t1).name, b: st.tags.get(t2).name, p: point }, geo, label };
   };
   function pickAt(sx, sy, filter) {
@@ -5113,11 +5330,12 @@ label.chk .gl-i { margin-left: 2px; }
       t += ' · area ' + fmt(area) + ' mm²';
     }
     if (s.kind === 'edge' && s.geo && s.geo.kind === 'line') t += ' · lunghezza ' + fmt(len(sub(s.geo.pieces[0][1], s.geo.pieces[0][0])) ) + ' mm';
+    if (s.kind === 'edge' && s.geo && s.geo.kind === 'curve') t += ' · lunghezza ' + fmt(s.geo.length) + ' mm';
     setStatus(t + (App.sel.length > 1 ? ` (${App.sel.length} elementi selezionati)` : ''));
   }
   function faceArea(key) {
     const st = App.st; let A = 0;
-    st.body.forEach(p => { if (st.topo.surfKeys[p.t] !== key) return; for (let i = 1; i < p.v.length - 1; i++) A += len(cross(sub(p.v[i], p.v[0]), sub(p.v[i + 1], p.v[0]))) / 2; });
+    st.body.forEach(p => { if (st.topo.faceKeys[p.t] !== key) return; for (let i = 1; i < p.v.length - 1; i++) A += len(cross(sub(p.v[i], p.v[0]), sub(p.v[i + 1], p.v[0]))) / 2; });
     return A;
   }
   App.faceArea = faceArea;
@@ -8427,7 +8645,9 @@ label.chk .gl-i { margin-left: 2px; }
     switch (mode) {
       case 'edges': {
         if (it.kind !== 'edge') return;
-        const i = f.edges.findIndex(r => sameEdge(r, it.ref));
+        // stesso spigolo anche se cliccato in un altro punto (per esempio un altro tratto del bordo di un'ellisse)
+        const st = A().st, gk = r => { const ed = Model.resolveEdge(r, st, st.topo); if (!ed || !ed.group) return null; const k1 = st.topo.faceKeys[ed.group.t1], k2 = st.topo.faceKeys[ed.group.t2]; return k1 < k2 ? k1 + '#' + k2 : k2 + '#' + k1; };
+        const i = f.edges.findIndex(r => sameEdge(r, it.ref) || gk(r) === it.gkey);
         if (i >= 0) f.edges.splice(i, 1); else f.edges.push(it.ref);
         App.refreshPM(); pm.update(); return;
       }
@@ -8469,7 +8689,7 @@ label.chk .gl-i { margin-left: 2px; }
         const ed = Model.resolveEdge(ref, App.st, App.st.topo);
         if (ed && ed.group) {
           const g = ed.group; const st = App.st;
-          const k1 = st.topo.surfKeys[g.t1], k2 = st.topo.surfKeys[g.t2];
+          const k1 = st.topo.faceKeys[g.t1], k2 = st.topo.faceKeys[g.t2];
           out.push({ kind: 'edge', gkey: k1 < k2 ? k1 + '#' + k2 : k2 + '#' + k1 });
         }
       }
@@ -8477,7 +8697,7 @@ label.chk .gl-i { margin-left: 2px; }
     if (f.feats) {
       for (const p of App.st.body) {
         const tg = App.st.tags.get(p.t);
-        if (f.feats.includes(featureOfTag(tg))) out.push({ kind: 'face', key: App.st.topo.surfKeys[p.t] });
+        if (f.feats.includes(featureOfTag(tg))) out.push({ kind: 'face', key: App.st.topo.faceKeys[p.t] });
       }
     }
     return out;
@@ -10733,12 +10953,13 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Funzioni', 'Spessore', [], 'Lo spessore della nervatura, misurato perpendicolarmente al piano dello schizzo: a metà per parte (piano medio) oppure tutto da un lato.'],
     ['Funzioni', 'Direzione del materiale', ['inverti il lato del materiale'], 'Da quale parte della linea della nervatura va il materiale. Di solito si trova da solo (verso il pezzo); «Inverti» sceglie l\'altro lato.'],
     ['Funzioni', 'Creazione guidata fori', ['foro', 'fori'], 'Fori secondo le norme: si sceglie il tipo e la vite (M3…M20) e i diametri vengono presi dalle tabelle. Si clicca su una faccia piana e si mettono le posizioni dei centri.'],
-    ['Funzioni', 'Raccordo', ['raggio'], 'Arrotonda gli spigoli selezionati con una superficie circolare di raggio dato. Su uno spigolo esterno (convesso) toglie materiale, su uno interno (concavo) lo aggiunge. Tutti gli spigoli della stessa funzione si raccordano insieme, come in SolidWorks: dove due raccordi si incontrano si raccordano tra loro, dove se ne incontrano tre ad angolo retto l\'angolo diventa una porzione di sfera.'],
+    ['Funzioni', 'Raccordo', ['raggio'], 'Arrotonda gli spigoli selezionati con una superficie circolare di raggio dato. Su uno spigolo esterno (convesso) toglie materiale, su uno interno (concavo) lo aggiunge. Tutti gli spigoli della stessa funzione si raccordano insieme, come in SolidWorks: dove due raccordi si incontrano si raccordano tra loro, dove se ne incontrano tre ad angolo retto l\'angolo diventa una porzione di sfera. Si possono raccordare spigoli rettilinei, circolari, ad arco e il bordo di un\'ellisse o di una spline importata (spigolo curvo), con un raggio minore di quello della curva.'],
     ['Funzioni', 'Smusso', [], 'Taglia uno spigolo con una faccia inclinata. Tipi: distanza uguale (45°), distanza e angolo, due distanze. Sugli alberi si indica per esempio 1×45°.'],
     ['Funzioni', 'Serie lineare', ['serie'], 'Ripete una o più funzioni (fori, tagli, borchie…) lungo una o due direzioni, con distanza e numero di istanze.'],
     ['Funzioni', 'Serie circolare', [], 'Ripete funzioni attorno a un asse, per esempio i fori di una flangia. Con «spaziatura uguale» le istanze si distribuiscono sull\'angolo totale.'],
     ['Funzioni', 'Specchio', ['piano di simmetria'], 'Copia le funzioni scelte in modo simmetrico rispetto a un piano o a una faccia piana.'],
     ['Funzioni', 'Funzioni da ripetere', ['funzioni da specchiare'], 'Le funzioni (estrusioni, tagli, fori, sweep, nervature…) che la serie o lo specchio copiano. Si scelgono con un clic su una loro faccia nella vista o sul nome nell\'albero.'],
+    ['Funzioni', 'Spigolo curvo', ['bordo dell\'ellisse', 'bordo della spline'], 'Il bordo di una faccia fatta da un\'ellisse o da una spline importata da un file DXF. Nel pezzo è fatto da tanti archi tangenti, ma come in SolidWorks conta come uno spigolo solo: un clic lo sceglie tutto (si colora per intero) e il raccordo o lo smusso lo segue senza righe tra un tratto e l\'altro. Anche la faccia della curva si sceglie tutta insieme.'],
     ['Funzioni', 'Spigoli da raccordare', ['spigoli da smussare'], 'Gli spigoli su cui si applica il raccordo o lo smusso: clic sugli spigoli nella vista (diventano blu); un secondo clic li toglie.'],
     ['Funzioni', 'Profilo e percorso', [], 'I due schizzi dell\'estrusione con percorso: il profilo (contorno chiuso) e il percorso (linee e archi tangenti) lungo cui il profilo scorre.'],
     ['Funzioni', 'Istanze', ['numero di istanze'], 'Il numero totale di copie in una serie, contando anche l\'originale.'],
@@ -11459,6 +11680,44 @@ const parabolaPath = p => MI.dxfToSketch(p.s, MI.parseDXF(dxfFile([dSpl(2, [0, 0
 T('Sweep: cerchio R2 lungo una SPLINE importata da DXF (arco di parabola)', () => sweepDoc(parabolaPath, b => b.circle(0, 0, 2)),
   { V: 4 * PI * (100 + 50 * Math.SQRT2 * Math.asinh(1)) });
 
+/* ---------- raccordi e smussi sul bordo di ellissi e spline (un solo spigolo) e su archi ---------- */
+// Volume tolto (o aggiunto) = area della sezione × lunghezza della linea dei baricentri (Pappo-Guldino). Per una curva chiusa
+// convessa la linea dei baricentri è la curva spostata di c: lunghezza L + 2πc (verso l'esterno) o L − 2πc (verso l'interno).
+// Raccordo r: sezione r²(1 − π/4), baricentro a c = r(10 − 3π)/(3(4 − π)) dallo spigolo; smusso d: sezione d²/2, c = d/3.
+const curveEdge = (doc, z) => { const st = Model.regen(doc);
+  for (const g of Model.edgeGroups(st, st.topo).values()) { if (!g.curve) continue; const e = g.segs[0], a = st.topo.verts[e.a], b = st.topo.verts[e.b];
+    if (Math.abs(a[2] - z) < 1e-6 && Math.abs(b[2] - z) < 1e-6) return { a: st.tags.get(g.t1).name, b: st.tags.get(g.t2).name, p: a }; }
+  throw new Error('spigolo curvo non trovato'); };
+const filA = r => r * r * k, filC = r => r * (10 - 3 * PI) / (3 * (4 - PI));
+const ellHole = () => dxfPart(dxfFile([dPoly([[-60, -40], [60, -40], [60, 40], [-60, 40]], true), dEll(0, 0, 0, 30, 2 / 3)]));
+T('Raccordo R3 sul bordo di un foro ellittico 40×60 (tutto il bordo con un clic)', () => { const d = ellHole(); feat(d, { type: 'fillet', r: 3, edges: [curveEdge(d, 10)] }); return d; },
+  { D: -filA(3) * (ellP(30, 20) + 2 * PI * filC(3)) });
+T('Smusso 2 sul bordo di un foro ellittico 40×60', () => { const d = ellHole(); feat(d, { type: 'chamfer', d: 2, edges: [curveEdge(d, 10)] }); return d; },
+  { D: -2 * (ellP(30, 20) + 2 * PI * 2 / 3) });
+T('Raccordo R4 sul bordo superiore di un\'ellisse 100×60 estrusa (convesso, verso l\'interno)', () => { const d = dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6)])); feat(d, { type: 'fillet', r: 4, edges: [curveEdge(d, 10)] }); return d; },
+  { D: -filA(4) * (ellP(50, 30) - 2 * PI * filC(4)), bb: [[-50, -30, 0], [50, 30, 10]] });
+T('Smusso 3 × 1,5 (due distanze) sul bordo di un\'ellisse 100×60 estrusa', () => { const d = dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6)])); feat(d, { type: 'chamfer', mode: 'dd', d: 3, d2: 1.5, edges: [curveEdge(d, 10)] }); return d; },
+  // sezione triangolare 3 (nel piano) × 1,5 (lungo la parete): area 2,25, baricentro a 1 dalla parete
+  { D: -2.25 * (ellP(50, 30) - 2 * PI * 1) });
+T('Raccordo concavo R2 alla base di una borchia ellittica 50×30 (si aggiunge materiale)', () => {
+  const d = dxfPart(dxfFile([dPoly([[-60, -40], [60, -40], [60, 40], [-60, 40]], true)]));
+  const b = SB(); MI.dxfToSketch(b.s, MI.parseDXF(dxfFile([dEll(0, 0, 25, 0, 0.6)])).geo, {});
+  feat(d, { type: 'extrude', sketch: sketch(d, face(d, nearW([0, 0, 1], 10)), b), end: 'blind', depth: 10 });
+  feat(d, { type: 'fillet', r: 2, edges: [curveEdge(d, 10)] }); return d;
+}, { D: filA(2) * (ellP(25, 15) + 2 * PI * filC(2)) });
+// spline chiusa per (R,0) (0,R) (−R,0) (0,−R): ogni tratto P(u) = A(u)·Pi + B(u)·Pi+1, B = (3u − u³)/2, A(u) = B(1 − u);
+// lunghezza = 4R ∫ √(A′² + B′²) du (Simpson, 2000 intervalli)
+const splL = R => { const n = 2000, Bp = u => (3 - 3 * u * u) / 2, fn = u => Math.hypot(Bp(1 - u), Bp(u)); let S = fn(0) + fn(1);
+  for (let i = 1; i < n; i++) S += (i % 2 ? 4 : 2) * fn(i / n); return 4 * R * S / (3 * n); };
+T('Raccordo R2 sul bordo di una spline chiusa per 4 punti (R 20)', () => { const d = dxfPart(dxfFile([dFit([[20, 0], [0, 20], [-20, 0], [0, -20]], 8 + 1)])); feat(d, { type: 'fillet', r: 2, edges: [curveEdge(d, 10)] }); return d; },
+  { D: -filA(2) * (splL(20) - 2 * PI * filC(2)) });
+// asola con semicerchi R10 (bulge): raccordo e smusso su uno solo dei due archi (mezzo giro: π·(R − c))
+const slotArc = d => edge(d, [50, 10, 10], 'circle');
+T('Raccordo R3 su un arco (semicerchio R10 di un\'asola)', () => { const d = dxfPart(dxfFile([dPoly([[0, 0], [40, 0, 1], [40, 20], [0, 20, 1]], true)])); feat(d, { type: 'fillet', r: 3, edges: [slotArc(d)] }); return d; },
+  { D: -filA(3) * PI * (10 - filC(3)) });
+T('Smusso 3 su un arco (semicerchio R10 di un\'asola)', () => { const d = dxfPart(dxfFile([dPoly([[0, 0], [40, 0, 1], [40, 20], [0, 20, 1]], true)])); feat(d, { type: 'chamfer', d: 3, edges: [slotArc(d)] }); return d; },
+  { D: -4.5 * PI * (10 - 1) });
+
 /* ---------- schizzo: risolutore ---------- */
 const SK = [];
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
@@ -11544,6 +11803,18 @@ SK.push(['DXF: SPLINE con i nodi sbagliati saltata; SPLINE non piana appiattita 
   return { ok: true, got: [r.skipped['curve spline'], r.curves3d, r.geo.length, r.geo[0].b[0]], exp: [1, 1, 1, 10] };
 }]);
 
+SK.push(['Bordo di un foro ellittico: un solo spigolo (tutti gli archi); dopo il raccordo nessuna riga tra i tratti', () => {
+  // 12 spigoli della piastra + bordo superiore e inferiore del foro; dopo il raccordo: + il bordo tra raccordo e parete
+  const d = ellHole(), st0 = Model.regen(d), g0 = [...Model.edgeGroups(st0, st0.topo).values()];
+  const curve = g0.find(g => g.curve && st0.topo.verts[g.segs[0].a][2] > 5), geo = Model.edgeGeometry(curve, st0, st0.topo);
+  const segs = geo.parts.reduce((n, p) => n + p.group.segs.length, 0);
+  feat(d, { type: 'fillet', r: 3, edges: [curveEdge(d, 10)] });
+  const st = Model.regen(d);
+  const seams = st.topo.edges.filter(e => e.sharp && e.polys.length === 2 && e.polys.every(p => st.tags.get(st.body[p].t).scg)).length;
+  const smooth = st.topo.edges.filter(e => e.smooth && e.polys.every(p => st.tags.get(st.body[p].t).scg)).length;
+  return { ok: !st.errors.size, got: [g0.length, geo.kind === 'curve' ? 1 : 0, geo.parts.every(p => p.kind === 'circle') ? 1 : 0, segs === curve.segs.length ? 1 : 0,
+    Math.abs(geo.length / ellP(30, 20) - 1) < 1e-3 ? 1 : 0, Model.edgeGroups(st, st.topo).size, seams, smooth > 50 ? 1 : 0], exp: [14, 1, 1, 1, 1, 15, 0, 1] };
+}]);
 // stato dello schizzo con meno vincoli che incognite (si scompone la trasposta della matrice dei vincoli)
 SK.push(['Stato: rettangolo con un vertice nell\'origine e lati orizz./vert. → 2 gradi di libertà', () => {
   const b = SB(); const [p1, p2, p3, p4] = b.rect(0, 0, 70, 45); const L = b.s.ents.filter(e => e.t === 'ln');
@@ -11601,6 +11872,9 @@ function run(tol = TOL) {
       const chk = (lab, g, e, scale) => { const r = rel(g, e, scale); if (r > tol) { ok = false; msg.push(`${lab}: ${g.toFixed(3)} invece di ${e.toFixed(3)} (${(r * 100).toFixed(2)}%)`); } return r; };
       if (c.exp.V !== undefined) errs.V = chk('Volume', mp.volume, c.exp.V);
       if (c.exp.R !== undefined) errs.R = chk('Materiale tolto', 40000 - mp.volume, c.exp.R);
+      // D: variazione di volume dell'ultima funzione, misurata sul pezzo costruito senza di lei (così l'approssimazione
+      // del pezzo di partenza, per esempio gli archi di un'ellisse, non si somma all'errore della funzione)
+      if (c.exp.D !== undefined) { const V0 = Model.massProperties(Model.regen({ ...doc, features: doc.features.slice(0, -1) }), doc).volume; errs.D = chk('Materiale tolto o aggiunto', mp.volume - V0, c.exp.D); }
       if (c.exp.A !== undefined) errs.A = chk('Area', mp.area, c.exp.A);
       if (c.exp.M !== undefined) errs.M = chk('Massa', mp.mass, c.exp.M);
       if (c.exp.C) errs.C = Math.max(...c.exp.C.map((e, i) => chk('Baricentro ' + 'xyz'[i], mp.centroid[i], e, size)));
@@ -11969,8 +12243,9 @@ if (isNode) {
       'Scrivi il raggio (per lo smusso: distanza, oppure distanza e angolo, oppure due distanze).',
       'Conferma con ✓: gli spigoli vengono lavorati **insieme**. Dove due raccordi si incontrano si raccordano tra loro; dove se ne incontrano tre ad angolo retto l\'angolo diventa una porzione di sfera.',
     ],
-    tips: ['Metti nella stessa funzione gli spigoli che si toccano: il risultato è quello di SolidWorks.', 'Su uno spigolo interno (concavo) il raccordo aggiunge materiale.'],
-    terms: ['Raccordo', 'Smusso', 'Spigoli da raccordare', 'Spigolo'],
+    tips: ['Metti nella stessa funzione gli spigoli che si toccano: il risultato è quello di SolidWorks.', 'Su uno spigolo interno (concavo) il raccordo aggiunge materiale.',
+      'Il bordo di un foro ellittico o a spline è uno **spigolo curvo**: basta un clic per sceglierlo tutto. Il raggio deve essere minore del raggio della curva nel punto più stretto.'],
+    terms: ['Raccordo', 'Smusso', 'Spigoli da raccordare', 'Spigolo', 'Spigolo curvo'],
   });
   add('Funzioni', 'serie-lin', 'Serie lineare', {
     why: 'Ripetere fori o borchie in fila o a griglia.',

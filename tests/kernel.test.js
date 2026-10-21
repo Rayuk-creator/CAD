@@ -503,6 +503,44 @@ const parabolaPath = p => MI.dxfToSketch(p.s, MI.parseDXF(dxfFile([dSpl(2, [0, 0
 T('Sweep: cerchio R2 lungo una SPLINE importata da DXF (arco di parabola)', () => sweepDoc(parabolaPath, b => b.circle(0, 0, 2)),
   { V: 4 * PI * (100 + 50 * Math.SQRT2 * Math.asinh(1)) });
 
+/* ---------- raccordi e smussi sul bordo di ellissi e spline (un solo spigolo) e su archi ---------- */
+// Volume tolto (o aggiunto) = area della sezione × lunghezza della linea dei baricentri (Pappo-Guldino). Per una curva chiusa
+// convessa la linea dei baricentri è la curva spostata di c: lunghezza L + 2πc (verso l'esterno) o L − 2πc (verso l'interno).
+// Raccordo r: sezione r²(1 − π/4), baricentro a c = r(10 − 3π)/(3(4 − π)) dallo spigolo; smusso d: sezione d²/2, c = d/3.
+const curveEdge = (doc, z) => { const st = Model.regen(doc);
+  for (const g of Model.edgeGroups(st, st.topo).values()) { if (!g.curve) continue; const e = g.segs[0], a = st.topo.verts[e.a], b = st.topo.verts[e.b];
+    if (Math.abs(a[2] - z) < 1e-6 && Math.abs(b[2] - z) < 1e-6) return { a: st.tags.get(g.t1).name, b: st.tags.get(g.t2).name, p: a }; }
+  throw new Error('spigolo curvo non trovato'); };
+const filA = r => r * r * k, filC = r => r * (10 - 3 * PI) / (3 * (4 - PI));
+const ellHole = () => dxfPart(dxfFile([dPoly([[-60, -40], [60, -40], [60, 40], [-60, 40]], true), dEll(0, 0, 0, 30, 2 / 3)]));
+T('Raccordo R3 sul bordo di un foro ellittico 40×60 (tutto il bordo con un clic)', () => { const d = ellHole(); feat(d, { type: 'fillet', r: 3, edges: [curveEdge(d, 10)] }); return d; },
+  { D: -filA(3) * (ellP(30, 20) + 2 * PI * filC(3)) });
+T('Smusso 2 sul bordo di un foro ellittico 40×60', () => { const d = ellHole(); feat(d, { type: 'chamfer', d: 2, edges: [curveEdge(d, 10)] }); return d; },
+  { D: -2 * (ellP(30, 20) + 2 * PI * 2 / 3) });
+T('Raccordo R4 sul bordo superiore di un\'ellisse 100×60 estrusa (convesso, verso l\'interno)', () => { const d = dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6)])); feat(d, { type: 'fillet', r: 4, edges: [curveEdge(d, 10)] }); return d; },
+  { D: -filA(4) * (ellP(50, 30) - 2 * PI * filC(4)), bb: [[-50, -30, 0], [50, 30, 10]] });
+T('Smusso 3 × 1,5 (due distanze) sul bordo di un\'ellisse 100×60 estrusa', () => { const d = dxfPart(dxfFile([dEll(0, 0, 50, 0, 0.6)])); feat(d, { type: 'chamfer', mode: 'dd', d: 3, d2: 1.5, edges: [curveEdge(d, 10)] }); return d; },
+  // sezione triangolare 3 (nel piano) × 1,5 (lungo la parete): area 2,25, baricentro a 1 dalla parete
+  { D: -2.25 * (ellP(50, 30) - 2 * PI * 1) });
+T('Raccordo concavo R2 alla base di una borchia ellittica 50×30 (si aggiunge materiale)', () => {
+  const d = dxfPart(dxfFile([dPoly([[-60, -40], [60, -40], [60, 40], [-60, 40]], true)]));
+  const b = SB(); MI.dxfToSketch(b.s, MI.parseDXF(dxfFile([dEll(0, 0, 25, 0, 0.6)])).geo, {});
+  feat(d, { type: 'extrude', sketch: sketch(d, face(d, nearW([0, 0, 1], 10)), b), end: 'blind', depth: 10 });
+  feat(d, { type: 'fillet', r: 2, edges: [curveEdge(d, 10)] }); return d;
+}, { D: filA(2) * (ellP(25, 15) + 2 * PI * filC(2)) });
+// spline chiusa per (R,0) (0,R) (−R,0) (0,−R): ogni tratto P(u) = A(u)·Pi + B(u)·Pi+1, B = (3u − u³)/2, A(u) = B(1 − u);
+// lunghezza = 4R ∫ √(A′² + B′²) du (Simpson, 2000 intervalli)
+const splL = R => { const n = 2000, Bp = u => (3 - 3 * u * u) / 2, fn = u => Math.hypot(Bp(1 - u), Bp(u)); let S = fn(0) + fn(1);
+  for (let i = 1; i < n; i++) S += (i % 2 ? 4 : 2) * fn(i / n); return 4 * R * S / (3 * n); };
+T('Raccordo R2 sul bordo di una spline chiusa per 4 punti (R 20)', () => { const d = dxfPart(dxfFile([dFit([[20, 0], [0, 20], [-20, 0], [0, -20]], 8 + 1)])); feat(d, { type: 'fillet', r: 2, edges: [curveEdge(d, 10)] }); return d; },
+  { D: -filA(2) * (splL(20) - 2 * PI * filC(2)) });
+// asola con semicerchi R10 (bulge): raccordo e smusso su uno solo dei due archi (mezzo giro: π·(R − c))
+const slotArc = d => edge(d, [50, 10, 10], 'circle');
+T('Raccordo R3 su un arco (semicerchio R10 di un\'asola)', () => { const d = dxfPart(dxfFile([dPoly([[0, 0], [40, 0, 1], [40, 20], [0, 20, 1]], true)])); feat(d, { type: 'fillet', r: 3, edges: [slotArc(d)] }); return d; },
+  { D: -filA(3) * PI * (10 - filC(3)) });
+T('Smusso 3 su un arco (semicerchio R10 di un\'asola)', () => { const d = dxfPart(dxfFile([dPoly([[0, 0], [40, 0, 1], [40, 20], [0, 20, 1]], true)])); feat(d, { type: 'chamfer', d: 3, edges: [slotArc(d)] }); return d; },
+  { D: -4.5 * PI * (10 - 1) });
+
 /* ---------- schizzo: risolutore ---------- */
 const SK = [];
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
@@ -588,6 +626,18 @@ SK.push(['DXF: SPLINE con i nodi sbagliati saltata; SPLINE non piana appiattita 
   return { ok: true, got: [r.skipped['curve spline'], r.curves3d, r.geo.length, r.geo[0].b[0]], exp: [1, 1, 1, 10] };
 }]);
 
+SK.push(['Bordo di un foro ellittico: un solo spigolo (tutti gli archi); dopo il raccordo nessuna riga tra i tratti', () => {
+  // 12 spigoli della piastra + bordo superiore e inferiore del foro; dopo il raccordo: + il bordo tra raccordo e parete
+  const d = ellHole(), st0 = Model.regen(d), g0 = [...Model.edgeGroups(st0, st0.topo).values()];
+  const curve = g0.find(g => g.curve && st0.topo.verts[g.segs[0].a][2] > 5), geo = Model.edgeGeometry(curve, st0, st0.topo);
+  const segs = geo.parts.reduce((n, p) => n + p.group.segs.length, 0);
+  feat(d, { type: 'fillet', r: 3, edges: [curveEdge(d, 10)] });
+  const st = Model.regen(d);
+  const seams = st.topo.edges.filter(e => e.sharp && e.polys.length === 2 && e.polys.every(p => st.tags.get(st.body[p].t).scg)).length;
+  const smooth = st.topo.edges.filter(e => e.smooth && e.polys.every(p => st.tags.get(st.body[p].t).scg)).length;
+  return { ok: !st.errors.size, got: [g0.length, geo.kind === 'curve' ? 1 : 0, geo.parts.every(p => p.kind === 'circle') ? 1 : 0, segs === curve.segs.length ? 1 : 0,
+    Math.abs(geo.length / ellP(30, 20) - 1) < 1e-3 ? 1 : 0, Model.edgeGroups(st, st.topo).size, seams, smooth > 50 ? 1 : 0], exp: [14, 1, 1, 1, 1, 15, 0, 1] };
+}]);
 // stato dello schizzo con meno vincoli che incognite (si scompone la trasposta della matrice dei vincoli)
 SK.push(['Stato: rettangolo con un vertice nell\'origine e lati orizz./vert. → 2 gradi di libertà', () => {
   const b = SB(); const [p1, p2, p3, p4] = b.rect(0, 0, 70, 45); const L = b.s.ents.filter(e => e.t === 'ln');
@@ -645,6 +695,9 @@ function run(tol = TOL) {
       const chk = (lab, g, e, scale) => { const r = rel(g, e, scale); if (r > tol) { ok = false; msg.push(`${lab}: ${g.toFixed(3)} invece di ${e.toFixed(3)} (${(r * 100).toFixed(2)}%)`); } return r; };
       if (c.exp.V !== undefined) errs.V = chk('Volume', mp.volume, c.exp.V);
       if (c.exp.R !== undefined) errs.R = chk('Materiale tolto', 40000 - mp.volume, c.exp.R);
+      // D: variazione di volume dell'ultima funzione, misurata sul pezzo costruito senza di lei (così l'approssimazione
+      // del pezzo di partenza, per esempio gli archi di un'ellisse, non si somma all'errore della funzione)
+      if (c.exp.D !== undefined) { const V0 = Model.massProperties(Model.regen({ ...doc, features: doc.features.slice(0, -1) }), doc).volume; errs.D = chk('Materiale tolto o aggiunto', mp.volume - V0, c.exp.D); }
       if (c.exp.A !== undefined) errs.A = chk('Area', mp.area, c.exp.A);
       if (c.exp.M !== undefined) errs.M = chk('Massa', mp.mass, c.exp.M);
       if (c.exp.C) errs.C = Math.max(...c.exp.C.map((e, i) => chk('Baricentro ' + 'xyz'[i], mp.centroid[i], e, size)));
