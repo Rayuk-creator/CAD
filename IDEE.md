@@ -35,4 +35,4 @@ Risultato: il cablaggio 3D steso in piano. Ellissi e spline del DXF sono pronte:
 
 ## Altro ancora da fare
 
-- La pagina pubblicata su claude.ai (artifact «Banco CAD») è aggiornata al 21 ottobre ma **senza** STEP/IGES; la versione di riferimento resta `index.html` in questo repository.
+- La pagina pubblicata su claude.ai (artifact «Banco CAD») è aggiornata al 21 ottobre ma **senza** STEP/IGES e **senza** ellissi e spline; la versione di riferimento resta `index.html` in questo repository.

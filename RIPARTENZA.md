@@ -2,7 +2,9 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 21 ottobre 2026 (ellissi e spline nel DXF).
+Ultimo aggiornamento: 21 ottobre 2026, sera (ellissi e spline nel DXF).
+
+**Stato attuale:** ultimo commit su `main` = `423c5bb` «Ellissi e spline nel DXF (archi tangenti) e correzioni dello schizzo». Tutte le prove superate: 109/109 di calcolo, 10/10 STEP/IGES, 41/41 dell'interfaccia, Autoverifica 109/109. Nessun lavoro lasciato a metà.
 
 ---
 
@@ -31,7 +33,7 @@ Ultimo aggiornamento: 21 ottobre 2026 (ellissi e spline nel DXF).
 - **Importazione STEP e IGES** (Progetto › Importa STEP o IGES; un .step/.igs scelto nella finestra STL/OBJ viene letto lo stesso): stessa funzione «Importato»; superfici vere divise in triangoli fitti (angolo 0,1 rad ≈ 63 lati per cerchio, scostamento 0,0005 dell'ingombro; se si superano 100 000 triangoli si rilegge più grossolano, fino a 4 livelli, con avviso dal 3°); unità lette dal file e convertite in mm; ogni triangolo ricorda la **faccia vera** d'origine (`f` nel progetto salvato): lo spigolo si disegna solo tra facce diverse, la cucitura dei cilindri non si vede; assiemi = un solo «Importato» con più corpi; «Asse Z verso l'alto» modificabile; messaggi per .sldprt, .ipt, .sat, .x_t, STEP XML e file danneggiati. Il lettore si prepara alla prima importazione (≈ 0,5 s) e funziona offline.
 - **Importazione DXF negli schizzi** (Progetto › Importa DXF (schizzo), oppure **Inserisci DXF** nella scheda Schizzo): fuori da uno schizzo ne crea uno nuovo sul piano scelto, dentro uno schizzo aggiunge a quello aperto; LINE, ARC, CIRCLE, LWPOLYLINE e POLYLINE (anche con tratti curvi, «bulge»), **ELLIPSE** (intera o arco, normale −Z) e **SPLINE** (NURBS di qualsiasi grado con nodi e pesi, oppure solo punti di passaggio con tangenti agli estremi o chiusa), blocchi (INSERT con spostamento, rotazione, scala uniforme, specchio, serie); unità da `$INSUNITS` o scelta a mano; posizione come nel file, angolo o centro sull'origine; estremi vicini uniti, entità doppie tolte; linee tratto-punto → linee di mezzeria, tratteggiate → costruzione; ellissi e spline diventano **biarchi** (coppie di archi tangenti) con scostamento ≤ 1/10 000 della dimensione minore della curva (asse minore dell'ellisse; per la spline il lato minore dell'ingombro, non meno di 1/10 della diagonale), il messaggio dice quanti archi e lo scostamento massimo in mm; i **centri** di questi archi sono nascosti (`hc` sul punto: non si disegnano, non si agganciano, non contano per l'inquadratura, selezione a finestra sull'arco); gli archi della stessa curva uniti in modo tangente hanno lo stesso gruppo `cg`, e tra le loro facce lo spigolo non si disegna (anche lungo un percorso a spline, `pcg`); testi, quote, tratteggi saltati e contati nel messaggio; DWG e DXF binario spiegati; massimo 3000 entità. Le entità arrivano selezionate e sotto definite (blu).
 - **Esercitazioni**: 8 pezzi con tavola di consegna e verifica automatica.
-- **Guida** «come si fa» (44 argomenti, pulsante in alto, «Mostrami dove») e **Glossario** (≈ 152 termini, ⓘ accanto ai titoli dei pannelli), collegati tra loro.
+- **Guida** «come si fa» (44 argomenti, pulsante in alto, «Mostrami dove») e **Glossario** (156 termini, ⓘ accanto ai titoli dei pannelli), collegati tra loro.
 
 ### Comandi della vista (decisi dall'utente)
 
@@ -48,6 +50,9 @@ Ultimo aggiornamento: 21 ottobre 2026 (ellissi e spline nel DXF).
 - **Test affidabili** con **tolleranza dell'1 %** sui calcoli; dopo ogni modifica far girare tutte le prove.
 - Ogni termine nuovo va spiegato nel **Glossario**, e ogni comando nuovo nella **Guida** (c'è un test che lo controlla).
 - Le richieste lunghe consumano molto: l'utente ha un limite settimanale (si azzera il **martedì alle 17**). Per i controlli piccoli usare task nuove e corte.
+- **Avvisare l'utente quando una chat di lavoro diventa troppo pesante**, così ne apre una nuova con il messaggio del punto 1.
+- Quando l'utente spegne il PC, il lavoro deve andare avanti da solo: lo segue dall'app su smartphone o tablet (messaggi brevi, file mandati alla fine).
+- Essere sempre **precisissimi** nei controlli e nelle misure: verificare che ogni prova nuova scopra davvero il difetto (farla girare anche sulla versione vecchia).
 - I promemoria vanno in `IDEE.md` e in questo file (la memoria tra chat ora è attiva, ma questi file restano il riferimento).
 
 ---
@@ -102,6 +107,9 @@ package.json          npm test / test:kernel (comprende step.test.js) / test:ui
 - Lo spostamento con la rotella si misura sulla camera, non sulle coordinate dello schermo; la dimensione del pixel (`pxSize`) va letta dopo un fotogramma (`requestAnimationFrame`), altrimenti può essere quella vecchia.
 - Per i file da importare nei test: `page.setInputFiles('#meshFile', { name, mimeType, buffer })` (DXF: `#dxfFile`, STEP/IGES: `#cadFile`); nel codice c'è anche `App.importMeshData(nome, Uint8Array, { unit, zUp })`, `App.importDxfData(nome, Uint8Array, { unit, origin, plane })` e `await App.importCadData(nome, Uint8Array, { zUp })`.
 - Le caselle dei pannelli non hanno un id: si prendono con `page.locator('#pm label.chk', { hasText: '…' }).locator('input')`.
+- Una prova che conta qualcosa (spigoli, errori) può passare «a vuoto» se la funzione fallisce e non c'è il pezzo: controllare sempre `st.errors` e che `st.body` non sia vuoto (lo fa `sideEdges` in `kernel.test.js`).
+- L'estrusione con percorso vuole il percorso **perpendicolare** al piano del profilo nel punto di partenza.
+- Se l'interfaccia sembra bloccata dopo un'importazione, misurare i tempi: il calcolo più pesante è `Sketch.analyze` (stato dello schizzo).
 
 ---
 
@@ -114,9 +122,6 @@ package.json          npm test / test:kernel (comprende step.test.js) / test:ui
 - Valutata l'importazione di altri formati e l'idea del cablaggio 3D da PDF: **rimandate**, vedi `IDEE.md`.
 - 21 ottobre: **importazione STL e OBJ** (funzione «Importato»), con 10 prove di calcolo e 5 dell'interfaccia; Guida e Glossario aggiornati. Corretto anche un difetto della vista: la rotella (o un trascinamento) usata durante l'animazione di un cambio di vista andava persa; ora l'animazione si chiude subito e il comando si applica (prova apposita).
 - 21 ottobre (seconda parte): **importazione DXF negli schizzi** con 9 prove di calcolo, 1 di schizzo e 3 dell'interfaccia; Guida e Glossario aggiornati; pagina pubblicata su claude.ai aggiornata. Corretto un difetto grave della triangolazione: con **più fori** in una stessa faccia (per esempio 4 fori allineati a due a due) il ponte tra foro e contorno poteva tagliare un altro foro e il volume veniva sbagliato fino al 27 %; ora il ponte va al vertice visibile più vicino (funzione `bridge` in `Geom`), con 2 prove apposite.
-
----
-
 - 21 ottobre (terza parte): **importazione STEP e IGES** con OpenCascade (occt-import-js) compresso dentro `index.html` (scelta dell'utente: tutto in un file, ≈ 5 MB); 5 prove di calcolo + 3 di controllo con un lettore simulato, 10 prove con il lettore vero su file STEP/IGES scritti dai generatori dei test, 3 prove dell'interfaccia; Guida (argomento «Importare un pezzo da un file STEP o IGES») e Glossario (STEP, IGES, Importa STEP o IGES, Facce del modello d'origine, OpenCascade) aggiornati. Corretta anche la chiusura doppia `</body></html>` in fondo alla pagina.
 - 21 ottobre (quarta parte): **ellissi e spline nel DXF** diventano biarchi; 15 prove di calcolo nuove (volumi, aree e baricentri calcolati a mano: ellisse intera, ruotata, quarto, normale −Z, foro ellittico, 1:100, in un blocco; spline quadratica, cubica, cerchio NURBS razionale esatto, grado 1, per 2/3/4 punti di passaggio; tubo lungo una spline), 9 controlli dello schizzo, 2 prove dell'interfaccia; errore massimo 0,021 %. Dopo aver guardato le schermate: centri degli archi nascosti (un'ellisse 200 × 2 occupava lo 0,4 % della vista, ora il 74 %) e niente righe tra le facce della stessa curva (52 in un'ellisse estrusa, 2698 in un tubo lungo una spline). Corretti tre difetti dello schizzo trovati strada facendo: (1) con due entità incrociate il controllo andava in errore JavaScript invece di dare il messaggio «si intersecano»; (2) archi tangenti con raggi grandi, o sullo stesso cerchio, venivano presi per incroci (arrotondamenti); (3) lo stato dello schizzo con tante entità era lentissimo (9,5 s con 88 archi, ora 0,13 s; verificato uguale al vecchio su 1000 schizzi). Guida e Glossario (Ellisse, Spline, Biarco, Scostamento dalla curva) aggiornati.
 
@@ -126,4 +131,4 @@ package.json          npm test / test:kernel (comprende step.test.js) / test:ui
 - Un'ellisse diventa ≈ 50–60 archi (tolleranza 1/10 000): va bene fino a qualche decina di curve per disegno (massimo 3000 entità). Se servisse, si possono ridurre gli archi scegliendo meglio il punto di giunzione dei biarchi.
 - Il bordo di un foro ellittico (o a spline) è fatto di tanti spigoli, uno per arco: per un raccordo o uno smusso su quel bordo vanno scelti tutti (in SolidWorks è uno spigolo solo). Si potrebbe far scegliere insieme gli spigoli dello stesso gruppo `cg`.
 - Due facce vere adiacenti nello stesso piano (per esempio una faccia divisa con una «linea di divisione») si vedono unite, senza lo spigolo in mezzo: si potrebbe distinguere con la faccia d'origine in `surfKey`, ma toccherebbe anche i pezzi normali. Per ora lasciato così.
-- La pagina pubblicata su claude.ai (artifact «Banco CAD») è aggiornata al **21 ottobre** (importazione DXF, **senza** STEP/IGES): ripubblicarla quando l'utente lo chiede (ora la pagina pesa ≈ 5 MB, sotto il limite di 16 MB). La versione giusta resta `index.html` del repository.
+- La pagina pubblicata su claude.ai (artifact «Banco CAD») è ferma alla seconda parte del 21 ottobre (importazione DXF, **senza** STEP/IGES e **senza** ellissi e spline): ripubblicarla quando l'utente lo chiede (ora la pagina pesa ≈ 5 MB, sotto il limite di 16 MB). La versione giusta resta `index.html` del repository.
