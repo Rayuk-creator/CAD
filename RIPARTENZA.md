@@ -111,4 +111,3 @@ package.json          npm test / test:kernel / test:ui
 
 - Tutto quello che c'è in `IDEE.md`: **prossimo passo l'importazione DXF negli schizzi**, poi STEP/IGES; cablaggio 3D semi-automatico da PDF.
 - La pagina pubblicata su claude.ai (artifact «Banco CAD») è ferma al **13 ottobre**: aggiornarla solo se l'utente lo chiede. La versione giusta è `index.html` del repository.
-- L'utente doveva farmi «controllare una cosa» (rimandata al martedì per il limite di utilizzo): chiedergli se serve ancora.
