@@ -16,9 +16,9 @@ Il 20 ottobre 2026 abbiamo valutato l'importazione di altri formati. Il 21 ottob
 
 Limite comune: i pezzi importati arrivano **senza la storia delle funzioni** (le quote originali non si modificano); si possono aggiungere funzioni nuove sopra. Gli schizzi DXF arrivano senza quote (blu): si possono quotare.
 
-Miglioramenti possibili del DXF: ellissi e spline **fatte** il 21 ottobre (biarchi, scostamento ≤ 1/10 000 della dimensione minore); restano la scelta dei layer da importare e l'anteprima nella finestra prima di importare; eventualmente meno archi per curva (punto di giunzione dei biarchi scelto meglio); scegliere con un clic tutto il bordo di un foro ellittico o a spline per raccordarlo (oggi è fatto di uno spigolo per arco).
+Miglioramenti del DXF **fatti** il 21 ottobre: ellissi e spline (biarchi, scostamento ≤ 1/10 000 della dimensione minore), scelta dei layer e anteprima nella finestra, bordo di un foro ellittico o a spline scelto con un clic e raccordato tutto insieme («spigolo curvo»). Resta, eventualmente: meno archi per curva (punto di giunzione dei biarchi scelto meglio); raccordo che si propaga agli spigoli tangenti (curve aperte, asole).
 
-Miglioramenti possibili di STEP/IGES: scelta dei corpi di un assieme da importare (oggi arrivano tutti in un solo «Importato»); colori delle facce (il lettore li dà); spigolo visibile tra due facce vere complanari; lettura in un Worker per non bloccare la pagina con i file molto grandi.
+Miglioramenti di STEP/IGES **fatti** il 21 ottobre: scelta dei corpi di un assieme, colori delle facce, lettura in un Worker (pagina libera, si può annullare). Restano: spigolo visibile tra due facce vere complanari; colori anche nella messa in tavola; un «Importato» per ogni corpo (oggi i corpi scelti arrivano insieme).
 
 ## Cablaggio 3D da un disegno PDF (harness)
 
@@ -35,4 +35,4 @@ Risultato: il cablaggio 3D steso in piano. Ellissi e spline del DXF sono pronte:
 
 ## Altro ancora da fare
 
-- La pagina pubblicata su claude.ai (artifact «Banco CAD») è aggiornata al 21 ottobre ma **senza** STEP/IGES e **senza** ellissi e spline; la versione di riferimento resta `index.html` in questo repository.
+- La pagina pubblicata su claude.ai (artifact «Banco CAD») è aggiornata al 21 ottobre sera (tutto compreso); la versione di riferimento resta `index.html` in questo repository.
