@@ -4,7 +4,7 @@ File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima d
 
 Ultimo aggiornamento: 21 ottobre 2026, sera (ellissi e spline nel DXF).
 
-**Stato attuale:** ultimo commit su `main` = `423c5bb` «Ellissi e spline nel DXF (archi tangenti) e correzioni dello schizzo». Tutte le prove superate: 109/109 di calcolo, 10/10 STEP/IGES, 41/41 dell'interfaccia, Autoverifica 109/109. Nessun lavoro lasciato a metà.
+**Stato attuale:** ultima modifica del programma su `main` = commit `423c5bb` «Ellissi e spline nel DXF (archi tangenti) e correzioni dello schizzo». Tutte le prove superate: 109/109 di calcolo, 10/10 STEP/IGES, 41/41 dell'interfaccia, Autoverifica 109/109. Nessun lavoro lasciato a metà.
 
 ---
 
