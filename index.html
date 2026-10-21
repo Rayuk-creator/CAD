@@ -239,6 +239,8 @@ input, select, textarea { font: inherit; color: var(--ink); }
 .dxf-layers .lh button { font: inherit; font-size: 12px; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 2px 4px; }
 .dxf-layers label.chk { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 2px 0; }
 .dxf-layers label.chk .n { color: var(--ink-3); font-size: 12px; margin-left: auto; }
+.cad-bodies { max-height: 260px; }
+.cad-body .sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line-2); flex: none; }
 .toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 90; background: var(--ink); color: var(--panel); padding: 8px 14px; border-radius: 8px; font-size: 13px; box-shadow: var(--shadow); max-width: 90vw; }
 
 
@@ -2464,21 +2466,85 @@ label.chk .gl-i { margin-left: 2px; }
     }
     if (!res.meshes.length || !nt) throw new Error('Nel file non ci sono solidi né superfici (forse contiene solo linee o un disegno 2D).');
     if (nt > max) throw new Error(`Il pezzo è troppo complesso: anche con i triangoli più grandi ne servono ${nt.toLocaleString('it-IT')}, il massimo è ${max.toLocaleString('it-IT')}. Prova a importare una parte alla volta.`);
-    const pos = new Float32Array(nt * 9), face = new Uint32Array(nt);
+    const pos = new Float32Array(nt * 9), face = new Uint32Array(nt), body = new Uint32Array(nt);
     let t = 0, fid = 0;
-    const names = [];
-    for (const m of res.meshes) {
+    const names = [], fcol = [], bodies = [];
+    // colore «rrggbb» da [r, g, b] (0…1) del lettore
+    const hex = c => Array.isArray(c) && c.length >= 3 && c.every(Number.isFinite) ? c.slice(0, 3).map(x => Math.round(Math.max(0, Math.min(1, x)) * 255).toString(16).padStart(2, '0')).join('') : null;
+    res.meshes.forEach((m, bi) => {
       const p = m.attributes.position.array, ix = m.index.array, n = ix.length / 3;
       if (m.name && !names.includes(m.name)) names.push(m.name);
+      const bc = hex(m.color), f0 = fid;
       const fm = new Int32Array(n).fill(-1);
-      for (const bf of m.brep_faces || []) { for (let k = bf.first; k <= bf.last && k < n; k++) fm[k] = fid; fid++; }
-      let extra = -1;
+      for (const bf of m.brep_faces || []) { for (let k = bf.first; k <= bf.last && k < n; k++) fm[k] = fid; fcol[fid] = hex(bf.color) || bc; fid++; }
+      let extra = -1, vol = 0;
       for (let k = 0; k < n; k++, t++) {
         for (let j = 0; j < 3; j++) { const o = ix[k * 3 + j] * 3; pos[t * 9 + j * 3] = p[o]; pos[t * 9 + j * 3 + 1] = p[o + 1]; pos[t * 9 + j * 3 + 2] = p[o + 2]; }
-        if (fm[k] < 0) { if (extra < 0) extra = fid++; face[t] = extra; } else face[t] = fm[k];
+        if (fm[k] < 0) { if (extra < 0) { extra = fid++; fcol[extra] = bc; } face[t] = extra; } else face[t] = fm[k];
+        body[t] = bi;
+        const q = t * 9;   // volume con segno (tetraedro con l'origine)
+        vol += (pos[q] * (pos[q + 4] * pos[q + 8] - pos[q + 5] * pos[q + 7]) - pos[q + 1] * (pos[q + 3] * pos[q + 8] - pos[q + 5] * pos[q + 6]) + pos[q + 2] * (pos[q + 3] * pos[q + 7] - pos[q + 4] * pos[q + 6])) / 6;
       }
+      bodies.push({ name: m.name || '', tris: n, faces: fid - f0, color: bc, volume: vol });
+    });
+    // IGES: spesso ogni superficie arriva da sola; le superfici che si toccano (vertici in comune) formano un corpo
+    if (fmt === 'iges' && bodies.length > 1) {
+      const up = bodies.map((b, i) => i), find = i => { while (up[i] !== i) { up[i] = up[up[i]]; i = up[i]; } return i; };
+      const seen = new Map(), q = x => Math.round(x * 1e4);
+      for (let k = 0; k < nt * 3; k++) {
+        const key = q(pos[k * 3]) + ',' + q(pos[k * 3 + 1]) + ',' + q(pos[k * 3 + 2]), b = body[Math.floor(k / 3)], o = seen.get(key);
+        if (o === undefined) seen.set(key, b); else { const x = find(o), y = find(b); if (x !== y) up[Math.max(x, y)] = Math.min(x, y); }
+      }
+      const idx = new Map(), merged = [];
+      bodies.forEach((b, i) => { const r = find(i); if (!idx.has(r)) { idx.set(r, merged.length); merged.push({ name: b.name, tris: 0, faces: 0, color: b.color, volume: 0 }); }
+        const m = merged[idx.get(r)]; m.tris += b.tris; m.faces += b.faces; m.volume += b.volume; m.color = m.color || b.color; m.name = m.name || b.name; });
+      for (let t = 0; t < nt; t++) body[t] = idx.get(find(body[t]));
+      bodies.length = 0; bodies.push(...merged);
     }
-    return { pos, face, faces: fid, meshes: res.meshes.length, names, level: lvl, tris: nt };
+    for (const b of bodies) b.volume = Math.abs(b.volume);
+    return { pos, face, body, fcol, bodies, faces: fid, meshes: res.meshes.length, names, level: lvl, tris: nt };
+  }
+  // tiene solo i corpi scelti (indici in r.bodies); le facce vengono rinumerate da 0
+  function pickBodies(r, keep) {
+    const want = new Set(keep);
+    if (!want.size) throw new Error('Scegli almeno un corpo da importare.');
+    let nt = 0;
+    for (let t = 0; t < r.tris; t++) if (want.has(r.body[t])) nt++;
+    const pos = new Float32Array(nt * 9), face = new Uint32Array(nt), body = new Uint32Array(nt), map = new Map(), fcol = [];
+    let k = 0;
+    for (let t = 0; t < r.tris; t++) {
+      if (!want.has(r.body[t])) continue;
+      pos.set(r.pos.subarray(t * 9, t * 9 + 9), k * 9);
+      let f = map.get(r.face[t]);
+      if (f === undefined) { f = map.size; map.set(r.face[t], f); fcol[f] = r.fcol[r.face[t]] || null; }
+      face[k] = f; body[k] = r.body[t]; k++;
+    }
+    const bodies = r.bodies.filter((b, i) => want.has(i));
+    return { ...r, pos, face, body, fcol, bodies, faces: map.size, meshes: bodies.length, names: bodies.map(b => b.name).filter((x, i, a) => x && a.indexOf(x) === i), tris: nt };
+  }
+  // Testo di un Worker che prepara il lettore e legge i file fuori dalla pagina, così la pagina non si blocca.
+  // Messaggi: {init: {js, wasmGz}} → {ready: true}; {read: {data, fmt, max}} → {result} oppure {error}.
+  function cadWorkerSource() {
+    return `'use strict';
+const CAD_MAX = ${CAD_MAX}, CAD_LEVELS = ${JSON.stringify(CAD_LEVELS)};
+const u8of = ${u8of.toString()};
+${cadKind.toString()}
+${readCAD.toString()}
+let occt = null;
+self.onmessage = async ev => {
+  const m = ev.data;
+  try {
+    if (m.init) {
+      const wasm = new Uint8Array(await new Response(new Blob([m.init.wasmGz]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+      const factory = new Function('require', '__filename', '__dirname', m.init.js + '\\nreturn occtimportjs;')(undefined, undefined, undefined);
+      occt = await factory({ wasmBinary: wasm, print: () => {}, printErr: () => {} });
+      self.postMessage({ id: m.id, ready: true });
+    } else if (m.read) {
+      const r = readCAD(occt, m.read.data, m.read.fmt, { max: m.read.max });
+      self.postMessage({ id: m.id, result: r }, [r.pos.buffer, r.face.buffer, r.body.buffer]);
+    }
+  } catch (e) { self.postMessage({ id: m.id, error: e && e.message ? e.message : String(e) }); }
+};`;
   }
 
   /* ---------------- DXF: linee, archi e cerchi in uno schizzo ---------------- */
@@ -3099,7 +3165,7 @@ label.chk .gl-i { margin-left: 2px; }
     return { count, dup, tiny, points: pts.length, box: { mn: T(bb.mn), mx: T(bb.mx) }, ids: out.map(e => e.id) };
   }
 
-  const api = { parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS, parseDXF, dxfToSketch, DXF_SCALE, DXF_UNITS, DXF_MAXENT, DXF_CURVE_TOL, curveToArcs, nurbsEval, fitSpline, loadOCCT, readCAD, cadKind, CAD_EXT, CAD_LEVELS, CAD_MAX };
+  const api = { parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS, parseDXF, dxfToSketch, DXF_SCALE, DXF_UNITS, DXF_MAXENT, pickBodies, cadWorkerSource, DXF_CURVE_TOL, curveToArcs, nurbsEval, fitSpline, loadOCCT, readCAD, cadKind, CAD_EXT, CAD_LEVELS, CAD_MAX };
   if (typeof module !== 'undefined') module.exports = api; else root.Import = api;
 })(this);
 
@@ -3246,6 +3312,9 @@ label.chk .gl-i { margin-left: 2px; }
     M.groups.forEach((g, k) => {
       const tg = { kind: 'plane', n: g.n.slice(), w: g.w, name: f.id + ':F' + (k + 1), feature: f.id, mesh: true };
       if (g.bf !== undefined) tg.bf = g.bf;
+      // colore della faccia scritto nel file STEP/IGES (casella «Colori del file»)
+      const hx = g.bf !== undefined && f.fcol && f.colors !== false ? f.fcol[g.bf] : null;
+      if (hx && /^[0-9a-f]{6}$/i.test(hx)) tg.rgb = [0, 2, 4].map(i => parseInt(hx.slice(i, i + 2), 16) / 255);
       const id = st.tags.add(tg);
       for (const p of M.polys[k]) tool.push({ v: p.v.map(v => v.slice()), p: p.p, t: id });
     });
@@ -4533,10 +4602,13 @@ label.chk .gl-i { margin-left: 2px; }
     const faceCol = hl.faceCol || (() => null);
     const tp = this.cpu.triPoly;
     const cache = new Map();
+    // colore proprio della faccia (per esempio quello di un file STEP), se c'è
+    const tags = this.st && this.st.tags, body = this.cpu.body;
+    const own = pi => { const tg = tags && body[pi] ? tags.get(body[pi].t) : null; return tg && tg.rgb; };
     for (let t = 0; t < tp.length; t++) {
       const pi = tp[t];
       let fc = cache.get(pi);
-      if (fc === undefined) { fc = faceCol(pi) || base; cache.set(pi, fc); }
+      if (fc === undefined) { fc = faceCol(pi) || own(pi) || base; cache.set(pi, fc); }
       for (let k = 0; k < 3; k++) { c[(t * 3 + k) * 3] = fc[0]; c[(t * 3 + k) * 3 + 1] = fc[1]; c[(t * 3 + k) * 3 + 2] = fc[2]; }
     }
     this.upload('fcol', c);
@@ -6017,7 +6089,7 @@ label.chk .gl-i { margin-left: 2px; }
       <label class="chk"><input type="checkbox" id="meshZup"> Asse Z del file verso l'alto</label>
       <p class="note">I file STL non dicono l'unità: di solito sono in millimetri. Molti programmi per la stampa 3D mettono la Z verso l'alto: spunta la casella se il pezzo arriva coricato. Le due scelte si possono cambiare dopo, con doppio clic su «Importato» nell'albero.</p>
       <p class="note err" id="meshErr" hidden></p>`, [
-      { label: 'Annulla' },
+      { label: 'Annulla', fn: () => { if (cadBusy) cadCancel(); } },
       { label: 'Importa', primary: true, keep: true, fn: () => {
         const inp = $('#meshFile'), file = inp && inp.files[0];
         const err = t => { const e = $('#meshErr'); e.textContent = t; e.classList.add('err'); e.hidden = false; };
@@ -6089,45 +6161,116 @@ label.chk .gl-i { margin-left: 2px; }
     modal('Importa un file STEP o IGES', `<p class="note">STEP e IGES sono i formati che tutti i programmi CAD sanno scrivere (SolidWorks, Inventor, Fusion, FreeCAD, Solid Edge…). Il pezzo arriva con le sue <b>facce vere</b> (piane, cilindriche, coniche…) come funzione «Importato»: si vede, si misura, si mette in tavola, se ne calcolano volume e massa, e sopra puoi disegnare schizzi e aggiungere funzioni. Non porta con sé la storia delle funzioni.</p>
       <p><input type="file" id="cadFile" accept=".step,.stp,.iges,.igs"></p>
       <label class="chk"><input type="checkbox" id="cadZup"> Asse Z del file verso l'alto</label>
-      <p class="note">L'unità di misura è scritta nel file e viene convertita da sola in millimetri. SolidWorks tiene l'asse Y verso l'alto; Inventor, Fusion e FreeCAD spesso la Z: se il pezzo arriva coricato spunta la casella (si cambia anche dopo, con doppio clic su «Importato»). La prima importazione richiede qualche secondo: il lettore si prepara.</p>
+      <label class="chk"><input type="checkbox" id="cadColors" checked> Colori del file</label>
+      <p class="note">L'unità di misura è scritta nel file e viene convertita da sola in millimetri. SolidWorks tiene l'asse Y verso l'alto; Inventor, Fusion e FreeCAD spesso la Z: se il pezzo arriva coricato spunta la casella (si cambia anche dopo, con doppio clic su «Importato»). Se il file contiene più corpi (un assieme) potrai scegliere quali importare. La lettura avviene a parte: intanto la pagina resta libera, e con Annulla la interrompi.</p>
       <p class="note" id="cadErr" hidden></p>`, [
-      { label: 'Annulla' },
+      { label: 'Annulla', fn: () => { if (cadBusy) cadCancel(); } },
       { label: 'Importa', primary: true, keep: true, fn: () => {
         const inp = $('#cadFile'), file = inp && inp.files[0];
         const err = t => { const e = $('#cadErr'); e.textContent = t; e.classList.add('err'); e.hidden = false; };
         if (!file) { err('Scegli prima il file.'); return; }
         const rd = new FileReader();
-        rd.onload = () => runCadImport(file.name, new Uint8Array(rd.result), { zUp: $('#cadZup').checked }, err, '#cadErr');
+        rd.onload = () => runCadImport(file.name, new Uint8Array(rd.result), { zUp: $('#cadZup').checked, colors: $('#cadColors').checked }, err, '#cadErr');
         rd.onerror = () => err('Il file non si riesce a leggere.');
         rd.readAsArrayBuffer(file);
       } },
     ]);
   }
-  // importazione dalla finestra: mostra «lettura in corso», poi chiude o scrive l'errore
+  /* lettura in un Worker: il lettore lavora fuori dalla pagina, che intanto resta libera (si può anche annullare).
+     Se il browser non permette il Worker, si legge nella pagina come prima. */
+  let cadWorker = null, cadWorkerReady = null, cadSeq = 0;
+  const cadPending = new Map();
+  const noWorker = () => Object.assign(new Error('Worker non disponibile'), { noWorker: true });
+  function cadCall(msg, transfer) {
+    return new Promise((resolve, reject) => { const id = ++cadSeq; cadPending.set(id, { resolve, reject }); cadWorker.postMessage({ id, ...msg }, transfer || []); });
+  }
+  function cadWorkerGet() {
+    if (cadWorkerReady) return cadWorkerReady;
+    cadWorkerReady = (async () => {
+      const a = occtAssets(), gz = a.wasmGz();
+      if (!a.js || !gz || !gz.length) throw new Error('Il lettore dei file STEP e IGES manca in questa copia del Banco CAD.');
+      if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') throw noWorker();
+      let url;
+      try { url = URL.createObjectURL(new Blob([Import.cadWorkerSource()], { type: 'text/javascript' })); cadWorker = new Worker(url); }
+      catch (e) { throw noWorker(); }
+      cadWorker.onmessage = ev => { const m = ev.data, p = cadPending.get(m.id); if (!p) return; cadPending.delete(m.id); if (m.error) p.reject(new Error(m.error)); else p.resolve(m); };
+      cadWorker.onerror = ev => { if (ev.preventDefault) ev.preventDefault(); for (const p of cadPending.values()) p.reject(noWorker()); cadPending.clear(); };
+      await cadCall({ init: { js: a.js, wasmGz: gz } }, [gz.buffer]);
+      return cadWorker;
+    })();
+    cadWorkerReady.catch(() => { if (cadWorker) cadWorker.terminate(); cadWorker = null; cadWorkerReady = null; });
+    return cadWorkerReady;
+  }
+  function cadCancel() {
+    if (!cadWorker) return;
+    cadWorker.terminate(); cadWorker = null; cadWorkerReady = null;
+    for (const p of cadPending.values()) p.reject(Object.assign(new Error('Lettura annullata.'), { cancelled: true }));
+    cadPending.clear();
+  }
+  App.cadCancel = cadCancel;
+  // legge il file STEP/IGES: triangoli, facce vere, corpi, colori (vedi Import.readCAD)
+  async function readCadFile(name, data, opts = {}) {
+    const ext = (String(name).split('.').pop() || '').toLowerCase();
+    const fmt = Import.CAD_EXT[ext];
+    if (!fmt) throw new Error(NATIVE_MSG(ext) || (ext === 'stl' || ext === 'obj' ? 'Per i file .stl e .obj usa «Importa STL o OBJ».' : 'Si possono importare file .step, .stp, .iges e .igs.'));
+    const u8 = data instanceof Uint8Array ? data : new Uint8Array(data);
+    if (opts.inPage !== true) {
+      try {
+        await cadWorkerGet();
+        const copy = u8.slice();
+        const m = await cadCall({ read: { data: copy, fmt, max: opts.max } }, [copy.buffer]);
+        App.cadMode = 'worker';
+        return { fmt, r: m.result };
+      } catch (e) { if (!e.noWorker) throw e; }
+    }
+    const occt = await Import.loadOCCT(occtAssets());
+    App.cadMode = 'page';
+    return { fmt, r: Import.readCAD(occt, u8, fmt) };
+  }
+  // importazione dalla finestra: lettura (la pagina resta libera), poi la scelta dei corpi se sono più di uno
   let cadBusy = false;
   function runCadImport(name, data, opts, err, noteSel) {
     if (cadBusy) return;
     cadBusy = true;
     const note = $(noteSel);
-    if (note) { note.textContent = 'Lettura del file in corso…'; note.classList.remove('err'); note.hidden = false; }
-    const btns = [...document.querySelectorAll('#modalActions .btn')]; btns.forEach(b => { b.disabled = true; });
-    // un attimo di pausa: il messaggio si vede prima che il calcolo occupi il browser
-    setTimeout(() => {
-      importCadData(name, data, opts).then(r => { closeModal(); toast(r.msg, 7000); }, e => err(e.message || String(e)))
-        .finally(() => { cadBusy = false; btns.forEach(b => { b.disabled = false; }); });
-    }, 30);
+    if (note) { note.textContent = 'Lettura del file in corso… La pagina resta libera; con Annulla la interrompi.'; note.classList.remove('err'); note.hidden = false; }
+    const go = $('#modalActions .btn-primary'); if (go) go.disabled = true;
+    readCadFile(name, data, opts).then(({ fmt, r }) => {
+      cadBusy = false;
+      if ($('#modal').hidden) return;   // finestra chiusa nel frattempo
+      if (r.bodies.length > 1) { chooseCadBodies(name, fmt, r, opts); return; }
+      const res = cadFeature(name, fmt, r, opts); closeModal(); toast(res.msg, 7000);
+    }, e => { cadBusy = false; if (go) go.disabled = false; if (!e.cancelled && !$('#modal').hidden) err(e.message || String(e)); });
   }
-  async function importCadData(name, data, opts = {}) {
-    const ext = (String(name).split('.').pop() || '').toLowerCase();
-    const fmt = Import.CAD_EXT[ext];
-    if (!fmt) throw new Error(NATIVE_MSG(ext) || (ext === 'stl' || ext === 'obj' ? 'Per i file .stl e .obj usa «Importa STL o OBJ».' : 'Si possono importare file .step, .stp, .iges e .igs.'));
-    const occt = await Import.loadOCCT(occtAssets());
-    const r = Import.readCAD(occt, data instanceof Uint8Array ? data : new Uint8Array(data), fmt);
+  // assieme: elenco dei corpi con le caselle (tutti scelti), poi un solo «Importato» con i corpi scelti
+  function chooseCadBodies(name, fmt, r, opts) {
+    // volume con 4 cifre significative: sotto 1 cm³ in mm³, sopra in cm³ (0,9999 cm³ e 1000,0001 mm³ si leggono uguali)
+    const vol = v => { const x = +v.toPrecision(4); return x >= 1000 ? (x / 1000).toLocaleString('it-IT', { maximumSignificantDigits: 4 }) + ' cm³' : x.toLocaleString('it-IT', { maximumSignificantDigits: 4 }) + ' mm³'; };
+    const rows = r.bodies.map((b, i) => `<label class="chk cad-body"><input type="checkbox" data-body="${i}" checked>` +
+      `<span class="sw" style="background:${b.color && opts.colors !== false ? '#' + b.color : 'var(--line-2)'}"></span> ${esc(b.name || 'Corpo ' + (i + 1))}` +
+      `<span class="n">${b.faces} ${b.faces === 1 ? 'faccia' : 'facce'} · ${vol(b.volume)}</span></label>`).join('');
+    modal('Corpi nel file', `<p class="note">«${esc(name)}» contiene <b>${r.bodies.length} corpi</b>. Scegli quali importare: arrivano tutti insieme in una funzione «Importato».</p>
+      <div class="dxf-layers cad-bodies"><div class="lh"><b>Corpi da importare</b><button type="button" data-all="1">Tutti</button><button type="button" data-all="0">Nessuno</button></div>${rows}</div>
+      <p class="note" id="cadErr" hidden></p>`, [
+      { label: 'Annulla' },
+      { label: 'Importa', primary: true, keep: true, fn: () => {
+        const keep = [...document.querySelectorAll('#modalBody input[data-body]')].filter(x => x.checked).map(x => +x.dataset.body);
+        const e = $('#cadErr');
+        if (!keep.length) { e.textContent = 'Scegli almeno un corpo da importare.'; e.classList.add('err'); e.hidden = false; return; }
+        try { const res = cadFeature(name, fmt, keep.length < r.bodies.length ? Import.pickBodies(r, keep) : r, opts); closeModal(); toast(res.msg, 7000); }
+        catch (x) { e.textContent = x.message; e.classList.add('err'); e.hidden = false; }
+      } },
+    ]);
+    document.querySelectorAll('#modalBody button[data-all]').forEach(b => b.addEventListener('click', () => document.querySelectorAll('#modalBody input[data-body]').forEach(x => { x.checked = b.dataset.all === '1'; })));
+  }
+  // funzione «Importato» da un file letto (eventualmente con i soli corpi scelti)
+  function cadFeature(name, fmt, r, opts = {}) {
     const m = Import.weld(r.pos);
     m.f = new Uint32Array(m.src.length);
     for (let k = 0; k < m.src.length; k++) m.f[k] = r.face[m.src[k]];
     if (!m.i.length) throw new Error('Nel file non ci sono superfici da importare.');
     const f = { type: 'import', fmt, file: String(name), unit: 'mm', zUp: !!opts.zUp, mesh: Import.pack(m), cad: { faces: r.faces, solids: r.meshes, names: r.names.slice(0, 20), level: r.level } };
+    if (r.fcol && r.fcol.some(Boolean)) { f.fcol = Array.from({ length: r.faces }, (x, i) => r.fcol[i] || 0); f.colors = opts.colors !== false; }
     const { info, e, w } = addImported(f);
     let msg;
     if (e) msg = 'Importazione con errori: ' + e;
@@ -6138,6 +6281,11 @@ label.chk .gl-i { margin-left: 2px; }
       if (w) msg += ' Attenzione: il corpo non è chiuso (forse il file contiene solo superfici).';
     }
     return { f, info, error: e || null, warn: w || null, msg };
+  }
+  // importazione senza finestra (usata anche dalle prove): opts.bodies = indici dei corpi da tenere (tutti se manca)
+  async function importCadData(name, data, opts = {}) {
+    const { fmt, r } = await readCadFile(name, data, opts);
+    return cadFeature(name, fmt, opts.bodies ? Import.pickBodies(r, opts.bodies) : r, opts);
   }
   App.importCadData = importCadData;
   App.importCadDialog = importCadDialog;
@@ -8560,6 +8708,7 @@ label.chk .gl-i { margin-left: 2px; }
         }
         body.append(g);
         if (isCad) body.append(grp('Opzioni di importazione', chk('Asse Z del file verso l\'alto', 'zUp', () => App.refreshPM()),
+          f.fcol ? chk('Colori del file', 'colors', () => App.refreshPM()) : '',
           el('p', { class: 'note' }, 'L\'unità è scritta nel file ed è già convertita in millimetri. Se il pezzo arriva coricato spunta la casella della Z.')));
         else body.append(grp('Opzioni di importazione', sel('Unità del file', 'unit', [['mm', 'millimetri'], ['cm', 'centimetri'], ['m', 'metri'], ['in', 'pollici']], () => App.refreshPM()), chk('Asse Z del file verso l\'alto', 'zUp', () => App.refreshPM()),
           el('p', { class: 'note' }, 'Se il pezzo è troppo grande o troppo piccolo cambia l\'unità; se arriva coricato spunta la casella della Z.')));
@@ -11139,6 +11288,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Importazione', 'Layer', ['livello', 'livelli', 'strato'], 'In un disegno DXF (o DWG) ogni entità sta su un «layer», come su un foglio trasparente: per esempio PEZZO, QUOTE, CARTIGLIO. Nella finestra di importazione DXF si sceglie con le caselle quali layer importare; quelli spenti o congelati nel file partono senza spunta. Le entità di un blocco che stanno sul layer «0» prendono il layer del blocco inserito, come in AutoCAD.'],
     ['Importazione', 'Tipo di linea', ['tratto-punto', 'tratteggiata', 'linetype'], 'Il modo in cui è disegnata una linea: continua, tratteggiata (spigoli nascosti) o tratto-punto (assi). Nell\'importazione DXF le linee tratto-punto diventano linee di mezzeria, le tratteggiate geometria di costruzione; le continue formano i contorni.'],
     ['Importazione', 'File importato', [], 'Il nome e il formato del file da cui viene il corpo, con il numero di triangoli (per STEP e IGES: di facce del modello d\'origine), le facce piane riconosciute e l\'ingombro. Le facce piane (fatte da più triangoli sullo stesso piano) si possono usare per gli schizzi, come le facce di un pezzo disegnato qui.'],
+    ['Importazione', 'Corpi di un assieme', ['corpi', 'scelta dei corpi', 'assieme'], 'Un file STEP può contenere più solidi separati, per esempio i pezzi di un assieme. Dopo la lettura il Banco CAD li elenca con il numero di facce e il volume: con le caselle scegli quali importare, e arrivano insieme in un solo «Importato». In un IGES le superfici che si toccano formano un corpo solo.'],
+    ['Importazione', 'Colori del file', ['colori step', 'colore delle facce'], 'I colori che il programma d\'origine ha scritto nel file STEP o IGES (del pezzo o delle singole facce). Il Banco CAD li mostra sulle facce del corpo importato; si tolgono con la casella «Colori del file» (doppio clic su «Importato»). Non cambiano il materiale né la massa.'],
     ['Importazione', 'Importa STEP o IGES', ['importa step', 'importa iges', 'importare uno step', 'importare un iges'], 'Porta nel Banco CAD un pezzo, o un piccolo assieme, fatto con un altro programma CAD (Progetto › Importa STEP o IGES). Il file viene letto dalle sue superfici vere; nell\'albero compare la funzione «Importato»: il pezzo si vede, si misura, si mette in tavola, se ne calcolano volume e massa, e sopra si possono aggiungere schizzi e funzioni. Le superfici curve vengono divise in triangoli molto fitti: l\'errore su volume, area e massa resta molto sotto l\'1 %. L\'unità di misura è letta dal file.'],
     ['Importazione', 'STEP', ['file step', '.step', '.stp', 'ap203', 'ap214', 'iso 10303'], 'Formato di scambio dei modelli 3D (norma ISO 10303): descrive i solidi con le loro superfici esatte (piani, cilindri, coni, sfere, superfici libere) e l\'unità di misura. Tutti i programmi CAD lo scrivono; in SolidWorks: File › Salva con nome › STEP AP214. È il formato migliore per passare un pezzo da un programma all\'altro.'],
     ['Importazione', 'IGES', ['file iges', '.iges', '.igs'], 'Formato di scambio più vecchio dello STEP (nato negli anni ’80): descrive le superfici del pezzo, spesso una per una senza dire come sono unite. Il Banco CAD le cuce insieme; se resta qualche fessura compare l\'avviso di corpo non chiuso. Quando si può, meglio lo STEP.'],
@@ -12106,12 +12257,13 @@ if (isNode) {
       'Nel programma d\'origine salva il pezzo come [[STEP]]. SolidWorks: File › Salva con nome › tipo «STEP AP214 (*.step)». Inventor: Esporta › Formato CAD › STEP. Se c\'è solo l\'[[IGES]], va bene anche quello.',
       'Qui: **Progetto › Importa STEP o IGES** e scegli il file (.step, .stp, .iges o .igs).',
       'L\'unità di misura è scritta nel file: non devi sceglierla. Se il pezzo arriva coricato spunta [[Asse Z del file verso l\'alto]]. Premi **Importa**.',
-      'La prima volta aspetta qualche secondo: il lettore ([[OpenCascade]]) si prepara. Nell\'albero compare **Importato1**.',
+      'La prima volta aspetta qualche secondo: il lettore ([[OpenCascade]]) si prepara. Il file viene letto a parte: intanto la pagina resta libera, e con **Annulla** puoi interrompere la lettura.',
+      'Se il file contiene più corpi (un assieme), scegli con le caselle quali importare ([[Corpi di un assieme]]). Nell\'albero compare **Importato1**.',
       'Le [[Facce del modello d\'origine|facce del modello]] restano riconoscibili: sulle facce piane puoi aprire uno **Schizzo** e aggiungere tagli, fori ed estrusioni.',
-      'Volume, area e massa (scheda Valuta) hanno un errore molto sotto l\'1 %. Per cambiare l\'orientamento: doppio clic su **Importato1**.',
+      'Volume, area e massa (scheda Valuta) hanno un errore molto sotto l\'1 %. Per cambiare l\'orientamento o togliere i [[Colori del file]]: doppio clic su **Importato1**.',
     ],
-    tips: ['Il pezzo arriva senza la storia delle funzioni: le quote originali non si modificano.', 'Un assieme arriva come un solo «Importato» con più corpi separati.', 'I file .sldprt (SolidWorks) e .ipt (Inventor) non si aprono: vanno prima salvati come STEP.', 'Il lettore è dentro la pagina: funziona anche senza internet.'],
-    terms: ['Importa STEP o IGES', 'STEP', 'IGES', 'Facce del modello d\'origine', 'OpenCascade'],
+    tips: ['Il pezzo arriva senza la storia delle funzioni: le quote originali non si modificano.', 'Un assieme arriva come un solo «Importato» con i corpi scelti, ognuno separato.', 'I colori delle facce scritti nel file si vedono nel pezzo; la massa usa comunque il materiale scelto.', 'I file .sldprt (SolidWorks) e .ipt (Inventor) non si aprono: vanno prima salvati come STEP.', 'Il lettore è dentro la pagina: funziona anche senza internet.'],
+    terms: ['Importa STEP o IGES', 'STEP', 'IGES', 'Facce del modello d\'origine', 'Corpi di un assieme', 'Colori del file', 'OpenCascade'],
   });
 
   /* ================= 2. Schizzo ================= */

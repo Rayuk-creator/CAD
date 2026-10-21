@@ -24,8 +24,9 @@ function writer() {
   const outer = lp => add(`FACE_OUTER_BOUND('',${lp},.T.)`);
   const inner = lp => add(`FACE_BOUND('',${lp},.T.)`);
   const plane = (o, z, x) => add(`PLANE('',${ax(o, z, x)})`);
-  // file completo: un solido per ogni elenco di facce
-  const finish = (name, solids, unit = 'mm') => {
+  // file completo: un solido per ogni elenco di facce.
+  // styles: colori [{solid: k} oppure {face: id}, rgb: [r, g, b] da 0 a 1] (STYLED_ITEM, come li scrivono SolidWorks e gli altri)
+  const finish = (name, solids, unit = 'mm', styles = []) => {
     const U = { mm: 'SI_UNIT(.MILLI.,.METRE.)', m: 'SI_UNIT($,.METRE.)', cm: 'SI_UNIT(.CENTI.,.METRE.)' }[unit];
     const lu = add(`( LENGTH_UNIT() NAMED_UNIT(*) ${U} )`);
     const au = add('( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) )');
@@ -33,6 +34,16 @@ function writer() {
     const unc = add(`UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),${lu},'distance_accuracy_value','')`);
     const ctx = add(`( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((${unc})) GLOBAL_UNIT_ASSIGNED_CONTEXT((${lu},${au},${su})) REPRESENTATION_CONTEXT('','') )`);
     const breps = solids.map((faces, k) => add(`MANIFOLD_SOLID_BREP('${name}${solids.length > 1 ? k + 1 : ''}',${add(`CLOSED_SHELL('',(${faces.join(',')}))`)})`));
+    if (styles.length) {
+      const items = styles.map(st => {
+        const c = add(`COLOUR_RGB('',${st.rgb.map(n).join(',')})`);
+        const fa = add(`FILL_AREA_STYLE('',(${add(`FILL_AREA_STYLE_COLOUR('',${c})`)}))`);
+        const ss = add(`SURFACE_SIDE_STYLE('',(${add(`SURFACE_STYLE_FILL_AREA(${fa})`)}))`);
+        const psa = add(`PRESENTATION_STYLE_ASSIGNMENT((${add(`SURFACE_STYLE_USAGE(.BOTH.,${ss})`)}))`);
+        return add(`STYLED_ITEM('',(${psa}),${st.solid !== undefined ? breps[st.solid] : st.face})`);
+      });
+      add(`MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION('',(${items.join(',')}),${ctx})`);
+    }
     const rep = add(`ADVANCED_BREP_SHAPE_REPRESENTATION('',(${breps.join(',')},${ax([0, 0, 0])}),${ctx})`);
     const ac = add("APPLICATION_CONTEXT('automotive design')");
     add(`APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,${ac})`);
@@ -111,4 +122,11 @@ function stepTwoBoxes(a, gap, opts = {}) {
   return W.finish(opts.name || 'due', [boxFaces(W, a, a, a), boxFaces(W, a, a, a, [a + gap, 0, 0])], opts.unit);
 }
 
-module.exports = { stepBox, stepCylinder, stepPlateHole, stepTwoBoxes };
+// due blocchi a × a × a a distanza gap: il primo blu con la faccia di sotto (z = 0) rossa, il secondo senza colore
+function stepTwoBoxesColored(a, gap, opts = {}) {
+  const W = writer();
+  const b1 = boxFaces(W, a, a, a), b2 = boxFaces(W, a, a, a, [a + gap, 0, 0]);
+  return W.finish(opts.name || 'colori', [b1, b2], opts.unit, [{ solid: 0, rgb: [0, 0, 1] }, { face: b1[0], rgb: [1, 0, 0] }]);
+}
+
+module.exports = { stepBox, stepCylinder, stepPlateHole, stepTwoBoxes, stepTwoBoxesColored };

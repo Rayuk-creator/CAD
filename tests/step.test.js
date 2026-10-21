@@ -6,7 +6,7 @@ const page = process.argv[2] || path.join(__dirname, '..', 'index.html');
 const dir = path.resolve(process.argv[3] || path.join(__dirname, 'core'));
 const Model = require(path.join(dir, 'model.js'));
 const IM = Model.Import;
-const { stepBox, stepCylinder, stepPlateHole, stepTwoBoxes } = require('./stepgen.js');
+const { stepBox, stepCylinder, stepPlateHole, stepTwoBoxes, stepTwoBoxesColored } = require('./stepgen.js');
 const { igesBox } = require('./igesgen.js');
 const TOL = +(process.env.TOL || 0.01), PI = Math.PI;
 const html = fs.readFileSync(page, 'utf8');
@@ -65,6 +65,48 @@ const CASES = [
     if (!ok) fail++;
     const pct = x => (x * 100).toFixed(3) + '%';
     console.log((ok ? 'OK  ' : 'NO  ') + name + (Object.keys(errs).length ? '  [' + Object.entries(errs).map(([k, v]) => k + ' ' + pct(v)).join(', ') + ']' : '') + (msg.length ? '\n      ' + msg.join('\n      ') : ''));
+  }
+  // corpi e colori: due blocchi 10 mm (il primo blu con la faccia di sotto rossa, il secondo senza colore)
+  const more = [
+    ['STEP con colori: elenco dei corpi (facce, volume, colore) e colori delle facce', () => {
+      const r = IM.readCAD(occt, enc(stepTwoBoxesColored(10, 5)), 'step');
+      const b = r.bodies, f0 = [...new Set([...r.face].filter((x, t) => r.body[t] === 0))], f1 = [...new Set([...r.face].filter((x, t) => r.body[t] === 1))];
+      const red = f0.filter(f => r.fcol[f] === 'ff0000').length, blue = f0.filter(f => r.fcol[f] === '0000ff').length, none = f1.filter(f => !r.fcol[f]).length;
+      return [[b.length, 2], [b[0].faces, 6], [b[1].faces, 6], [b[0].color, '0000ff'], [b[1].color, null], [Math.round(b[0].volume), 1000], [Math.round(b[1].volume), 1000], [red, 1], [blue, 5], [none, 6]];
+    }],
+    ['STEP: solo il secondo corpo dell\'assieme (cubo 10 in x 15…25)', () => {
+      const r = IM.pickBodies(IM.readCAD(occt, enc(stepTwoBoxesColored(10, 5)), 'step'), [1]);
+      const m = IM.weld(r.pos); m.f = new Uint32Array([...m.src].map(t => r.face[t]));
+      const d = Model.newDoc(); d.features.push({ id: 'F1', name: 'Importato1', type: 'import', fmt: 'step', file: 'c.step', unit: 'mm', mesh: IM.pack(m) });
+      const st = Model.regen(d), mp = Model.massProperties(st, d);
+      return [[r.bodies.length, 1], [r.faces, 6], [st.info.get('F1').parts, 1], [+mp.volume.toFixed(6), 1000], [+mp.centroid[0].toFixed(6), 20], [+mp.bbox.mn[0].toFixed(6), 15]];
+    }],
+    ['STEP con colori nel pezzo: faccia di sotto rossa, le altre blu; senza «Colori del file» nessun colore', () => {
+      const r = IM.readCAD(occt, enc(stepTwoBoxesColored(10, 5)), 'step');
+      const m = IM.weld(r.pos); m.f = new Uint32Array([...m.src].map(t => r.face[t]));
+      const fcol = Array.from({ length: r.faces }, (x, i) => r.fcol[i] || 0);
+      const count = colors => { const d = Model.newDoc(); d.features.push({ id: 'F1', name: 'Importato1', type: 'import', fmt: 'step', file: 'c.step', unit: 'mm', mesh: IM.pack(m), fcol, colors });
+        const st = Model.regen(d), c = { r: 0, b: 0, n: 0 };
+        for (const p of st.body) { const tg = st.tags.get(p.t), k = !tg.rgb ? 'n' : tg.rgb[0] === 1 && tg.rgb[2] === 0 ? 'r' : tg.rgb[2] === 1 && tg.rgb[0] === 0 ? 'b' : '?'; c[k] = (c[k] || 0) + 1; }
+        // facce del primo cubo: z = 0 → rossa; il secondo cubo (x ≥ 15) senza colore
+        const bottom = st.body.filter(p => p.v.every(v => Math.abs(v[2]) < 1e-9 && v[0] < 12)), second = st.body.filter(p => p.v.every(v => v[0] > 14));
+        return { c, bottomRed: bottom.every(p => { const t = st.tags.get(p.t); return t.rgb && t.rgb[0] === 1 && t.rgb[2] === 0; }) && bottom.length > 0, secondNone: second.every(p => !st.tags.get(p.t).rgb) && second.length > 0 };
+      };
+      const on = count(true), off = count(false);
+      return [[on.bottomRed, true], [on.secondNone, true], [on.c.b > 0, true], [on.c['?'] || 0, 0], [off.c.r + off.c.b, 0]];
+    }],
+    ['IGES: le 6 superfici del blocco (una per «mesh») sono un corpo solo', () => {
+      const r = IM.readCAD(occt, enc(igesBox(30, 20, 10)), 'iges');
+      return [[r.meshes > 1, true], [r.bodies.length, 1], [r.bodies[0].faces, 6], [Math.round(r.bodies[0].volume), 6000], [Math.max(...r.body), 0]];
+    }],
+  ];
+  for (const [name, fn] of more) {
+    n++;
+    let ok = true, msg = '';
+    try { const pairs = fn(); const bad = pairs.map(([g, e], i) => g === e ? '' : `valore ${i}: ${JSON.stringify(g)} invece di ${JSON.stringify(e)}`).filter(Boolean); if (bad.length) { ok = false; msg = bad.join('; '); } }
+    catch (e) { ok = false; msg = 'ERRORE ' + e.message; }
+    if (!ok) fail++;
+    console.log((ok ? 'OK  ' : 'NO  ') + name + (msg ? '\n      ' + msg : ''));
   }
   // file sbagliati: messaggi chiari
   const bad = [

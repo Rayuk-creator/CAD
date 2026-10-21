@@ -465,6 +465,56 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     rec('Interfaccia: file SolidWorks e STEP danneggiato spiegati', /STEP AP214/.test(m1) && /non si riesce a leggere|non ci sono solidi/.test(m2) && nAfter === nBefore, m1 + ' | ' + m2);
   } catch (e) { rec('Interfaccia: importa STEP dal menu (piastra con foro, pannello, Z verso l\'alto)', false, e.message.split('\n')[0]); }
 
+  // 3n-bis. STEP: lettura in un Worker (la pagina non si blocca, si può annullare), scelta dei corpi, colori del file
+  try {
+    await fresh();
+    const { stepTwoBoxesColored, stepPlateHole } = require('./stepgen.js');
+    const file = Buffer.from(stepTwoBoxesColored(10, 5));
+    // lettore da preparare di nuovo (il più lento): durante la lettura la pagina deve continuare a disegnare
+    await page.evaluate(() => { App.cadCancel(); window.__gap = 0; window.__run = true; let last = performance.now(); const tick = t => { window.__gap = Math.max(window.__gap, t - last); last = t; if (window.__run) requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importCad"]');
+    await page.setInputFiles('#cadFile', { name: 'assieme.step', mimeType: 'application/step', buffer: file });
+    await page.evaluate(() => { window.__gap = 0; });
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => document.querySelectorAll('#modalBody input[data-body]').length === 2, null, { timeout: 30000 });
+    const gap = await page.evaluate(() => { window.__run = false; return { gap: window.__gap, mode: App.cadMode }; });
+    const list = await page.evaluate(() => [...document.querySelectorAll('#modalBody label.cad-body')].map(l => l.textContent.replace(/\s+/g, ' ').trim()));
+    await page.click('#modalBody button[data-all="0"]'); await page.click('#modalActions .btn-primary'); await page.waitForTimeout(150);
+    const none = await page.evaluate(() => { const e = document.querySelector('#cadErr'); return e && !e.hidden ? e.textContent : ''; });
+    await page.locator('#modalBody label.cad-body').nth(1).locator('input').check();
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.doc.features.some(f => f.type === 'import') && document.querySelector('#modal').hidden, null, { timeout: 30000 });
+    const p1 = await props();
+    const ok1 = gap.mode === 'worker' && gap.gap < 200 && list.length === 2 && list.every(t => /6 facce · 1 cm³$/.test(t)) && /almeno un corpo/.test(none)
+      && p1 && rel(p1.V, 1000) < TOL && Math.abs(p1.bb[0][0] - 15) < 1e-3 && Math.abs(p1.bb[1][0] - 25) < 1e-3;
+    rec('Interfaccia: STEP letto a parte (pagina libera) e scelta dei corpi di un assieme', ok1,
+      `lettore: ${gap.mode}, fotogramma più lungo durante la lettura ${gap.gap.toFixed(0)} ms; corpi «${list.join(' | ')}»; nessuno scelto: «${none}»; solo il 2°: V ${p1 && p1.V.toFixed(1)}, x ${p1 && p1.bb[0][0].toFixed(2)}…${p1 && p1.bb[1][0].toFixed(2)}`);
+    // tutti i corpi con i colori: faccia di sotto del primo cubo rossa, il resto del primo blu, il secondo grigio; senza colori: tutto grigio
+    await fresh();
+    const r2 = await page.evaluate(async bytes => { const r = await App.importCadData('assieme.step', new Uint8Array(bytes), {}); return { faces: r.info.brepFaces, parts: r.info.parts }; }, [...file]);
+    await page.waitForTimeout(300);
+    const colors = () => page.evaluate(() => { const c = App.r.colors, n = { red: 0, blue: 0, other: 0 };
+      for (let i = 0; i < c.length; i += 9) { const k = c[i] === 1 && c[i + 1] === 0 && c[i + 2] === 0 ? 'red' : c[i] === 0 && c[i + 1] === 0 && c[i + 2] === 1 ? 'blue' : 'other'; n[k]++; } return n; });
+    const c1 = await colors();
+    await page.locator('.tnode', { hasText: 'Importato1' }).dblclick(); await page.waitForTimeout(300);
+    await page.locator('#pm label.chk', { hasText: 'Colori del file' }).locator('input').uncheck(); await page.waitForTimeout(300);
+    await page.click('#pm .pm-ok'); await page.waitForTimeout(300);
+    const c2 = await colors();
+    await page.evaluate(() => { App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false); });
+    const ok2 = r2.faces === 12 && r2.parts === 2 && c1.red === 2 && c1.blue === 10 && c1.other === 12 && c2.red === 0 && c2.blue === 0;
+    rec('Interfaccia: colori delle facce dal file STEP (e casella per toglierli)', ok2, `facce ${r2.faces}, corpi ${r2.parts}; triangoli rossi ${c1.red}, blu ${c1.blue}, altri ${c1.other}; senza colori: rossi ${c2.red}, blu ${c2.blue}`);
+    // Annulla durante la lettura: niente funzione nuova, niente errori; dopo si importa normalmente
+    await fresh();
+    await page.evaluate(() => App.cadCancel());
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importCad"]');
+    await page.setInputFiles('#cadFile', { name: 'piastra.stp', mimeType: 'application/step', buffer: Buffer.from(stepPlateHole(60, 40, 10, 8)) });
+    await page.click('#modalActions .btn-primary'); await page.waitForTimeout(30);
+    await page.click('#modalActions .btn:not(.btn-primary)'); await page.waitForTimeout(800);
+    const afterCancel = await page.evaluate(() => ({ n: App.doc.features.filter(f => f.type === 'import').length, modal: !document.querySelector('#modal').hidden }));
+    const r3 = await page.evaluate(async b => { const r = await App.importCadData('piastra.stp', new Uint8Array(b), {}); return r.info.brepFaces; }, [...Buffer.from(stepPlateHole(60, 40, 10, 8))]);
+    rec('Interfaccia: lettura STEP annullata, poi una nuova importazione funziona', afterCancel.n === 0 && !afterCancel.modal && r3 === 7, `dopo Annulla: ${afterCancel.n} importati, finestra ${afterCancel.modal ? 'aperta' : 'chiusa'}; nuova importazione: ${r3} facce`);
+  } catch (e) { rec('Interfaccia: STEP letto a parte (pagina libera) e scelta dei corpi di un assieme', false, e.message.split('\n')[0]); }
+
   // 4. glossario: ogni comando e ogni titolo dei pannelli ha la sua spiegazione
   try {
     await fresh();
