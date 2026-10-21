@@ -30,6 +30,8 @@ Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo
 
 Il lavoro si salva da solo nel browser. Per portarlo su un altro computer usa **Progetto › Esporta il progetto** e poi **Importa un progetto**.
 
+Con **Progetto › Importa STL o OBJ** si apre anche un pezzo fatto con un altro programma (SolidWorks, Inventor, Tinkercad… salvato in STL o OBJ): arriva come corpo a faccette che si misura, si mette in tavola, se ne calcolano volume e massa, e sulle cui facce piane si possono aggiungere schizzi e funzioni.
+
 ## Il primo pezzo in 6 passi
 
 Il percorso di base di ogni modello è sempre lo stesso: **schizzo quotato → funzione**.
@@ -99,11 +101,11 @@ Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nasc
 
 ## Calcoli verificati
 
-Ogni calcolo del programma è controllato da prove automatiche: 56 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, fori ISO, serie, specchio, sformo, sweep, nervature, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero.
+Ogni calcolo del programma è controllato da prove automatiche: 66 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL e OBJ, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero.
 
 Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifica**.
 
-![Autoverifica: 56 prove superate](docs/img/autoverifica.png)
+![Autoverifica: 66 prove superate](docs/img/autoverifica.png)
 
 ## Per chi sviluppa
 
@@ -113,8 +115,8 @@ Il programma è un solo file, `index.html`, con HTML, CSS e JavaScript insieme (
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (56 prove, pochi secondi)
-npm run test:ui                   # solo l'interfaccia in Chromium (28 prove)
+npm run test:kernel               # solo i calcoli (66 prove, pochi secondi)
+npm run test:ui                   # solo l'interfaccia in Chromium (33 prove)
 ```
 
 Se hai già un Chromium installato puoi indicarlo con `CHROMIUM_PATH=/percorso/chrome npm run test:ui`. In caso di errore, le immagini di controllo finiscono in `tests/output/`.

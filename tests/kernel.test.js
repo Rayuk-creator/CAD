@@ -284,6 +284,68 @@ T('Nervatura spessore da un lato solo', () => {
   feat(d, { type: 'rib', sketch: s, thick: 6, thickSide: '1' }); return d;
 }, { V: (480 + 256) * 30 + 242 * 6, bb: [[0, 0, -15], [60, 40, 15]] });
 
+/* ---------- corpi importati (STL, OBJ) ---------- */
+const MI = Model.Import;
+const enc = t => new TextEncoder().encode(t);
+// file STL ASCII e binario costruiti qui, triangolo per triangolo
+const stlA = tris => 'solid prova\n' + tris.map(t => ' facet normal 0 0 0\n  outer loop\n' + t.map(p => '   vertex ' + p.join(' ')).join('\n') + '\n  endloop\n endfacet').join('\n') + '\nendsolid prova\n';
+function stlB(tris) {
+  const buf = new ArrayBuffer(84 + 50 * tris.length), dv = new DataView(buf);
+  dv.setUint32(80, tris.length, true);
+  tris.forEach((t, i) => t.forEach((p, k) => p.forEach((x, j) => dv.setFloat32(84 + i * 50 + 12 + k * 12 + j * 4, x, true))));
+  return new Uint8Array(buf);
+}
+function imp(doc, data, fmt = 'stl', extra = {}) {
+  const r = fmt === 'obj' ? MI.parseOBJ(data) : MI.parseSTL(data);
+  return feat(doc, { type: 'import', fmt, file: 'prova.' + fmt, unit: 'mm', mesh: MI.pack(MI.weld(r.pos)), ...extra });
+}
+// parallelepipedo: 6 facce divise in 12 triangoli con le normali verso l'esterno
+function boxTris(x0, y0, z0, x1, y1, z1) {
+  const q = [[[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]],
+    [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], [[x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0]],
+    [[x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [x1, y0, z0]], [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]]];
+  return q.flatMap(([a, b, c, d]) => [[a, b, c], [a, c, d]]);
+}
+const rev = tris => tris.map(([a, b, c]) => [a, c, b]);
+T('STL ASCII: cubo 20 mm', () => { const d = D0('i'); imp(d, enc(stlA(boxTris(0, 0, 0, 20, 20, 20)))); return d; },
+  { V: 8000, A: 2400, C: [10, 10, 10], bb: [[0, 0, 0], [20, 20, 20]], E: 12 });
+T('STL binario in centimetri: cubo 2 cm = 20 mm', () => { const d = D0('i'); imp(d, stlB(boxTris(0, 0, 0, 2, 2, 2)), 'stl', { unit: 'cm' }); return d; },
+  { V: 8000, A: 2400, C: [10, 10, 10], bb: [[0, 0, 0], [20, 20, 20]] });
+T('STL con le normali verso l\'interno (corretto da solo)', () => { const d = D0('i'); imp(d, enc(stlA(rev(boxTris(0, 0, 0, 20, 20, 20))))); return d; },
+  { V: 8000, A: 2400, C: [10, 10, 10] });
+T('STL con un triangolo girato al contrario (corretto da solo)', () => { const d = D0('i'); const t = boxTris(0, 0, 0, 20, 20, 20); t[5] = rev([t[5]])[0]; imp(d, stlB(t)); return d; },
+  { V: 8000, A: 2400, C: [10, 10, 10], E: 12 });
+T('OBJ con facce a 4 lati, Z verso l\'alto: 10 × 20 × 30', () => {
+  const d = D0('i');
+  const obj = 'o scatola\nv 0 0 0\nv 10 0 0\nv 10 20 0\nv 0 20 0\nv 0 0 30\nv 10 0 30\nv 10 20 30\nv 0 20 30\n' +
+    'f 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 3 4 8 7\nf -7 -6 -2 -3\nf 1/1 5/1 8/1 4/1\n';
+  imp(d, obj, 'obj', { zUp: true }); return d;
+}, { V: 6000, A: 2200, C: [5, 15, -10], bb: [[0, 0, -20], [10, 30, 0]], E: 12 });
+T('Ottaedro (8 facce inclinate), vertici a 10 mm dal centro', () => {
+  const d = D0('i'); const t = [];
+  for (const sx of [1, -1]) for (const sy of [1, -1]) for (const sz of [1, -1]) { const a = [10 * sx, 0, 0], b = [0, 10 * sy, 0], c = [0, 0, 10 * sz]; t.push(sx * sy * sz > 0 ? [a, b, c] : [a, c, b]); }
+  imp(d, stlB(t)); return d;
+}, { V: 4000 / 3, A: 400 * Math.sqrt(3), C: [0, 0, 0], E: 12 });
+const prism = n => { const t = [], r = 10, h = 10, P = i => { const a = 2 * PI * (i % n) / n; return [r * Math.cos(a), 0, r * Math.sin(a)]; }, U = p => [p[0], h, p[2]];
+  for (let i = 0; i < n; i++) { const a = P(i), b = P(i + 1); t.push([[0, 0, 0], a, b], [[0, h, 0], U(b), U(a)], [b, a, U(a)], [b, U(a), U(b)]); } return t; };
+T('Prisma a 32 lati (cilindro a faccette): spigoli morbidi nascosti', () => { const d = D0('i'); imp(d, stlB(prism(32))); return d; },
+  { V: 16000 * Math.sin(PI / 16), A: 3200 * Math.sin(PI / 16) + 6400 * Math.sin(PI / 32), C: [0, 5, 0], E: 64 });
+// cucitura: l'ultimo punto è calcolato con l'angolo 2π (sin 2π ≠ 0 nei numeri del computer) e spostato di 10⁻⁹ mm
+const prismSeam = n => { const t = [], r = 10, h = 10, P = i => { const a = 2 * PI * i / n; return i === n ? [r * Math.cos(a) + 1e-9, 0, r * Math.sin(a) - 1e-9] : [r * Math.cos(a), 0, r * Math.sin(a)]; }, U = p => [p[0], h, p[2]];
+  for (let i = 0; i < n; i++) { const a = P(i), b = P(i + 1); t.push([[0, 0, 0], a, b], [[0, h, 0], U(b), U(a)], [b, a, U(a)], [b, U(a), U(b)]); } return t; };
+T('Cilindro a faccette con la cucitura «quasi» chiusa (vertici saldati)', () => { const d = D0('i'); imp(d, enc(stlA(prismSeam(32)))); return d; },
+  { V: 16000 * Math.sin(PI / 16), C: [0, 5, 0], E: 64 });
+T('Cubo importato + taglio R5 profondo 5 su una sua faccia', () => {
+  const d = D0('i'); imp(d, enc(stlA(boxTris(0, 0, 0, 20, 20, 20))));
+  const b = SB(); b.circle(10, -10, 5); const s = sketch(d, face(d, nearW([0, 1, 0], 20)), b);
+  feat(d, { type: 'cut', sketch: s, end: 'blind', depth: 5 }); return d;
+}, { V: 8000 - 125 * PI, C: [10, (8000 * 10 - 125 * PI * 17.5) / (8000 - 125 * PI), 10] });
+T('Cubo importato + estrusione unita sopra (10 × 10 × 5)', () => {
+  const d = D0('i'); imp(d, enc(stlA(boxTris(0, 0, 0, 20, 20, 20))));
+  const b = SB(); b.rect(5, -15, 15, -5); const s = sketch(d, face(d, nearW([0, 1, 0], 20)), b);
+  feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 5 }); return d;
+}, { V: 8500, A: 2400 + 200, bb: [[0, 0, 0], [20, 25, 20]] });
+
 // materiale
 T('Massa acciaio S235 (blocco 80×50×10)', () => { const d = box(); d.material = 's235'; return d; }, { V: 40000, M: 40000 * 7.85 / 1000 });
 
@@ -326,6 +388,7 @@ function run(tol = TOL) {
       if (c.exp.A !== undefined) errs.A = chk('Area', mp.area, c.exp.A);
       if (c.exp.M !== undefined) errs.M = chk('Massa', mp.mass, c.exp.M);
       if (c.exp.C) errs.C = Math.max(...c.exp.C.map((e, i) => chk('Baricentro ' + 'xyz'[i], mp.centroid[i], e, size)));
+      if (c.exp.E !== undefined) { const ne = st.topo.edges.filter(e => e.sharp).length; errs.E = chk('Spigoli vivi', ne, c.exp.E); }
       if (c.exp.bb) errs.bb = Math.max(...[0, 1, 2].map(i => Math.max(chk('Ingombro min ' + 'xyz'[i], mp.bbox.mn[i], c.exp.bb[0][i], size), chk('Ingombro max ' + 'xyz'[i], mp.bbox.mx[i], c.exp.bb[1][i], size))));
       rows.push({ name: c.name, ok, errs, msg, V: mp.volume, Vexp: c.exp.V });
     } catch (e) { ok = false; msg.push('ERRORE ' + e.message); rows.push({ name: c.name, ok, errs, msg }); }

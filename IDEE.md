@@ -4,12 +4,12 @@ Promemoria delle cose discusse ma **non ancora fatte**. Da leggere all'inizio di
 
 ## Importare file di altri programmi
 
-Oggi il Banco CAD apre solo i propri progetti (Progetto › Importa un progetto) e salva in STL, SVG e DXF. Il 20 ottobre 2026 abbiamo valutato l'importazione di altri formati e si è deciso di **rimandare**. Valutazione:
+Il 20 ottobre 2026 abbiamo valutato l'importazione di altri formati. Il 21 ottobre è stata fatta la prima parte: **STL e OBJ** (Progetto › Importa STL o OBJ, funzione «Importato»). Restano DXF e STEP/IGES. Valutazione:
 
 | Formato | Fattibile? | Risultato | Note |
 |---|---|---|---|
-| STL, OBJ | Sì, facile | Solido a faccette da vedere, misurare, mettere in tavola, calcolarne volume e massa | Da fare per primo |
-| DXF | Sì, medio | Linee, archi e cerchi importati in uno schizzo, poi estrusione o rivoluzione | Il più utile a scuola; secondo da fare |
+| STL, OBJ | Sì, facile | Solido a faccette da vedere, misurare, mettere in tavola, calcolarne volume e massa | **Fatto** il 21 ottobre 2026 |
+| DXF | Sì, medio | Linee, archi e cerchi importati in uno schizzo, poi estrusione o rivoluzione | Il più utile a scuola; **prossimo da fare** (il lettore va nel modulo `Import`) |
 | STEP (.stp, .step), IGES (.igs, .iges) | Sì, impegnativo | Solido con le superfici vere | Serve un nucleo esterno (OpenCascade in WebAssembly): il file passa da ~0,5 MB a decine di MB |
 | DWG | Difficile | — | Formato chiuso di AutoCAD; consigliare la conversione in DXF (AutoCAD, DraftSight o ODA File Converter gratuito) |
 | SolidWorks (.sldprt, .sldasm, .slddrw), Inventor (.ipt, .iam, .idw, .ipn) | No | — | Formati proprietari senza specifiche pubbliche; consigliare di esportare in STEP (parti, assiemi) o DXF (tavole) dal programma d'origine |

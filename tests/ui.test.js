@@ -184,6 +184,64 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     rec('Albero: profilo e percorso sotto la funzione', tree.join('|').includes('Estrusione con percorso1|Schizzo1|Schizzo2'), tree.slice(-4).join(' | '));
   } catch (e) { rec('Interfaccia: estrusione con percorso (tubo con curva)', false, e.message.split('\n')[0]); }
 
+  // 3i. importazione di un file STL dal menu Progetto (cubo di 2 cm scritto in centimetri), poi modifica dell'unità
+  try {
+    await fresh();
+    const q = [[[0, 0, 0], [0, 0, 2], [0, 2, 2], [0, 2, 0]], [[2, 0, 0], [2, 2, 0], [2, 2, 2], [2, 0, 2]], [[0, 0, 0], [2, 0, 0], [2, 0, 2], [0, 0, 2]],
+      [[0, 2, 0], [0, 2, 2], [2, 2, 2], [2, 2, 0]], [[0, 0, 0], [0, 2, 0], [2, 2, 0], [2, 0, 0]], [[0, 0, 2], [2, 0, 2], [2, 2, 2], [0, 2, 2]]];
+    const tris = q.flatMap(([a, b, c, d]) => [[a, b, c], [a, c, d]]);
+    const buf = Buffer.alloc(84 + 50 * tris.length); buf.writeUInt32LE(tris.length, 80);
+    tris.forEach((t, i) => t.forEach((p, k) => p.forEach((x, j) => buf.writeFloatLE(x, 84 + i * 50 + 12 + k * 12 + j * 4))));
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importMesh"]');
+    await page.setInputFiles('#meshFile', { name: 'cubo.stl', mimeType: 'model/stl', buffer: buf });
+    await page.selectOption('#meshUnit', 'cm');
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.doc.features.some(f => f.type === 'import') && document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    const p1 = await props();
+    const node = await page.locator('.tnode', { hasText: 'Importato1' }).count();
+    // doppio clic sull'albero: pannello con le spiegazioni, unità in millimetri → cubo di 2 mm
+    await page.locator('.tnode', { hasText: 'Importato1' }).dblclick(); await page.waitForTimeout(300);
+    const gl = await page.evaluate(() => [...document.querySelectorAll('#pm .grp > h3')].map(h => h.textContent + (h.querySelector('.gl-i') ? '' : ' (senza ⓘ)')));
+    await page.selectOption('#pm_unit', 'mm'); await page.waitForTimeout(300);
+    await page.click('#pm .pm-ok'); await page.waitForTimeout(200);
+    const p2 = await props();
+    await page.click('#btnUndo'); await page.waitForTimeout(200);
+    const p3 = await props();
+    const ok = p1 && rel(p1.V, 8000) < TOL && rel(p1.A, 2400) < TOL && node === 1 && p2 && rel(p2.V, 8) < TOL && p3 && rel(p3.V, 8000) < TOL && gl.length === 2 && !gl.some(x => x.includes('senza'));
+    rec('Interfaccia: importa STL dal menu (unità, modifica, annulla)', ok, `V ${p1 && p1.V.toFixed(1)} (8000), dopo «mm» ${p2 && p2.V.toFixed(3)} (8), annulla ${p3 && p3.V.toFixed(1)}; pannello: ${gl.join(', ')}`);
+    // clic sulla faccia superiore del cubo importato: è una faccia piana, si può usare per lo schizzo
+    await page.evaluate(() => { App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(); App.redraw(); });
+    await page.waitForTimeout(400);
+    const [fx, fy] = await page.evaluate(() => { const p = App.r.project([10, 20, 10]); const c = document.querySelector('.view canvas').getBoundingClientRect(); return [c.left + p[0], c.top + p[1]]; });
+    await page.mouse.click(fx, fy); await page.waitForTimeout(150);
+    const fsel = await page.evaluate(() => { const s = App.sel[0]; return s ? { kind: s.kind, planar: s.planar, n: s.n, w: s.w } : null; });
+    rec('Interfaccia: faccia piana del corpo importato selezionabile', !!fsel && fsel.kind === 'face' && fsel.planar && Math.abs(fsel.n[1] - 1) < 1e-9 && Math.abs(fsel.w - 20) < 1e-6, JSON.stringify(fsel));
+    // messa in tavola del corpo importato
+    // la tavola del cubo importato deve coincidere, linea per linea, con quella di un cubo uguale fatto con un'estrusione
+    const dv = await page.evaluate(() => {
+      const ds = { sheet: 'A4H', scale: 'auto', views: { front: true, top: true, left: true, iso: true }, hidden: true, offsets: {}, section: null, dims: [], axes: true, title: { school: '', title: 'cubo', author: '', date: '', number: '', classe: '', tol: 'ISO 2768-mK', notes: '' } };
+      const lines = doc => { const st = Model.regen(doc); const d = new DOMParser().parseFromString(Drawing.render({ st, ds, doc }).svg, 'image/svg+xml'); const o = {};
+        for (const g of d.querySelectorAll('g[data-view]')) o[g.dataset.view] = [...g.querySelectorAll('line')].map(l => ['x1', 'y1', 'x2', 'y2'].map(a => (+l.getAttribute(a)).toFixed(1)).join(' ') + (l.closest('g[stroke-dasharray]') ? ' n' : '')).sort();
+        return o; };
+      const nat = Model.newDoc(), sk = Sketch.newSketch();
+      [[0, -20], [20, -20], [20, 0], [0, 0]].forEach((q, i) => sk.ents.push({ id: 'p' + i, t: 'pt', x: q[0], y: q[1] }));
+      for (let i = 0; i < 4; i++) sk.ents.push({ id: 'l' + i, t: 'ln', a: 'p' + i, b: 'p' + ((i + 1) % 4) });
+      sk.next = 10; nat.features.push({ id: 'F1', name: 'Schizzo1', type: 'sketch', plane: { kind: 'std', id: 'top' }, sk }, { id: 'F2', name: 'Estrusione1', type: 'extrude', sketch: 'F1', end: 'blind', depth: 20 }); nat.next = 3;
+      const a = lines(App.doc), b = lines(nat);
+      return { views: Object.keys(a).map(k => k + ' ' + a[k].length), same: JSON.stringify(a) === JSON.stringify(b) && Object.keys(a).length === 4 };
+    });
+    rec('Interfaccia: messa in tavola di un corpo importato', dv.same, 'uguale al cubo estruso: ' + (dv.same ? 'sì' : 'NO') + ' (' + dv.views.join(', ') + ' linee)');
+    // file non ammesso: messaggio nella finestra, niente funzione nuova
+    const nBefore = await page.evaluate(() => App.doc.features.length);
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importMesh"]');
+    await page.setInputFiles('#meshFile', { name: 'pezzo.sldprt', mimeType: 'application/octet-stream', buffer: Buffer.from('xx') });
+    await page.click('#modalActions .btn-primary'); await page.waitForTimeout(300);
+    const msg = await page.evaluate(() => { const e = document.querySelector('#meshErr'); return e && !e.hidden ? e.textContent : ''; });
+    const nAfter = await page.evaluate(() => App.doc.features.length);
+    await page.click('#modalActions .btn:not(.btn-primary)').catch(() => page.evaluate(() => { document.querySelector('#modal').hidden = true; }));
+    rec('Interfaccia: file di formato non ammesso spiegato', /SolidWorks/.test(msg) && nAfter === nBefore, msg);
+  } catch (e) { rec('Interfaccia: importa STL dal menu (unità, modifica, annulla)', false, e.message.split('\n')[0]); }
+
   // 4. glossario: ogni comando e ogni titolo dei pannelli ha la sua spiegazione
   try {
     await fresh();
@@ -302,6 +360,8 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     const cam = () => page.evaluate(() => { const c = App.r.cam, b = App.r.basis(); const s = App.r.pxSize(); return { t: c.target.slice(), q: c.q.slice(), s: c.scale, r: b.right, u: b.up, px: s }; });
     const dist = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
+    // la dimensione del pixel si legge dopo che la vista ha disegnato un fotogramma (prima può essere quella vecchia)
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
     const c0 = await cam();
     await page.mouse.wheel(0, 100); await page.waitForTimeout(150);
     const c1 = await cam();
@@ -311,12 +371,26 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     const c3 = await cam();
     const dt = c1.t.map((v, i) => v - c0.t[i]); const hpx = (dt[0] * c0.r[0] + dt[1] * c0.r[1] + dt[2] * c0.r[2]) / c0.px, vpx = (dt[0] * c0.u[0] + dt[1] * c0.u[1] + dt[2] * c0.u[2]) / c0.px;
     c1.sx = -hpx; c1.sy = vpx; c0.sx = 0; c0.sy = 0; // spostamento del modello sullo schermo, in pixel
-    const panOk = Math.abs(hpx) > 20 && Math.abs(vpx) < 1 && dist(c1.q, c0.q) < 1e-9 && c1.s === c0.s;
+    // rotella di 100 × 0,6 = 60 px di spostamento
+    const panOk = rel(Math.abs(hpx), 60) < TOL && Math.abs(vpx) < 1 && dist(c1.q, c0.q) < 1e-9 && c1.s === c0.s;
     const rotOk = dist(c2.q, c1.q) > 0.05 && c2.s === c1.s && dist(c2.t, c1.t) < 1e-9;
     const zoomOk = Math.abs(c3.s / c2.s - 1) > 0.05 && dist(c3.q, c2.q) < 1e-9;
     rec('Rotella: sposta di lato, Ctrl ruota, Maiusc zoom', panOk && rotOk && zoomOk,
       `spostamento orizzontale ${(c1.sx - c0.sx).toFixed(0)} px (verticale ${(c1.sy - c0.sy).toFixed(1)}), rotazione ${rotOk ? 'sì' : 'no'}, zoom ×${(c2.s / c3.s).toFixed(2)}`);
   } catch (e) { rec('Rotella: sposta di lato, Ctrl ruota, Maiusc zoom', false, e.message.split('\n')[0]); }
+  // rotella usata mentre la vista sta ancora girando (animazione di un cambio di orientamento): lo spostamento non si perde
+  try {
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const cam = () => page.evaluate(() => { const c = App.r.cam, b = App.r.basis(); return { t: c.target.slice(), q: c.q.slice(), r: b.right, px: App.r.pxSize() }; });
+    const a = await cam();
+    await page.evaluate(() => App.r.setView(GLView.Renderer.viewQ('front')));
+    await page.mouse.wheel(0, 100); await page.waitForTimeout(700);
+    const b = await cam();
+    const front = await page.evaluate(() => GLView.Renderer.viewQ('front'));
+    const dt = b.t.map((v, i) => v - a.t[i]); const hpx = (dt[0] * b.r[0] + dt[1] * b.r[1] + dt[2] * b.r[2]) / b.px;
+    const qOk = Math.min(Math.hypot(...b.q.map((v, i) => v - front[i])), Math.hypot(...b.q.map((v, i) => v + front[i]))) < 1e-9;
+    rec('Rotella durante un cambio di vista: lo spostamento resta', qOk && rel(Math.abs(hpx), 60) < TOL, `vista frontale ${qOk ? 'sì' : 'NO'}, spostamento ${hpx.toFixed(1)} px (60)`);
+  } catch (e) { rec('Rotella durante un cambio di vista: lo spostamento resta', false, e.message.split('\n')[0]); }
 
   // 3l. tablet: due dita = zoom sempre; ruotare/spostare solo dopo aver toccato il pezzo
   try {
@@ -362,7 +436,7 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     const head = await page.locator('#modalBody p b').first().textContent();
     const m = head.match(/(\d+) su (\d+)/);
     await page.screenshot({ path: path.join(OUT, 'selftest.png') });
-    rec('Autoverifica dentro il programma', m && m[1] === m[2] && +m[2] >= 56, head);
+    rec('Autoverifica dentro il programma', m && m[1] === m[2] && +m[2] >= 66, head);
     await page.click('#modalActions .btn-primary');
   } catch (e) { rec('Autoverifica dentro il programma', false, e.message.split('\n')[0]); }
 

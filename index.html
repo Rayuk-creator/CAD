@@ -377,6 +377,7 @@ label.chk .gl-i { margin-left: 2px; }
           <button type="button" data-act="new">Nuova parte</button>
           <button type="button" data-act="export">Esporta il progetto</button>
           <button type="button" data-act="import">Importa un progetto</button>
+          <button type="button" data-act="importMesh">Importa STL o OBJ</button>
           <button type="button" data-act="stl">Esporta STL (stampa 3D)</button>
           <button type="button" data-act="help">Guida (come si fa)</button>
         </div>
@@ -2090,6 +2091,211 @@ label.chk .gl-i { margin-left: 2px; }
   if (typeof module !== 'undefined') module.exports = api; else root.Sketch = api;
 })(this);
 
+/* Importazione di file di altri programmi: STL (binario e ASCII) e OBJ, come corpo a faccette. */
+(function (root) {
+  'use strict';
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  // base64 senza dipendenze (uguale nel browser e in Node)
+  function b64enc(u8) {
+    let s = '';
+    const n = u8.length;
+    for (let i = 0; i < n; i += 3) {
+      const a = u8[i], b = i + 1 < n ? u8[i + 1] : 0, c = i + 2 < n ? u8[i + 2] : 0;
+      s += B64[a >> 2] + B64[((a & 3) << 4) | (b >> 4)] + (i + 1 < n ? B64[((b & 15) << 2) | (c >> 6)] : '=') + (i + 2 < n ? B64[c & 63] : '=');
+    }
+    return s;
+  }
+  const B64I = new Int16Array(128).fill(-1); for (let i = 0; i < 64; i++) B64I[B64.charCodeAt(i)] = i;
+  function b64dec(s) {
+    let n = s.length; while (n && s[n - 1] === '=') n--;
+    const out = new Uint8Array(Math.floor(n * 3 / 4));
+    let o = 0, acc = 0, bits = 0;
+    for (let i = 0; i < n; i++) {
+      const v = B64I[s.charCodeAt(i)]; if (v < 0) continue;
+      acc = (acc << 6) | v; bits += 6;
+      if (bits >= 8) { bits -= 8; out[o++] = (acc >> bits) & 255; }
+    }
+    return o === out.length ? out : out.slice(0, o);
+  }
+  const u8of = d => d instanceof Uint8Array ? d : new Uint8Array(d);
+
+  /* ---------------- lettura dei formati ---------------- */
+  // STL: restituisce le coordinate dei vertici dei triangoli (9 numeri per triangolo)
+  function parseSTL(data) {
+    const u8 = u8of(data);
+    if (u8.length >= 84) {
+      const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+      const n = dv.getUint32(80, true);
+      if (84 + n * 50 === u8.length) {
+        const pos = new Float32Array(n * 9);
+        for (let t = 0, o = 84; t < n; t++, o += 50) for (let k = 0; k < 9; k++) pos[t * 9 + k] = dv.getFloat32(o + 12 + k * 4, true);
+        return { pos, binary: true };
+      }
+    }
+    const txt = typeof TextDecoder !== 'undefined' ? new TextDecoder('latin1').decode(u8) : String.fromCharCode.apply(null, u8);
+    if (!/^\s*solid/i.test(txt) || !/facet/i.test(txt)) throw new Error('Il file non è un STL valido');
+    const re = /vertex\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)/g;
+    const v = []; let m;
+    while ((m = re.exec(txt))) v.push(+m[1], +m[2], +m[3]);
+    if (!v.length || v.length % 9) throw new Error('Il file STL è incompleto');
+    return { pos: new Float32Array(v), binary: false };
+  }
+  // OBJ: vertici «v» e facce «f» (anche con più di tre lati, divise a ventaglio; indici negativi ammessi)
+  function parseOBJ(text) {
+    if (typeof text !== 'string') text = new TextDecoder('utf-8').decode(u8of(text));
+    const V = [], out = [];
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (line.startsWith('v ') || line.startsWith('v\t')) { const p = line.split(/\s+/); V.push([+p[1], +p[2], +p[3]]); }
+      else if (line.startsWith('f ') || line.startsWith('f\t')) {
+        const ids = line.split(/\s+/).slice(1).filter(Boolean).map(s => { const k = parseInt(s.split('/')[0], 10); return k < 0 ? V.length + k : k - 1; });
+        for (let i = 1; i + 1 < ids.length; i++) for (const k of [ids[0], ids[i], ids[i + 1]]) {
+          const p = V[k]; if (!p) throw new Error('Il file OBJ cita un vertice che non esiste');
+          out.push(p[0], p[1], p[2]);
+        }
+      }
+    }
+    if (!out.length) throw new Error('Il file OBJ non contiene facce');
+    return { pos: new Float32Array(out) };
+  }
+  // vertici in comune: i triangoli diventano indici su un elenco di punti.
+  // Due punti più vicini di un centomilionesimo dell'ingombro sono lo stesso punto
+  // (nei file capita, per esempio, sin 360° = −2,4·10⁻¹⁶ invece di 0 sulla cucitura di un cilindro).
+  function weld(pos) {
+    let lo = Infinity, hi = -Infinity;
+    for (let k = 0; k < pos.length; k++) { const x = pos[k]; if (x < lo) lo = x; if (x > hi) hi = x; }
+    if (!isFinite(lo) || !isFinite(hi)) throw new Error('Il file contiene coordinate non valide');
+    const q = Math.max((hi - lo) * 1e-8, 1e-12);
+    const map = new Map(), v = [], idx = [];
+    const find = (x, y, z) => {
+      const a = x / q, b = y / q, c = z / q, ka = Math.round(a), kb = Math.round(b), kc = Math.round(c);
+      let i = map.get(ka + ',' + kb + ',' + kc);
+      if (i !== undefined) return i;
+      // vicino al bordo della cella: si guarda anche nella cella accanto
+      const da = a - ka, db = b - kb, dc = c - kc;
+      const oa = Math.abs(da) > 0.25 ? [0, Math.sign(da)] : [0], ob = Math.abs(db) > 0.25 ? [0, Math.sign(db)] : [0], oc = Math.abs(dc) > 0.25 ? [0, Math.sign(dc)] : [0];
+      for (const x1 of oa) for (const y1 of ob) for (const z1 of oc) { if (!x1 && !y1 && !z1) continue; i = map.get((ka + x1) + ',' + (kb + y1) + ',' + (kc + z1)); if (i !== undefined) return i; }
+      i = v.length / 3; v.push(x, y, z); map.set(ka + ',' + kb + ',' + kc, i);
+      return i;
+    };
+    for (let t = 0; t < pos.length / 9; t++) {
+      const tri = [];
+      for (let k = 0; k < 3; k++) { const o = t * 9 + k * 3; tri.push(find(pos[o], pos[o + 1], pos[o + 2])); }
+      if (tri[0] !== tri[1] && tri[1] !== tri[2] && tri[0] !== tri[2]) idx.push(...tri);
+    }
+    return { v: new Float32Array(v), i: new Uint32Array(idx) };
+  }
+  // forma compatta da salvare nel progetto
+  function pack(m) { return { nv: m.v.length / 3, nt: m.i.length / 3, v: b64enc(new Uint8Array(m.v.buffer, m.v.byteOffset, m.v.byteLength)), i: b64enc(new Uint8Array(m.i.buffer, m.i.byteOffset, m.i.byteLength)) }; }
+  function unpack(p) {
+    const vb = b64dec(p.v), ib = b64dec(p.i);
+    const v = new Float32Array(vb.buffer.slice(vb.byteOffset, vb.byteOffset + vb.byteLength));
+    const i = new Uint32Array(ib.buffer.slice(ib.byteOffset, ib.byteOffset + ib.byteLength));
+    if (v.length !== p.nv * 3 || i.length !== p.nt * 3) throw new Error('Dati del corpo importato danneggiati');
+    for (let k = 0; k < i.length; k++) if (i[k] >= p.nv) throw new Error('Dati del corpo importato danneggiati');
+    return { v, i };
+  }
+  const UNITS = { mm: 1, cm: 10, m: 1000, in: 25.4 };
+
+  /* ---------------- analisi: orientamento, chiusura, facce piane ---------------- */
+  // opts: {unit, zUp}. Restituisce i triangoli in mm raggruppati per faccia piana.
+  function analyze(m, opts = {}) {
+    const s = UNITS[opts.unit] || 1;
+    const nv = m.v.length / 3;
+    const P = new Array(nv);
+    for (let k = 0; k < nv; k++) {
+      const x = m.v[k * 3] * s, y = m.v[k * 3 + 1] * s, z = m.v[k * 3 + 2] * s;
+      // «Z verso l'alto»: la Z del file diventa la Y (verticale) del Banco CAD
+      P[k] = opts.zUp ? [x, z, -y] : [x, y, z];
+    }
+    const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const p of P) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], p[k]); mx[k] = Math.max(mx[k], p[k]); }
+    const size = Math.hypot(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]) || 1;
+    // triangoli non degeneri
+    const T = [];
+    for (let k = 0; k < m.i.length; k += 3) {
+      const t = [m.i[k], m.i[k + 1], m.i[k + 2]];
+      const c = cross(sub(P[t[1]], P[t[0]]), sub(P[t[2]], P[t[0]]));
+      if (Math.hypot(c[0], c[1], c[2]) > 1e-12 * size * size) T.push(t);
+    }
+    if (!T.length) throw new Error('Il file non contiene triangoli');
+    // lati: chi li usa e in che verso
+    const E = new Map();
+    const ek = (a, b) => a < b ? a * nv + b : b * nv + a;
+    T.forEach((t, ti) => { for (let k = 0; k < 3; k++) { const a = t[k], b = t[(k + 1) % 3]; const key = ek(a, b); let l = E.get(key); if (!l) E.set(key, l = []); l.push(ti); } });
+    let open = 0, nonManifold = 0;
+    for (const l of E.values()) { if (l.length === 1) open++; else if (l.length > 2) nonManifold++; }
+    // orientamento coerente: due triangoli vicini percorrono il lato comune in versi opposti
+    const dirOf = (t, a, b) => { for (let k = 0; k < 3; k++) if (t[k] === a && t[(k + 1) % 3] === b) return 1; return -1; };
+    const comp = new Int32Array(T.length).fill(-1);
+    let reoriented = 0, nComp = 0, flippedComp = 0;
+    for (let s0 = 0; s0 < T.length; s0++) {
+      if (comp[s0] >= 0) continue;
+      const c = nComp++, list = [s0];
+      comp[s0] = c;
+      for (let q = 0; q < list.length; q++) {
+        const t = T[list[q]];
+        for (let k = 0; k < 3; k++) {
+          const a = t[k], b = t[(k + 1) % 3];
+          const l = E.get(ek(a, b));
+          if (l.length !== 2) continue;
+          const o = l[0] === list[q] ? l[1] : l[0];
+          if (comp[o] >= 0) continue;
+          comp[o] = c;
+          if (dirOf(T[o], a, b) === 1) { T[o] = [T[o][0], T[o][2], T[o][1]]; reoriented++; }
+          list.push(o);
+        }
+      }
+      // ogni parte chiusa deve avere volume positivo (normali verso l'esterno)
+      let V = 0;
+      for (const ti of list) { const t = T[ti]; V += dot(P[t[0]], cross(P[t[1]], P[t[2]])); }
+      if (V < 0) { for (const ti of list) { const t = T[ti]; T[ti] = [t[0], t[2], t[1]]; } flippedComp++; }
+    }
+    // normale e piano di ogni triangolo
+    const N = T.map(t => { const c = cross(sub(P[t[1]], P[t[0]]), sub(P[t[2]], P[t[0]])); const l = Math.hypot(c[0], c[1], c[2]); return { n: [c[0] / l, c[1] / l, c[2] / l], a: l / 2 }; });
+    // facce piane: triangoli vicini sullo stesso piano
+    const grp = new Int32Array(T.length).fill(-1);
+    const groups = [];
+    const tolA = 1 - 2e-8, tolD = 1e-6 * size + 1e-7;
+    for (let s0 = 0; s0 < T.length; s0++) {
+      if (grp[s0] >= 0) continue;
+      const g = groups.length, list = [s0];
+      grp[s0] = g;
+      const n0 = N[s0].n, w0 = dot(n0, P[T[s0][0]]);
+      for (let q = 0; q < list.length; q++) {
+        const t = T[list[q]];
+        for (let k = 0; k < 3; k++) {
+          const l = E.get(ek(t[k], t[(k + 1) % 3]));
+          if (l.length !== 2) continue;
+          const o = l[0] === list[q] ? l[1] : l[0];
+          if (grp[o] >= 0 || dot(N[o].n, n0) < tolA) continue;
+          if (!T[o].every(i => Math.abs(dot(n0, P[i]) - w0) < tolD)) continue;
+          grp[o] = g; list.push(o);
+        }
+      }
+      // piano medio pesato con le aree
+      const ns = [0, 0, 0]; let at = 0;
+      for (const ti of list) { const { n, a } = N[ti]; ns[0] += n[0] * a; ns[1] += n[1] * a; ns[2] += n[2] * a; at += a; }
+      const nl = Math.hypot(ns[0], ns[1], ns[2]);
+      const n = list.length === 1 ? n0 : [ns[0] / nl, ns[1] / nl, ns[2] / nl];
+      // normali quasi uguali agli assi: si arrotondano (faccia esattamente orizzontale/verticale)
+      for (let k = 0; k < 3; k++) if (Math.abs(n[k]) < 1e-9) n[k] = 0; else if (Math.abs(Math.abs(n[k]) - 1) < 1e-9) { n[k] = Math.sign(n[k]); }
+      let ws = 0;
+      for (const ti of list) { const t = T[ti]; ws += N[ti].a * (dot(n, P[t[0]]) + dot(n, P[t[1]]) + dot(n, P[t[2]])) / 3; }
+      groups.push({ n, w: ws / at, tris: list });
+    }
+    let volume = 0, area = 0;
+    for (let k = 0; k < T.length; k++) { const t = T[k]; volume += dot(P[t[0]], cross(P[t[1]], P[t[2]])) / 6; area += N[k].a; }
+    return { P, T, N, groups, open, nonManifold, reoriented, flippedComp, parts: nComp, volume, area, bbox: { mn, mx }, size };
+  }
+
+  const api = { parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS };
+  if (typeof module !== 'undefined') module.exports = api; else root.Import = api;
+})(this);
+
 /* Modello della parte: albero delle funzioni e rigenerazione parametrica. */
 (function (root) {
   'use strict';
@@ -2097,6 +2303,7 @@ label.chk .gl-i { margin-left: 2px; }
   const CSG = isNode ? require('./csg.js') : root.CSG;
   const G = isNode ? require('./geom.js') : root.Geom;
   const S = isNode ? require('./sketch.js') : root.Sketch;
+  const IM = isNode ? require('./import.js') : root.Import;
   const { sub, add, mul, dot, cross, len, norm } = CSG.V;
   const TAU = Math.PI * 2;
 
@@ -2153,7 +2360,7 @@ label.chk .gl-i { margin-left: 2px; }
   function uid(doc, p) { return p + (doc.next++); }
 
   // nome predefinito delle funzioni
-  const FEAT_LABEL = { sketch: 'Schizzo', extrude: 'Estrusione', cut: 'Taglio-Estrusione', revolve: 'Rivoluzione', revcut: 'Taglio-Rivoluzione', hole: 'Foro', fillet: 'Raccordo', chamfer: 'Smusso', lpattern: 'Serie lineare', cpattern: 'Serie circolare', mirror: 'Specchio', plane: 'Piano', sweep: 'Estrusione con percorso', sweepcut: 'Taglio con percorso', rib: 'Nervatura' };
+  const FEAT_LABEL = { sketch: 'Schizzo', extrude: 'Estrusione', cut: 'Taglio-Estrusione', revolve: 'Rivoluzione', revcut: 'Taglio-Rivoluzione', hole: 'Foro', fillet: 'Raccordo', chamfer: 'Smusso', lpattern: 'Serie lineare', cpattern: 'Serie circolare', mirror: 'Specchio', plane: 'Piano', sweep: 'Estrusione con percorso', sweepcut: 'Taglio con percorso', rib: 'Nervatura', import: 'Importato' };
   function defaultName(doc, type) {
     const base = FEAT_LABEL[type] || type;
     let k = 1;
@@ -2178,7 +2385,49 @@ label.chk .gl-i { margin-left: 2px; }
       }
     }
     st.topo = st.body.length ? G.topology(st.body, tags) : { verts: [], polyVerts: [], edges: [], surfKeys: [] };
+    smoothMeshEdges(st);
     return st;
+  }
+  // corpi importati: tra faccette quasi allineate (meno di 30°) lo spigolo non si disegna, come su una superficie curva
+  const SMOOTH_COS = Math.cos(30 * Math.PI / 180);
+  function smoothMeshEdges(st) {
+    for (const e of st.topo.edges) {
+      if (!e.sharp || e.polys.length !== 2) continue;
+      const a = st.tags.get(st.body[e.polys[0]].t), b = st.tags.get(st.body[e.polys[1]].t);
+      if (a && b && a.mesh && b.mesh && a.feature === b.feature && dot(a.n, b.n) > SMOOTH_COS) { e.sharp = false; e.smooth = true; }
+    }
+  }
+  /* ---------------- corpi importati (STL, OBJ) ---------------- */
+  // la decodifica e l'analisi si fanno una volta sola per file, unità e orientamento
+  const meshCache = new Map();
+  function meshOf(f) {
+    if (!f.mesh || !f.mesh.v) throw userErr('Il corpo importato non contiene dati');
+    const key = (f.unit || 'mm') + '|' + (f.zUp ? 1 : 0);
+    const c = meshCache.get(f.id);
+    if (c && c.v === f.mesh.v && c.key === key) return c.res;
+    let res;
+    try { res = IM.analyze(IM.unpack(f.mesh), { unit: f.unit || 'mm', zUp: !!f.zUp }); }
+    catch (e) { throw userErr(e.message || 'Il file importato è danneggiato'); }
+    // poligoni pronti (piano di ogni triangolo calcolato una volta)
+    res.polys = res.groups.map(g => g.tris.map(ti => { const t = res.T[ti]; const v = [res.P[t[0]], res.P[t[1]], res.P[t[2]]]; return { v, p: CSG.planeOf(v) }; }));
+    meshCache.set(f.id, { v: f.mesh.v, key, res });
+    if (meshCache.size > 12) meshCache.delete(meshCache.keys().next().value);
+    return res;
+  }
+  function importTool(f, st) {
+    const M = meshOf(f);
+    const tool = [];
+    M.groups.forEach((g, k) => {
+      const id = st.tags.add({ kind: 'plane', n: g.n.slice(), w: g.w, name: f.id + ':F' + (k + 1), feature: f.id, mesh: true });
+      for (const p of M.polys[k]) tool.push({ v: p.v.map(v => v.slice()), p: p.p, t: id });
+    });
+    if (M.open || M.nonManifold) st.warn.set(f.id, 'Il corpo importato non è chiuso (' + (M.open ? M.open + ' lati liberi' : M.nonManifold + ' lati in comune a più di due facce') + '): volume, massa e funzioni aggiunte sopra possono non essere corretti');
+    st.info.set(f.id, importInfo(f));
+    return tool;
+  }
+  function importInfo(f) {
+    const M = meshOf(f);
+    return { tris: M.T.length, faces: M.groups.length, open: M.open, nonManifold: M.nonManifold, reoriented: M.reoriented + M.flippedComp, parts: M.parts, volume: M.volume, area: M.area, bbox: M.bbox };
   }
   function userErr(msg) { const e = new Error(msg); e.userMsg = msg; return e; }
 
@@ -2314,6 +2563,12 @@ label.chk .gl-i { margin-left: 2px; }
         const tool = sweepTool(doc, f, st);
         st.tools.set(f.id, { polys: tool, op: f.type === 'sweepcut' ? 'sub' : 'add' });
         applyOp(st, tool, f.type === 'sweepcut' ? 'sub' : 'add', f);
+        return;
+      }
+      case 'import': {
+        const tool = importTool(f, st);
+        st.tools.set(f.id, { polys: tool, op: 'add' });
+        applyOp(st, tool, 'add', f);
         return;
       }
       case 'rib': {
@@ -2985,7 +3240,7 @@ label.chk .gl-i { margin-left: 2px; }
 
   // schizzi usati da una funzione (lo sweep ne usa due: profilo e percorso)
   const sketchesOf = f => [f.sketch, f.path].filter(Boolean);
-  const api = { sketchesOf, STD_PLANES, MATERIALS, HOLE, newDoc, uid, defaultName, regen, resolvePlane, findFaceTag, frameFromPlane, edgeGroups, edgeGeometry, resolveEdge, massProperties, FEAT_LABEL, rotMatrix };
+  const api = { sketchesOf, STD_PLANES, MATERIALS, HOLE, newDoc, uid, defaultName, regen, resolvePlane, findFaceTag, frameFromPlane, edgeGroups, edgeGeometry, resolveEdge, massProperties, FEAT_LABEL, rotMatrix, Import: IM, importInfo };
   if (isNode) module.exports = api; else root.Model = api;
 })(this);
 
@@ -3086,6 +3341,26 @@ label.chk .gl-i { margin-left: 2px; }
     return n;
   }
 
+  // corpi importati: normale media delle faccette vicine (meno di 30° di differenza), così le superfici curve appaiono lisce
+  function meshNormals(body, tags, topo) {
+    if (!topo || !body.some(p => { const t = tags.get(p.t); return t && t.mesh; })) return null;
+    const C = Math.cos(30 * Math.PI / 180);
+    const around = new Map(); // vertice → poligoni a faccette che lo usano
+    body.forEach((p, pi) => { const t = tags.get(p.t); if (!t || !t.mesh) return; for (const v of topo.polyVerts[pi]) { let l = around.get(v); if (!l) around.set(v, l = []); l.push(pi); } });
+    const out = [];
+    body.forEach((p, pi) => {
+      const t = tags.get(p.t); if (!t || !t.mesh) return;
+      const n0 = p.p.n;
+      out[pi] = topo.polyVerts[pi].map(v => {
+        const s = [0, 0, 0];
+        for (const q of around.get(v)) { const nq = body[q].p.n; if (dot(nq, n0) < C) continue; const tq = tags.get(body[q].t); const w = tq === t ? 0.25 : 1; s[0] += nq[0] * w; s[1] += nq[1] * w; s[2] += nq[2] * w; }
+        const l = len(s);
+        return l > 1e-12 ? mul(s, 1 / l) : n0;
+      });
+    });
+    return out;
+  }
+
   /* ---------------- renderer ---------------- */
   function Renderer(canvas) {
     const gl = canvas.getContext('webgl', { antialias: true, preserveDrawingBuffer: true, alpha: false }) || canvas.getContext('experimental-webgl');
@@ -3169,9 +3444,11 @@ label.chk .gl-i { margin-left: 2px; }
     const tags = st.tags;
     const pos = [], nor = [], col = [], triPoly = [];
     const polyTri = [];
+    const topo0 = opts.topo || st.topo;
+    const meshN = meshNormals(body, tags, (body === st.body || opts.topo) && topo0 && topo0.polyVerts && topo0.polyVerts.length === body.length ? topo0 : null);
     body.forEach((p, pi) => {
       const tg = tags.get(p.t);
-      const ns = p.v.map(v => (tg && tg.kind === 'rev') ? revNormal(tg, v, p.p.n) : p.p.n);
+      const ns = meshN && meshN[pi] ? meshN[pi] : p.v.map(v => (tg && tg.kind === 'rev') ? revNormal(tg, v, p.p.n) : p.p.n);
       polyTri[pi] = [triPoly.length];
       for (let i = 1; i < p.v.length - 1; i++) {
         for (const k of [0, i, i + 1]) { pos.push(...p.v[k]); nor.push(...ns[k]); col.push(0, 0, 0); }
@@ -3246,6 +3523,7 @@ label.chk .gl-i { margin-left: 2px; }
       if (e.sharp || e.polys.length !== 2) continue;
       const p1 = this.cpu.body[e.polys[0]], p2 = this.cpu.body[e.polys[1]];
       const tg = st.tags.get(p1.t);
+      if (e.smooth) { const s1 = dot(p1.p.n, view), s2 = dot(p2.p.n, view); if ((s1 > 0) !== (s2 > 0)) out.push(...topo.verts[e.a], ...topo.verts[e.b]); continue; }
       if (!tg || tg.kind !== 'rev') continue;
       if (Math.abs(dot(tg.d, view)) > 0.9999) continue; // visto lungo l'asse: niente contorno apparente
       const s1 = dot(p1.p.n, view), s2 = dot(p2.p.n, view);
@@ -3437,7 +3715,16 @@ label.chk .gl-i { margin-left: 2px; }
   Renderer.segDist = segDist2;
 
   /* ---------------- camera ---------------- */
+  // un comando dell'utente durante un cambio di vista animato: l'animazione arriva subito alla fine,
+  // altrimenti i fotogrammi successivi riscriverebbero la camera e il comando andrebbe perso
+  Renderer.prototype.endAnim = function () {
+    if (!this.anim) return;
+    const d = this.anim.dest;
+    this.anim = null; this.targetQ = null;
+    if (d) { this.cam.target = d.target.slice(); this.cam.scale = d.scale; this.cam.q = d.q.slice(); }
+  };
   Renderer.prototype.rotate = function (dx, dy) {
+    this.endAnim();
     const { right, up } = this.basis();
     const k = 0.008;
     let q = this.cam.q;
@@ -3446,11 +3733,13 @@ label.chk .gl-i { margin-left: 2px; }
     this.cam.q = qnorm(q);
   };
   Renderer.prototype.pan = function (dx, dy) {
+    this.endAnim();
     const { right, up } = this.basis();
     const s = this.pxSize();
     this.cam.target = add(this.cam.target, add(mul(right, -dx * s), mul(up, dy * s)));
   };
   Renderer.prototype.zoomAt = function (factor, sx, sy) {
+    this.endAnim();
     this.mats = this.matrices();
     const before = this.ray(sx, sy).o;
     this.cam.scale = Math.max(0.5, Math.min(20000, this.cam.scale * factor));
@@ -3477,7 +3766,8 @@ label.chk .gl-i { margin-left: 2px; }
     const from = { target: this.cam.target.slice(), scale: this.cam.scale, q: this.cam.q.slice() };
     const dest = { target: to.target || from.target, scale: to.scale || from.scale, q: to.q || from.q };
     if (!animate || (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
-      this.cam.target = dest.target; this.cam.scale = dest.scale; this.cam.q = dest.q; this.targetQ = null; return;
+      // anche un'eventuale animazione in corso si ferma, se no sovrascriverebbe questa posizione
+      this.anim = null; this.cam.target = dest.target; this.cam.scale = dest.scale; this.cam.q = dest.q; this.targetQ = null; return;
     }
     const t0 = performance.now(), dur = 380;
     this.anim = { step: now => {
@@ -3489,7 +3779,7 @@ label.chk .gl-i { margin-left: 2px; }
       this.cam.q = slerp(from.q, dest.q, t);
       if (t >= 1) { this.anim = null; this.targetQ = null; }
       return t < 1;
-    } };
+    }, dest };
   };
   // orientamenti standard (convenzione SolidWorks: Y verso l'alto, fronte = +Z)
   function viewQ(name) {
@@ -3559,6 +3849,7 @@ label.chk .gl-i { margin-left: 2px; }
     sweep: I('<path d="M4 19h6a8 8 0 008-8V4"/><path d="M4 15.5v7" stroke-width="2.6"/><circle cx="18" cy="4" r="1.4" fill="currentColor"/>'),
     sweepcut: I('<path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M6 13h4a5 5 0 005-5V6" stroke-width="2.4" opacity=".7"/>'),
     rib: I('<path d="M4 20V4h4v12h12v4z"/><path d="M8 9l7 7" stroke-width="2.6"/>'),
+    import: I('<path d="M5 9l7-4 7 4v8l-7 4-7-4z" stroke-dasharray="2 1.6"/><path d="M12 1v11M8.5 8.5L12 12l3.5-3.5"/>'),
     plane: I('<path d="M3 16l5-8h13l-5 8z"/><path d="M8 12h8" stroke-dasharray="1.5 1.5"/>'),
     material: I('<path d="M4 8l8-4 8 4v8l-8 4-8-4z" fill="currentColor" fill-opacity=".15"/><path d="M4 8l8 4 8-4M12 12v8"/>'),
     mass: I('<path d="M7 9h10l2 11H5z"/><circle cx="12" cy="6" r="2.5"/>'),
@@ -3598,7 +3889,9 @@ label.chk .gl-i { margin-left: 2px; }
   function snapshot() { return JSON.stringify(App.doc); }
   App.commit = function (before) {
     App.undoStack.push(before);
-    if (App.undoStack.length > 80) App.undoStack.shift();
+    // con un corpo importato grande ogni passo occupa molta memoria: se ne tengono meno
+    const maxUndo = before.length > 1e6 ? 15 : before.length > 2e5 ? 40 : 80;
+    while (App.undoStack.length > maxUndo) App.undoStack.shift();
     App.redoStack.length = 0;
     App.save();
     updateUndo();
@@ -3633,7 +3926,11 @@ label.chk .gl-i { margin-left: 2px; }
     saveT = 0;
     let doc = App.doc;
     if (App.pm && App.pm._before) { try { doc = JSON.parse(App.pm._before); } catch (e) { /* stato corrente */ } }
-    try { localStorage.setItem(STORE, JSON.stringify({ doc, lesson: App.lessonId || null, drawing: App.drawingState || null })); } catch (e) { /* non disponibile */ }
+    try { localStorage.setItem(STORE, JSON.stringify({ doc, lesson: App.lessonId || null, drawing: App.drawingState || null })); App.storeFull = false; }
+    catch (e) {
+      // spazio del browser esaurito (di solito per un file importato molto grande): lo si dice una volta
+      if (e && (e.name === 'QuotaExceededError' || e.code === 22) && !App.storeFull) { App.storeFull = true; toast('Il progetto è troppo grande per il salvataggio automatico del browser: salvalo con Progetto › Esporta il progetto.', 8000); }
+    }
   }
   App.save = function () {
     clearTimeout(saveT);
@@ -4164,7 +4461,7 @@ label.chk .gl-i { margin-left: 2px; }
   }
 
   /* ================= albero di progettazione ================= */
-  const FICON = { sketch: 'sketch', extrude: 'extrude', cut: 'cut', revolve: 'revolve', revcut: 'revcut', hole: 'hole', fillet: 'fillet', chamfer: 'chamfer', lpattern: 'lpattern', cpattern: 'cpattern', mirror: 'mirror', plane: 'plane', sweep: 'sweep', sweepcut: 'sweepcut', rib: 'rib' };
+  const FICON = { sketch: 'sketch', extrude: 'extrude', cut: 'cut', revolve: 'revolve', revcut: 'revcut', hole: 'hole', fillet: 'fillet', chamfer: 'chamfer', lpattern: 'lpattern', cpattern: 'cpattern', mirror: 'mirror', plane: 'plane', sweep: 'sweep', sweepcut: 'sweepcut', rib: 'rib', import: 'import' };
   App.renderTree = function () {
     const t = $('#tree');
     const doc = App.doc, st = App.st;
@@ -4482,7 +4779,7 @@ label.chk .gl-i { margin-left: 2px; }
       const worst = r => { const v = Object.values(r.errs); return v.length ? Math.max(...v) : undefined; };
       const body = rows.map(r => `<tr class="${r.ok ? '' : 'st-no'}"><td>${r.ok ? '✓' : '✗'}</td><td>${esc(r.name)}${r.msg.length ? `<div class="st-msg">${esc(r.msg.join(' · '))}</div>` : ''}</td><td class="num">${pct(worst(r))}</td></tr>`).join('');
       $('#modalBody').innerHTML = `<p class="${fail ? 'note err' : 'note ok'}"><b>${rows.length - fail} su ${rows.length} prove superate</b> in ${fmt(ms / 1000, 1)} s. Tolleranza ammessa: 1 %.</p>
-        <p class="note">Ogni prova costruisce un pezzo (estrusioni, rivoluzioni, tagli, raccordi, smussi, fori ISO, serie, specchio, sformo, sweep, nervature, schizzi quotati) e confronta volume, area, baricentro e ingombro con i valori calcolati a mano con le formule della geometria. La colonna mostra l'errore più grande della prova.</p>
+        <p class="note">Ogni prova costruisce un pezzo (estrusioni, rivoluzioni, tagli, raccordi, smussi, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL e OBJ, schizzi quotati) e confronta volume, area, baricentro e ingombro con i valori calcolati a mano con le formule della geometria. La colonna mostra l'errore più grande della prova.</p>
         <div class="st-wrap"><table class="st-table"><thead><tr><th></th><th>Prova</th><th class="num">Errore max</th></tr></thead><tbody>${body}</tbody></table></div>`;
     }, 60);
   }
@@ -4665,6 +4962,58 @@ label.chk .gl-i { margin-left: 2px; }
     App.offerFile((App.doc.name || 'parte') + '.stl', 'model/stl', new Blob([buf], { type: 'model/stl' }), 'Esporta STL');
     toast('File STL pronto: ' + ntri + ' triangoli, unità in millimetri.');
   }
+  /* ---------- importazione di file STL e OBJ (corpo a faccette, come «Importato» di SolidWorks) ---------- */
+  const MESH_MAX = 100000;
+  function importMeshDialog() {
+    modal('Importa un file STL o OBJ', `<p class="note">Il pezzo arriva come <b>corpo a faccette</b> (tanti triangoli): si vede, si misura, si mette in tavola e se ne calcolano volume e massa. Non porta con sé la storia delle funzioni, ma sopra puoi disegnare schizzi e aggiungere funzioni.</p>
+      <p><input type="file" id="meshFile" accept=".stl,.obj"></p>
+      <div class="row"><label for="meshUnit">Unità del file</label><select id="meshUnit"><option value="mm">millimetri</option><option value="cm">centimetri</option><option value="m">metri</option><option value="in">pollici</option></select></div>
+      <label class="chk"><input type="checkbox" id="meshZup"> Asse Z del file verso l'alto</label>
+      <p class="note">I file STL non dicono l'unità: di solito sono in millimetri. Molti programmi per la stampa 3D mettono la Z verso l'alto: spunta la casella se il pezzo arriva coricato. Le due scelte si possono cambiare dopo, con doppio clic su «Importato» nell'albero.</p>
+      <p class="note err" id="meshErr" hidden></p>`, [
+      { label: 'Annulla' },
+      { label: 'Importa', primary: true, keep: true, fn: () => {
+        const inp = $('#meshFile'), file = inp && inp.files[0];
+        const err = t => { const e = $('#meshErr'); e.textContent = t; e.hidden = false; };
+        if (!file) { err('Scegli prima il file.'); return; }
+        const rd = new FileReader();
+        rd.onload = () => {
+          try { const r = importMeshData(file.name, new Uint8Array(rd.result), { unit: $('#meshUnit').value, zUp: $('#meshZup').checked }); closeModal(); toast(r.msg, 6000); }
+          catch (e) { err(e.message); }
+        };
+        rd.onerror = () => err('Il file non si riesce a leggere.');
+        rd.readAsArrayBuffer(file);
+      } },
+    ]);
+  }
+  function importMeshData(name, data, opts = {}) {
+    const ext = (String(name).split('.').pop() || '').toLowerCase();
+    if (ext !== 'stl' && ext !== 'obj') throw new Error('Si possono importare file .stl e .obj. Per i file di SolidWorks o Inventor esporta prima in STL dal programma d\'origine.');
+    const r = ext === 'obj' ? Import.parseOBJ(data) : Import.parseSTL(data);
+    const m = Import.weld(r.pos);
+    const nt = m.i.length / 3;
+    if (!nt) throw new Error('Il file non contiene triangoli.');
+    if (nt > MESH_MAX) throw new Error(`Il file ha ${nt.toLocaleString('it-IT')} triangoli: il massimo è ${MESH_MAX.toLocaleString('it-IT')}. Riducili con il programma da cui viene (comando «Semplifica» o «Riduci») e riprova.`);
+    if (App.mode === 'sketch') Sketcher.exit(true);
+    if (App.mode === 'drawing') App.setCmdTab('features');
+    if (App.pm) App.closePM(false);
+    const f = { type: 'import', fmt: ext, file: String(name), unit: opts.unit || 'mm', zUp: !!opts.zUp, mesh: Import.pack(m) };
+    App.change(() => {
+      const doc = App.doc;
+      f.id = Model.uid(doc, 'F'); f.name = Model.defaultName(doc, 'import');
+      if (doc.rollback !== null && doc.rollback !== undefined && doc.rollback < doc.features.length) { doc.features.splice(doc.rollback, 0, f); doc.rollback++; }
+      else doc.features.push(f);
+      App.sel = [];
+    });
+    App.r.fit();
+    App.redraw();
+    const st = App.st, info = st.info.get(f.id), e = st.errors.get(f.id), w = st.warn.get(f.id);
+    let msg = e ? 'Importazione con errori: ' + e : `Importato «${name}»: ${info.tris.toLocaleString('it-IT')} triangoli, ${info.faces.toLocaleString('it-IT')} facce piane.`;
+    if (!e && info.reoriented) msg += ' Alcune facce erano girate al contrario: sono state corrette.';
+    if (!e && w) msg += ' Attenzione: il corpo non è chiuso.';
+    return { f, info, error: e || null, warn: w || null, msg };
+  }
+  App.importMeshData = importMeshData;
   function newPart() {
     confirmModal('Nuova parte', 'La parte attuale verrà sostituita da una parte vuota. Se ti serve, esportala prima.', 'Nuova parte', () => {
       if (App.mode === 'sketch') Sketcher.exit(false);
@@ -4704,7 +5053,7 @@ label.chk .gl-i { margin-left: 2px; }
     $('#btnFile').addEventListener('click', e => { e.stopPropagation(); const m = $('#menuFile'); const open = m.hidden; hideMenus(); m.hidden = !open; });
     $('#menuFile').addEventListener('click', e => {
       const b = e.target.closest('[data-act]'); if (!b) return; hideMenus();
-      ({ new: newPart, export: exportProject, import: importProject, stl: exportSTL, help: () => (window.Guide ? window.Guide.open(null) : help()) })[b.dataset.act]();
+      ({ new: newPart, export: exportProject, import: importProject, importMesh: importMeshDialog, stl: exportSTL, help: () => (window.Guide ? window.Guide.open(null) : help()) })[b.dataset.act]();
     });
     $('#btnViews').addEventListener('click', e => { e.stopPropagation(); const m = $('#viewsMenu'); const o = m.hidden; hideMenus(); m.hidden = !o; });
     $('#btnStyle').addEventListener('click', e => { e.stopPropagation(); const m = $('#styleMenu'); const o = m.hidden; hideMenus(); m.hidden = !o; document.querySelectorAll('#styleMenu [data-s]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.s === App.r.mode))); });
@@ -6893,6 +7242,22 @@ label.chk .gl-i { margin-left: 2px; }
         else body.append(el('p', { class: 'note' }, 'L\'anteprima arancione mostra il materiale che verrà aggiunto.'));
         break;
       }
+      case 'import': {
+        let info = null; try { info = Model.importInfo(f); } catch (e) { /* errore mostrato sotto */ }
+        const fmtN = x => Math.round(x).toLocaleString('it-IT');
+        const g = grp('File importato', el('p', { class: 'note' }, (f.file || 'senza nome') + ' (' + String(f.fmt || 'stl').toUpperCase() + ')'));
+        if (info) {
+          const sz = [0, 1, 2].map(k => info.bbox.mx[k] - info.bbox.mn[k]).map(x => x.toFixed(2).replace('.', ',')).join(' × ');
+          g.append(el('p', { class: 'note' }, `${fmtN(info.tris)} triangoli, ${fmtN(info.faces)} facce piane` + (info.parts > 1 ? `, ${info.parts} parti separate` : '') + '.'),
+            el('p', { class: 'note' }, 'Ingombro (X × Y × Z): ' + sz + ' mm.'),
+            info.open || info.nonManifold ? '' : el('p', { class: 'note' }, 'Il corpo è chiuso: volume e massa sono calcolati sui triangoli.'));
+          if (info.reoriented) g.append(el('p', { class: 'note' }, 'Alcune facce erano girate al contrario e sono state corrette.'));
+        }
+        body.append(g);
+        body.append(grp('Opzioni di importazione', sel('Unità del file', 'unit', [['mm', 'millimetri'], ['cm', 'centimetri'], ['m', 'metri'], ['in', 'pollici']], () => App.refreshPM()), chk('Asse Z del file verso l\'alto', 'zUp', () => App.refreshPM()),
+          el('p', { class: 'note' }, 'Se il pezzo è troppo grande o troppo piccolo cambia l\'unità; se arriva coricato spunta la casella della Z.')));
+        break;
+      }
       case 'rib': {
         body.append(sketchPicker('Schizzo della nervatura'));
         body.append(grp('Spessore', num('Spessore', 'thick', 'mm'), sel('Lato', 'thickSide', [['mid', 'Piano medio (metà per parte)'], ['1', 'Tutto dal lato 1'], ['2', 'Tutto dal lato 2']])));
@@ -7138,7 +7503,7 @@ label.chk .gl-i { margin-left: 2px; }
     const st = pm._preview;
     const out = { lines: [], faces: [] };
     if (st.errors.get(f.id)) return out;
-    if (['extrude', 'cut', 'revolve', 'revcut', 'hole', 'sweep', 'sweepcut', 'rib'].includes(f.type)) {
+    if (['extrude', 'cut', 'revolve', 'revcut', 'hole', 'sweep', 'sweepcut', 'rib', 'import'].includes(f.type)) {
       const t = st.tools.get(f.id);
       if (t) out.faces.push(App.polyFaces(t.polys, t.op === 'sub' ? CUTCOL : AMBER, 0.5));
     } else if (['fillet', 'chamfer', 'lpattern', 'cpattern', 'mirror'].includes(f.type)) {
@@ -7401,6 +7766,12 @@ label.chk .gl-i { margin-left: 2px; }
         segs.push({ a: qa, b: qb, circle, eps: curv ? Math.max(eps, curv * 0.012) : 0 });
       } else if (e.polys.length === 2) {
         const p1 = body[e.polys[0]], p2 = body[e.polys[1]];
+        if (e.smooth) {
+          // corpo importato: contorno apparente dove le faccette passano da «verso chi guarda» a «dalla parte opposta»
+          const s1 = dot(p1.p.n, V.b), s2 = dot(p2.p.n, V.b);
+          if ((s1 > 0) !== (s2 > 0)) segs.push({ a: pa, b: pb, sil: true, eps: eps * 3 });
+          continue;
+        }
         const tg = revOf(p1.t);
         if (!tg) continue;
         if (Math.abs(Math.abs(dot(tg.d, V.b)) - 1) < 1e-9) continue;
@@ -9439,6 +9810,17 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Messa in tavola', 'Esporta DXF', ['dxf'], 'Formato di scambio per AutoCAD e gli altri CAD 2D, con livelli e tipi di linea ISO.'],
     ['Messa in tavola', 'Esporta SVG', ['svg'], 'Disegno vettoriale in scala 1:1 su carta: si apre nel browser e nei programmi di grafica.'],
     ['Messa in tavola', 'Esporta STL', ['stl', 'stampa 3d'], 'Il formato per la stampa 3D: il solido descritto da tanti triangoli.'],
+
+    // ---------- importazione ----------
+    ['Importazione', 'Importa STL o OBJ', ['importato', 'corpo importato', 'file importato', 'importare'], 'Porta nel Banco CAD un pezzo fatto con un altro programma (Progetto › Importa STL o OBJ). Nell\'albero compare la funzione «Importato»: il pezzo si vede, si misura, si mette in tavola e se ne calcolano volume e massa. Le quote originali non si possono modificare, ma sopra si possono disegnare schizzi e aggiungere funzioni (tagli, fori, estrusioni).'],
+    ['Importazione', 'STL', ['file stl', '.stl'], 'Formato che descrive soltanto la superficie del pezzo, con tanti triangoli. È il formato della stampa 3D; esiste in versione binaria (più compatta) e di testo (ASCII). Non contiene l\'unità di misura.'],
+    ['Importazione', 'OBJ', ['file obj', '.obj'], 'Formato di testo che descrive la superficie del pezzo con punti e facce (triangoli o poligoni). Molto usato nella grafica 3D; come l\'STL non contiene l\'unità di misura.'],
+    ['Importazione', 'Corpo a faccette', ['faccette', 'mesh', 'triangoli'], 'Solido descritto da tanti triangoli piani invece che da superfici esatte: un cilindro diventa un prisma con molti lati. Più triangoli ci sono, più la forma è fedele. Dove le faccette vicine differiscono di meno di 30° lo spigolo non si disegna, così le superfici curve appaiono lisce.'],
+    ['Importazione', 'Unità del file', ['unità'], 'L\'unità in cui sono scritte le coordinate del file importato (millimetri, centimetri, metri, pollici). I file STL e OBJ non la indicano: se il pezzo arriva 10 volte più piccolo o più grande del previsto, l\'unità scelta è sbagliata.'],
+    ['Importazione', 'Asse Z del file verso l\'alto', ['z verso l\'alto', 'asse z'], 'Nel Banco CAD (come in SolidWorks) la verticale è l\'asse Y; molti programmi per la stampa 3D usano invece la Z. Con questa casella la Z del file diventa la verticale e il pezzo non arriva coricato.'],
+    ['Importazione', 'Opzioni di importazione', [], 'Le scelte che servono per leggere bene il file: l\'unità di misura e quale asse è verso l\'alto. Si possono cambiare in ogni momento con doppio clic su «Importato» nell\'albero.'],
+    ['Importazione', 'Corpo chiuso', ['corpo non chiuso', 'lati liberi'], 'Un corpo a faccette è chiuso quando ogni lato di triangolo è in comune con esattamente un altro triangolo: allora racchiude un volume. Se ci sono lati liberi (buchi nella superficie) volume e massa non sono attendibili e le funzioni aggiunte sopra possono fallire.'],
+    ['Importazione', 'File importato', [], 'Il nome e il formato del file da cui viene il corpo, con il numero di triangoli, le facce piane riconosciute e l\'ingombro. Le facce piane (fatte da più triangoli sullo stesso piano) si possono usare per gli schizzi, come le facce di un pezzo disegnato qui.'],
   ];
 
   const norm = s => String(s || '').toLowerCase().replace(/[…:«»"]/g, '').replace(/\s+/g, ' ').trim();
@@ -9860,6 +10242,68 @@ T('Nervatura spessore da un lato solo', () => {
   feat(d, { type: 'rib', sketch: s, thick: 6, thickSide: '1' }); return d;
 }, { V: (480 + 256) * 30 + 242 * 6, bb: [[0, 0, -15], [60, 40, 15]] });
 
+/* ---------- corpi importati (STL, OBJ) ---------- */
+const MI = Model.Import;
+const enc = t => new TextEncoder().encode(t);
+// file STL ASCII e binario costruiti qui, triangolo per triangolo
+const stlA = tris => 'solid prova\n' + tris.map(t => ' facet normal 0 0 0\n  outer loop\n' + t.map(p => '   vertex ' + p.join(' ')).join('\n') + '\n  endloop\n endfacet').join('\n') + '\nendsolid prova\n';
+function stlB(tris) {
+  const buf = new ArrayBuffer(84 + 50 * tris.length), dv = new DataView(buf);
+  dv.setUint32(80, tris.length, true);
+  tris.forEach((t, i) => t.forEach((p, k) => p.forEach((x, j) => dv.setFloat32(84 + i * 50 + 12 + k * 12 + j * 4, x, true))));
+  return new Uint8Array(buf);
+}
+function imp(doc, data, fmt = 'stl', extra = {}) {
+  const r = fmt === 'obj' ? MI.parseOBJ(data) : MI.parseSTL(data);
+  return feat(doc, { type: 'import', fmt, file: 'prova.' + fmt, unit: 'mm', mesh: MI.pack(MI.weld(r.pos)), ...extra });
+}
+// parallelepipedo: 6 facce divise in 12 triangoli con le normali verso l'esterno
+function boxTris(x0, y0, z0, x1, y1, z1) {
+  const q = [[[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]],
+    [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], [[x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0]],
+    [[x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [x1, y0, z0]], [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]]];
+  return q.flatMap(([a, b, c, d]) => [[a, b, c], [a, c, d]]);
+}
+const rev = tris => tris.map(([a, b, c]) => [a, c, b]);
+T('STL ASCII: cubo 20 mm', () => { const d = D0('i'); imp(d, enc(stlA(boxTris(0, 0, 0, 20, 20, 20)))); return d; },
+  { V: 8000, A: 2400, C: [10, 10, 10], bb: [[0, 0, 0], [20, 20, 20]], E: 12 });
+T('STL binario in centimetri: cubo 2 cm = 20 mm', () => { const d = D0('i'); imp(d, stlB(boxTris(0, 0, 0, 2, 2, 2)), 'stl', { unit: 'cm' }); return d; },
+  { V: 8000, A: 2400, C: [10, 10, 10], bb: [[0, 0, 0], [20, 20, 20]] });
+T('STL con le normali verso l\'interno (corretto da solo)', () => { const d = D0('i'); imp(d, enc(stlA(rev(boxTris(0, 0, 0, 20, 20, 20))))); return d; },
+  { V: 8000, A: 2400, C: [10, 10, 10] });
+T('STL con un triangolo girato al contrario (corretto da solo)', () => { const d = D0('i'); const t = boxTris(0, 0, 0, 20, 20, 20); t[5] = rev([t[5]])[0]; imp(d, stlB(t)); return d; },
+  { V: 8000, A: 2400, C: [10, 10, 10], E: 12 });
+T('OBJ con facce a 4 lati, Z verso l\'alto: 10 × 20 × 30', () => {
+  const d = D0('i');
+  const obj = 'o scatola\nv 0 0 0\nv 10 0 0\nv 10 20 0\nv 0 20 0\nv 0 0 30\nv 10 0 30\nv 10 20 30\nv 0 20 30\n' +
+    'f 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 3 4 8 7\nf -7 -6 -2 -3\nf 1/1 5/1 8/1 4/1\n';
+  imp(d, obj, 'obj', { zUp: true }); return d;
+}, { V: 6000, A: 2200, C: [5, 15, -10], bb: [[0, 0, -20], [10, 30, 0]], E: 12 });
+T('Ottaedro (8 facce inclinate), vertici a 10 mm dal centro', () => {
+  const d = D0('i'); const t = [];
+  for (const sx of [1, -1]) for (const sy of [1, -1]) for (const sz of [1, -1]) { const a = [10 * sx, 0, 0], b = [0, 10 * sy, 0], c = [0, 0, 10 * sz]; t.push(sx * sy * sz > 0 ? [a, b, c] : [a, c, b]); }
+  imp(d, stlB(t)); return d;
+}, { V: 4000 / 3, A: 400 * Math.sqrt(3), C: [0, 0, 0], E: 12 });
+const prism = n => { const t = [], r = 10, h = 10, P = i => { const a = 2 * PI * (i % n) / n; return [r * Math.cos(a), 0, r * Math.sin(a)]; }, U = p => [p[0], h, p[2]];
+  for (let i = 0; i < n; i++) { const a = P(i), b = P(i + 1); t.push([[0, 0, 0], a, b], [[0, h, 0], U(b), U(a)], [b, a, U(a)], [b, U(a), U(b)]); } return t; };
+T('Prisma a 32 lati (cilindro a faccette): spigoli morbidi nascosti', () => { const d = D0('i'); imp(d, stlB(prism(32))); return d; },
+  { V: 16000 * Math.sin(PI / 16), A: 3200 * Math.sin(PI / 16) + 6400 * Math.sin(PI / 32), C: [0, 5, 0], E: 64 });
+// cucitura: l'ultimo punto è calcolato con l'angolo 2π (sin 2π ≠ 0 nei numeri del computer) e spostato di 10⁻⁹ mm
+const prismSeam = n => { const t = [], r = 10, h = 10, P = i => { const a = 2 * PI * i / n; return i === n ? [r * Math.cos(a) + 1e-9, 0, r * Math.sin(a) - 1e-9] : [r * Math.cos(a), 0, r * Math.sin(a)]; }, U = p => [p[0], h, p[2]];
+  for (let i = 0; i < n; i++) { const a = P(i), b = P(i + 1); t.push([[0, 0, 0], a, b], [[0, h, 0], U(b), U(a)], [b, a, U(a)], [b, U(a), U(b)]); } return t; };
+T('Cilindro a faccette con la cucitura «quasi» chiusa (vertici saldati)', () => { const d = D0('i'); imp(d, enc(stlA(prismSeam(32)))); return d; },
+  { V: 16000 * Math.sin(PI / 16), C: [0, 5, 0], E: 64 });
+T('Cubo importato + taglio R5 profondo 5 su una sua faccia', () => {
+  const d = D0('i'); imp(d, enc(stlA(boxTris(0, 0, 0, 20, 20, 20))));
+  const b = SB(); b.circle(10, -10, 5); const s = sketch(d, face(d, nearW([0, 1, 0], 20)), b);
+  feat(d, { type: 'cut', sketch: s, end: 'blind', depth: 5 }); return d;
+}, { V: 8000 - 125 * PI, C: [10, (8000 * 10 - 125 * PI * 17.5) / (8000 - 125 * PI), 10] });
+T('Cubo importato + estrusione unita sopra (10 × 10 × 5)', () => {
+  const d = D0('i'); imp(d, enc(stlA(boxTris(0, 0, 0, 20, 20, 20))));
+  const b = SB(); b.rect(5, -15, 15, -5); const s = sketch(d, face(d, nearW([0, 1, 0], 20)), b);
+  feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 5 }); return d;
+}, { V: 8500, A: 2400 + 200, bb: [[0, 0, 0], [20, 25, 20]] });
+
 // materiale
 T('Massa acciaio S235 (blocco 80×50×10)', () => { const d = box(); d.material = 's235'; return d; }, { V: 40000, M: 40000 * 7.85 / 1000 });
 
@@ -9902,6 +10346,7 @@ function run(tol = TOL) {
       if (c.exp.A !== undefined) errs.A = chk('Area', mp.area, c.exp.A);
       if (c.exp.M !== undefined) errs.M = chk('Massa', mp.mass, c.exp.M);
       if (c.exp.C) errs.C = Math.max(...c.exp.C.map((e, i) => chk('Baricentro ' + 'xyz'[i], mp.centroid[i], e, size)));
+      if (c.exp.E !== undefined) { const ne = st.topo.edges.filter(e => e.sharp).length; errs.E = chk('Spigoli vivi', ne, c.exp.E); }
       if (c.exp.bb) errs.bb = Math.max(...[0, 1, 2].map(i => Math.max(chk('Ingombro min ' + 'xyz'[i], mp.bbox.mn[i], c.exp.bb[0][i], size), chk('Ingombro max ' + 'xyz'[i], mp.bbox.mx[i], c.exp.bb[1][i], size))));
       rows.push({ name: c.name, ok, errs, msg, V: mp.volume, Vexp: c.exp.V });
     } catch (e) { ok = false; msg.push('ERRORE ' + e.message); rows.push({ name: c.name, ok, errs, msg }); }
@@ -9986,6 +10431,20 @@ if (isNode) {
     ],
     tips: ['Il salvataggio automatico vale per questo browser e questo dispositivo: per consegnare un lavoro usa l\'esportazione.'],
     terms: ['Esporta STL'],
+  });
+
+  add('Per iniziare', 'importa', 'Importare un pezzo da un file STL o OBJ', {
+    why: 'Usare un pezzo fatto con un altro programma (SolidWorks, Inventor, Tinkercad…) per misurarlo, metterlo in tavola o modificarlo.',
+    steps: [
+      'Nel programma d\'origine salva il pezzo in formato [[STL]] (o [[OBJ]]). Per SolidWorks: File › Salva con nome › tipo STL.',
+      'Qui: **Progetto › Importa STL o OBJ** e scegli il file.',
+      'Scegli l\'[[Unità del file]] (di solito millimetri) e, se il pezzo arriva coricato, spunta [[Asse Z del file verso l\'alto]]. Premi **Importa**.',
+      'Nell\'albero compare **Importato1**: è un [[Corpo a faccette]]. Puoi misurarlo, calcolarne la massa (scheda Valuta) e metterlo in tavola.',
+      'Sulle sue facce piane puoi aprire uno **Schizzo** e aggiungere tagli, fori ed estrusioni, come su un pezzo disegnato qui.',
+      'Per cambiare unità o orientamento: doppio clic su **Importato1** nell\'albero.',
+    ],
+    tips: ['Il pezzo arriva senza la storia delle funzioni: le quote originali non si modificano.', 'Se compare l\'avviso di [[Corpo chiuso|corpo non chiuso]] il file ha dei buchi: volume e massa non sono attendibili.', 'Al massimo 100 000 triangoli; i file più grandi vanno semplificati prima.'],
+    terms: ['Importa STL o OBJ', 'Corpo a faccette', 'Unità del file'],
   });
 
   /* ================= 2. Schizzo ================= */

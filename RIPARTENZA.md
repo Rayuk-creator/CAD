@@ -2,7 +2,7 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 21 ottobre 2026.
+Ultimo aggiornamento: 21 ottobre 2026 (importazione STL/OBJ).
 
 ---
 
@@ -26,8 +26,9 @@ Ultimo aggiornamento: 21 ottobre 2026.
 - **Funzioni**: estrusione e taglio (cieca, passante, piano medio, due direzioni, **sformo**), rivoluzione e taglio rivoluzione, **estrusione e taglio con percorso (sweep)**, **nervatura**, creazione guidata fori ISO (273, DIN 974-1, 15065, filettati, M3–M20), **raccordo e smusso simultanei** (angoli sferici dove si incontrano tre raccordi), serie lineare e circolare, specchio, piano di riferimento.
 - **Valuta**: proprietà di massa esatte, 13 materiali, misura, vista in sezione, **Autoverifica** (le prove dei calcoli dentro il programma).
 - **Messa in tavola**: metodo E (ISO 5456-2), linee nascoste, assi, sezioni, quote, cartiglio, A4–A2; stampa, SVG, DXF. Export STL dal menu Progetto.
+- **Importazione STL e OBJ** (Progetto › Importa STL o OBJ): funzione «Importato» nell'albero, corpo a faccette; STL binario e ASCII, OBJ con facce a più lati; unità del file (mm, cm, m, pollici) e «Asse Z del file verso l'alto», modificabili con doppio clic; vertici saldati con tolleranza, facce girate corrette da sole, avviso se il corpo non è chiuso; facce piane riconosciute (schizzi e funzioni sopra); spigoli tra faccette sotto i 30° nascosti e ombreggiatura morbida; massimo 100 000 triangoli.
 - **Esercitazioni**: 8 pezzi con tavola di consegna e verifica automatica.
-- **Guida** «come si fa» (41 argomenti, pulsante in alto, «Mostrami dove») e **Glossario** (≈ 135 termini, ⓘ accanto ai titoli dei pannelli), collegati tra loro.
+- **Guida** «come si fa» (42 argomenti, pulsante in alto, «Mostrami dove») e **Glossario** (≈ 145 termini, ⓘ accanto ai titoli dei pannelli), collegati tra loro.
 
 ### Comandi della vista (decisi dall'utente)
 
@@ -59,8 +60,8 @@ docs/img/             7 schermate del README
 IDEE.md               lavori futuri e idee rimandate
 RIPARTENZA.md         questo file
 tests/extract.js      estrae i moduli di calcolo da index.html per Node
-tests/kernel.test.js  53 casi geometrici + 3 di schizzo = 56 prove (usate anche dall'Autoverifica)
-tests/ui.test.js      28 prove dell'interfaccia in Chromium (Playwright)
+tests/kernel.test.js  63 casi geometrici + 3 di schizzo = 66 prove (usate anche dall'Autoverifica)
+tests/ui.test.js      33 prove dell'interfaccia in Chromium (Playwright)
 package.json          npm test / test:kernel / test:ui
 ```
 
@@ -69,7 +70,8 @@ package.json          npm test / test:kernel / test:ui
 1. `CSG` – booleane con alberi BSP; ogni poligono ha un tag di superficie.
 2. `Geom` – estrusione, `extrudeDraft` (sformo), rivoluzione, fori, topologia, proprietà di massa esatte.
 3. `Sketch` – entità, relazioni, risolutore, `profiles` (contorni chiusi), `chains` (catene aperte per sweep e nervature).
-4. `Model` – albero delle funzioni e `regen`; `sweepTool`, `ribTool`, `filletCorners`, `edgeTool`; `sketchesOf(f)` (lo sweep usa due schizzi: `f.sketch` profilo, `f.path` percorso).
+3b. `Import` – lettura STL/OBJ (`parseSTL`, `parseOBJ`), saldatura dei vertici (`weld`), forma compatta base64 salvata nel progetto (`pack`/`unpack`), `analyze` (orientamento, chiusura, facce piane). Il prossimo lettore (DXF) va qui.
+4. `Model` – albero delle funzioni e `regen`; `sweepTool`, `ribTool`, `filletCorners`, `edgeTool`, `importTool` (funzione `import`, con cache per file/unità/orientamento; spigoli morbidi in `smoothMeshEdges`); `sketchesOf(f)` (lo sweep usa due schizzi: `f.sketch` profilo, `f.path` percorso).
 5. `GLView` – vista WebGL e camera (`rotate`, `pan`, `zoomAt`, `fit`).
 6. `App` – stato, albero, selezione, comandi, `initView` (mouse, rotella, tablet), salvataggio.
 7. `Sketcher` – editor di schizzo. 8. `Features` – PropertyManager delle funzioni. 9. `Drawing` – messa in tavola. 10. `Lessons` – esercitazioni.
@@ -89,7 +91,8 @@ package.json          npm test / test:kernel / test:ui
 - Dopo ✓ aspettare la rigenerazione prima di leggere le proprietà (la funzione `props()` lo fa già).
 - Dopo aver caricato un pezzo a mano chiamare `App.r.fit(...)`, altrimenti i clic finiscono fuori dal pezzo.
 - Sul tablet toccare un punto **pieno** del pezzo (il centro della piastra forata è il foro!).
-- Lo spostamento con la rotella si misura sulla camera, non sulle coordinate dello schermo.
+- Lo spostamento con la rotella si misura sulla camera, non sulle coordinate dello schermo; la dimensione del pixel (`pxSize`) va letta dopo un fotogramma (`requestAnimationFrame`), altrimenti può essere quella vecchia.
+- Per i file da importare nei test: `page.setInputFiles('#meshFile', { name, mimeType, buffer })`; nel codice c'è anche `App.importMeshData(nome, Uint8Array, { unit, zUp })`.
 
 ---
 
@@ -100,11 +103,12 @@ package.json          npm test / test:kernel / test:ui
 - Aggiunti: estrusione/taglio con percorso, nervatura, sformo, glossario, Autoverifica, raccordi e smussi simultanei con angoli sferici, nuovi comandi rotella e tablet, Guida «come si fa».
 - Creato il repository **Rayuk-creator/CAD** (pubblico) con README italiano e inglese e schermate.
 - Valutata l'importazione di altri formati e l'idea del cablaggio 3D da PDF: **rimandate**, vedi `IDEE.md`.
+- 21 ottobre: **importazione STL e OBJ** (funzione «Importato»), con 10 prove di calcolo e 5 dell'interfaccia; Guida e Glossario aggiornati. Corretto anche un difetto della vista: la rotella (o un trascinamento) usata durante l'animazione di un cambio di vista andava persa; ora l'animazione si chiude subito e il comando si applica (prova apposita).
 
 ---
 
 ## 6. Cose aperte
 
-- Tutto quello che c'è in `IDEE.md` (importazione STL/OBJ → DXF → STEP/IGES; cablaggio 3D semi-automatico da PDF).
+- Tutto quello che c'è in `IDEE.md`: **prossimo passo l'importazione DXF negli schizzi**, poi STEP/IGES; cablaggio 3D semi-automatico da PDF.
 - La pagina pubblicata su claude.ai (artifact «Banco CAD») è ferma al **13 ottobre**: aggiornarla solo se l'utente lo chiede. La versione giusta è `index.html` del repository.
 - L'utente doveva farmi «controllare una cosa» (rimandata al martedì per il limite di utilizzo): chiedergli se serve ancora.
