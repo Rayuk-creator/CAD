@@ -291,6 +291,46 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     await page.click('#modalActions .btn:not(.btn-primary)').catch(() => page.evaluate(() => { document.querySelector('#modal').hidden = true; }));
     rec('Interfaccia: file DWG spiegato (va salvato come DXF)', /salvalo come DXF/.test(msg) && nAfter === nBefore && (await page.evaluate(() => App.mode)) === 'part', msg);
   } catch (e) { rec('Interfaccia: importa DXF dal menu (schizzo nuovo, cm, origine) ed estrusione', false, e.message.split('\n')[0]); }
+  // collegamento al Convertitore DWG → DXF nei messaggi sui file DWG (finestre DXF, STEP/IGES, STL/OBJ)
+  try {
+    await fresh();
+    // lo stesso messaggio porta il collegamento alla pagina del Convertitore DWG → DXF
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', { name: 'pezzo.dwg', mimeType: 'application/octet-stream', buffer: Buffer.from('AC1032') });
+    await page.waitForTimeout(300);
+    const link = await page.evaluate(() => { const a = document.querySelector('#dxfErr a.dwg-link'); return a ? { href: a.href, target: a.target, text: a.textContent, url: App.DWG_CONVERTER_URL, n: document.querySelectorAll('#dxfErr a').length } : null; });
+    await page.click('#modalActions .btn:not(.btn-primary)').catch(() => {});
+    // anche dalla finestra STEP/IGES e da quella STL/OBJ
+    const linkIn = async (act, inp, errSel) => { await page.click('#btnFile'); await page.click(`#menuFile [data-act="${act}"]`);
+      await page.setInputFiles(inp, { name: 'pezzo.dwg', mimeType: 'application/octet-stream', buffer: Buffer.from('AC1032') });
+      await page.click('#modalActions .btn-primary'); await page.waitForTimeout(400);
+      const h = await page.evaluate(sel => { const a = document.querySelector(sel + ' a.dwg-link'); return a ? a.href : ''; }, errSel);
+      await page.click('#modalActions .btn:not(.btn-primary)').catch(() => {}); await page.waitForTimeout(100); return h; };
+    const hCad = await linkIn('importCad', '#cadFile', '#cadErr'), hMesh = await linkIn('importMesh', '#meshFile', '#meshErr');
+    const U = 'https://claude.ai/artifact/8PeF7HpK8VZ1RFpsfAJYkY';
+    rec('Interfaccia: i messaggi sui DWG portano il collegamento al Convertitore DWG → DXF', !!link && link.url === U && link.href === U && link.target === '_blank' && link.n === 1 && hCad === U && hMesh === U,
+      `${JSON.stringify(link)}; STEP/IGES: ${hCad}; STL/OBJ: ${hMesh}`);
+  } catch (e) { rec('Interfaccia: i messaggi sui DWG portano il collegamento al Convertitore DWG → DXF', false, e.message.split('\n')[0]); await page.evaluate(() => { const m = document.querySelector('#modal'); if (m && !m.hidden) { const b = document.querySelector('#modalActions .btn:not(.btn-primary)'); if (b) b.click(); } if (App.mode === 'sketch') Sketcher.exit(false); }); }
+  // DXF dentro uno .zip (come lo salva il Convertitore nella pagina pubblicata): piastra 10 × 6 cm con foro, in centimetri
+  try {
+    const L = (a, b, c, d) => ['0', 'LINE', '8', '0', '10', a, '20', b, '11', c, '21', d];
+    const file = dxfText([L(50, 20, 60, 20), L(60, 20, 60, 26), L(60, 26, 50, 26), L(50, 26, 50, 20), ['0', 'CIRCLE', '8', '0', '10', 53, '20', 23, '40', 1], ['0', 'TEXT', '8', '0', '10', 0, '20', 0, '1', 'PIASTRA'], ['0', 'DIMENSION', '8', '0']], 5);
+    await fresh();
+    const zipStore = (name, buf) => { const nm = Buffer.from(name), crc = require('zlib').crc32(buf);
+      const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(buf.length, 18); lh.writeUInt32LE(buf.length, 22); lh.writeUInt16LE(nm.length, 26);
+      const ch = Buffer.alloc(46); ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt32LE(crc, 16); ch.writeUInt32LE(buf.length, 20); ch.writeUInt32LE(buf.length, 24); ch.writeUInt16LE(nm.length, 28);
+      const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(1, 8); end.writeUInt16LE(1, 10); end.writeUInt32LE(46 + nm.length, 12); end.writeUInt32LE(30 + nm.length + buf.length, 16);
+      return Buffer.concat([lh, nm, buf, ch, nm, end]); };
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', { name: 'piastra.dxf.zip', mimeType: 'application/zip', buffer: zipStore('piastra.dxf', Buffer.from(file)) });
+    await page.waitForFunction(() => /entità/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 5000 });
+    const cap = await page.evaluate(() => document.querySelector('#dxfCap').textContent);
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    const z = await page.evaluate(() => { const s = Sketcher.session(); return { n: s.sk.ents.filter(e => e.t !== 'pt').length, toast: document.querySelector('#toast').textContent }; });
+    await page.evaluate(() => Sketcher.exit(false));
+    rec('Interfaccia: importa DXF da uno .zip (come lo salva il Convertitore DWG → DXF)', z.n === 5 && /100 × 60 mm/.test(z.toast) && /5 entità/.test(cap), `entità ${z.n}; anteprima «${cap}»; «${z.toast}»`);
+  } catch (e) { rec('Interfaccia: importa DXF da uno .zip (come lo salva il Convertitore DWG → DXF)', false, e.message.split('\n')[0]); await page.evaluate(() => { const m = document.querySelector('#modal'); if (m && !m.hidden) { const b = document.querySelector('#modalActions .btn:not(.btn-primary)'); if (b) b.click(); } if (App.mode === 'sketch') Sketcher.exit(false); }); }
 
   // 3m-bis. DXF con ellisse e spline: piastra 120 × 80 con un foro ellittico 40 × 60 e un foro a spline chiusa
   //         per 4 punti (area 61/20 · R², R 10), estrusa 10
@@ -818,6 +858,44 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     const after = await page.evaluate(() => App.doc.features.length);
     rec('Ricarica immediata: modifica salvata, niente funzioni fantasma', name === 'Prova ricarica' && during === n0 + 1 && after === n0, `nome «${name}», funzioni ${n0} → con pannello ${during} → dopo ricarica ${after}`);
   } catch (e) { rec('Ricarica immediata: modifica salvata, niente funzioni fantasma', false, e.message.split('\n')[0]); }
+
+  // 6. Convertitore DWG → DXF (pagina a parte): più file insieme, esempio, file sbagliato, salvataggio del DXF, e il DXF
+  //    salvato importato nel Banco CAD (R14: 16 linee, di cui 8 doppie). Da disco il lettore deve lavorare in un Worker.
+  try {
+    const cpage = await ctx.newPage();
+    const cerr = []; cpage.on('pageerror', e => cerr.push(e.message));
+    await cpage.goto('file://' + path.join(path.dirname(page_), 'convertitore-dwg', 'index.html'));
+    const P = n => path.join(path.dirname(page_), 'convertitore-dwg', 'prove', n);
+    await cpage.setInputFiles('#dwgFile', [P('v-r14.dwg'), P('esempio-2013.dwg')]);
+    await cpage.waitForFunction(() => document.querySelectorAll('.item').length === 2 && !document.querySelector('.chip.run'), null, { timeout: 60000 });
+    await cpage.click('#btnSample');
+    await cpage.setInputFiles('#dwgFile', { name: 'pezzo.step', mimeType: 'application/step', buffer: Buffer.from('ISO-10303-21;\nHEADER;') });
+    await cpage.waitForFunction(() => document.querySelectorAll('.item').length === 4 && !document.querySelector('.chip.run'), null, { timeout: 60000 });
+    const rows = await cpage.evaluate(() => [...document.querySelectorAll('.item')].map(it => ({ name: it.querySelector('.name').textContent, chip: it.querySelector('.chip').textContent, text: it.textContent.replace(/\s+/g, ' ') })));
+    const mode = await cpage.evaluate(() => Convertitore.Engine.mode());
+    const by = n => rows.find(r => r.name === n) || { text: '' };
+    const [dl] = await Promise.all([cpage.waitForEvent('download', { timeout: 15000 }), cpage.locator('.item', { hasText: 'v-r14.dwg' }).locator('button[data-save]').click()]);
+    const dxfPath = path.join(OUT, 'v-r14.dxf'); await dl.saveAs(dxfPath);
+    const dxf = require('fs').readFileSync(dxfPath);
+    const okDxf = dl.suggestedFilename() === 'v-r14.dxf' && /\$ACADVER\s*\r?\n\s*1\s*\r?\nAC1014/.test(dxf.toString('latin1')) && /\n\s*0\s*\r?\nEOF/.test(dxf.toString('latin1'));
+    await cpage.close();
+    // il DXF salvato, importato nel Banco CAD
+    await fresh();
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', dxfPath);
+    await page.waitForFunction(() => /entità/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 5000 });
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    // il DWG R14 di prova ha la stessa porta disegnata due volte (16 LINE con handle diversi, 8 posizioni): il Banco CAD
+    // toglie le linee doppie e ne restano 8
+    const imp = await page.evaluate(() => { const s = Sketcher.session(); return { n: s.sk.ents.filter(e => e.t === 'ln').length, toast: document.querySelector('#toast').textContent }; });
+    await page.evaluate(() => Sketcher.exit(false));
+    const ok = mode === 'worker' && rows.length === 4 && by('v-r14.dwg').chip === 'Pronto' && /R14 → DXF AC1014/.test(by('v-r14.dwg').text) && /16 linee/.test(by('v-r14.dwg').text) && /1 testo/.test(by('v-r14.dwg').text)
+      && by('esempio-2013.dwg').chip === 'Pronto' && /AutoCAD 2013 → DXF AC1027/.test(by('esempio-2013.dwg').text) && /8 linee/.test(by('esempio-2013.dwg').text) && /2 spline/.test(by('esempio-2013.dwg').text) && /1 ellisse/.test(by('esempio-2013.dwg').text)
+      && by('esempio-libredwg-r11.dwg').chip === 'Pronto' && by('pezzo.step').chip === 'Errore' && /file STEP/.test(by('pezzo.step').text) && okDxf && imp.n === 8 && /Tolte 8 entità doppie/.test(imp.toast) && !cerr.length;
+    rec('Convertitore DWG → DXF: più file, esempio, file sbagliato, DXF salvato e importato nel Banco CAD', ok,
+      `lettore: ${mode}; ${rows.map(r => r.name + ' ' + r.chip).join(', ')}; file salvato ${dl.suggestedFilename()} (${dxf.length} byte, ${okDxf ? 'DXF R14 completo' : 'NON valido'}); nel Banco CAD ${imp.n} linee («${imp.toast}»)${cerr.length ? '; errori: ' + cerr.join(' | ') : ''}`);
+  } catch (e) { rec('Convertitore DWG → DXF: più file, esempio, file sbagliato, DXF salvato e importato nel Banco CAD', false, e.message.split('\n')[0]); }
 
   rec('Nessun errore JavaScript durante i test', !errors.length, errors.slice(0, 5).join(' | '));
   await page.screenshot({ path: path.join(OUT, 'ui-last.png') });

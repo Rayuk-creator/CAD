@@ -36,6 +36,8 @@ Con **Progetto › Importa STL o OBJ** si apre anche un pezzo fatto con un altro
 
 Con **Progetto › Importa DXF (schizzo)**, o con **Inserisci DXF** nella scheda Schizzo, un disegno 2D (AutoCAD, DraftSight, LibreCAD, tavola di SolidWorks…) entra in uno schizzo: linee, archi, cerchi, polilinee, ellissi, spline e blocchi, con l'unità del file; ellissi e spline diventano archi tangenti tra loro (biarchi) lontani pochi millesimi di millimetro dalla curva vera, gli assi tratto-punto diventano linee di mezzeria. Nella finestra si vede l'anteprima del disegno e si scelgono i layer da importare (per esempio senza cartiglio e quote). Poi si estrude o si fa ruotare.
 
+I file **DWG** di AutoCAD si trasformano prima in DXF con il **Convertitore DWG → DXF**, una pagina a parte (cartella `convertitore-dwg/`): lavora nel browser con il lettore libero LibreDWG, dalla versione R1.4 alla 2018 (e quindi anche i file di AutoCAD 2019–2025). È un programma separato, con licenza GNU GPL 3; il Banco CAD rimanda alla sua pagina quando si sceglie un DWG e apre anche lo `.zip` con cui la pagina pubblicata salva i DXF.
+
 ## Il primo pezzo in 6 passi
 
 Il percorso di base di ogni modello è sempre lo stesso: **schizzo quotato → funzione**.
@@ -119,8 +121,8 @@ Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScr
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (129 + 14 prove STEP/IGES, pochi secondi)
-npm run test:ui                   # solo l'interfaccia in Chromium (49 prove)
+npm run test:kernel               # solo i calcoli (129 + 14 prove STEP/IGES + 11 del convertitore DWG, pochi secondi)
+npm run test:ui                   # solo l'interfaccia in Chromium (52 prove)
 ```
 
 Se hai già un Chromium installato puoi indicarlo con `CHROMIUM_PATH=/percorso/chrome npm run test:ui`. In caso di errore, le immagini di controllo finiscono in `tests/output/`.
@@ -133,8 +135,10 @@ tests/kernel.test.js  prove dei calcoli (le stesse dell'Autoverifica)
 tests/ui.test.js      prove dell'interfaccia con Playwright
 tests/step.test.js    prove del lettore STEP/IGES vero
 tests/stepgen.js      scrive piccoli file STEP di prova (igesgen.js: IGES)
+tests/dwg.test.js     prove del Convertitore DWG → DXF (DWG da R11 a 2018, confronto con DXF di riferimento)
 tools/incorpora-occt.js  inserisce o aggiorna il lettore STEP/IGES nella pagina
 licenze/              licenze del lettore STEP/IGES (LGPL 2.1)
+convertitore-dwg/     Convertitore DWG → DXF, programma separato con licenza GPL 3 (LibreDWG): pagina, LEGGIMI, prove
 ```
 
 Le prove dell'interfaccia usano il programma come farebbe uno studente: disegnano con il mouse, scrivono le quote, premono i pulsanti, simulano le dita sul tablet e ricaricano la pagina. Controllano anche che ogni comando abbia la sua spiegazione nella Guida e nel Glossario.

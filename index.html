@@ -3165,7 +3165,41 @@ self.onmessage = async ev => {
     return { count, dup, tiny, points: pts.length, box: { mn: T(bb.mn), mx: T(bb.mx) }, ids: out.map(e => e.id) };
   }
 
-  const api = { parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS, parseDXF, dxfToSketch, DXF_SCALE, DXF_UNITS, DXF_MAXENT, pickBodies, cadWorkerSource, DXF_CURVE_TOL, curveToArcs, nurbsEval, fitSpline, loadOCCT, readCAD, cadKind, CAD_EXT, CAD_LEVELS, CAD_MAX };
+  // Archivio .zip con un disegno DXF dentro (per esempio quello salvato dal Convertitore DWG → DXF, o dalla pagina
+  // pubblicata, che salva i .dxf dentro uno .zip): restituisce il primo file .dxf. Legge l'elenco centrale dell'archivio;
+  // file senza compressione (metodo 0) o compressi (metodo 8, «deflate», con DecompressionStream). Asincrona.
+  async function unzipDxf(u8) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    if (u8.length < 22 || dv.getUint32(0, true) !== 0x04034b50) throw new Error('Il file .zip è danneggiato o non è un archivio zip.');
+    let e = -1;
+    for (let i = u8.length - 22; i >= Math.max(0, u8.length - 22 - 65535); i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }
+    if (e < 0) throw new Error('Il file .zip è danneggiato (manca l\'elenco dei file).');
+    const n = dv.getUint16(e + 10, true);
+    let p = dv.getUint32(e + 16, true);
+    const names = [];
+    for (let k = 0; k < n; k++) {
+      if (p + 46 > u8.length || dv.getUint32(p, true) !== 0x02014b50) throw new Error('Il file .zip è danneggiato.');
+      const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), usize = dv.getUint32(p + 24, true);
+      const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+      const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nl));
+      p += 46 + nl + xl + cl;
+      names.push(name);
+      if (!/\.dxf$/i.test(name) || /(^|\/)__MACOSX\//.test(name)) continue;
+      const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
+      const raw = u8.subarray(start, start + csize);
+      let data;
+      if (method === 0) data = raw.slice();
+      else if (method === 8) {
+        if (typeof DecompressionStream === 'undefined') throw new Error('Questo browser non sa aprire i file .zip compressi: estrai il DXF dallo zip e scegli quello.');
+        data = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+      } else throw new Error('Il DXF nello zip è compresso in un modo che il Banco CAD non conosce: estrailo e scegli il file .dxf.');
+      if (data.length !== usize) throw new Error('Il DXF nello zip è danneggiato.');
+      return { name: name.split('/').pop(), data, files: n };
+    }
+    throw new Error(names.some(x => /\.dwg$/i.test(x)) ? 'Nello zip c\'è un DWG, non un DXF: convertilo prima con il Convertitore DWG → DXF.' : 'Nello zip non c\'è nessun file .dxf.');
+  }
+
+  const api = { unzipDxf, parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS, parseDXF, dxfToSketch, DXF_SCALE, DXF_UNITS, DXF_MAXENT, pickBodies, cadWorkerSource, DXF_CURVE_TOL, curveToArcs, nurbsEval, fitSpline, loadOCCT, readCAD, cadKind, CAD_EXT, CAD_LEVELS, CAD_MAX };
   if (typeof module !== 'undefined') module.exports = api; else root.Import = api;
 })(this);
 
@@ -6168,7 +6202,7 @@ self.onmessage = async ev => {
       { label: 'Annulla', fn: () => { if (cadBusy) cadCancel(); } },
       { label: 'Importa', primary: true, keep: true, fn: () => {
         const inp = $('#meshFile'), file = inp && inp.files[0];
-        const err = t => { const e = $('#meshErr'); e.textContent = t; e.classList.add('err'); e.hidden = false; };
+        const err = t => { const e = $('#meshErr'); e.textContent = t; e.classList.add('err'); e.hidden = false; dwgLink(e); };
         if (!file) { err('Scegli prima il file.'); return; }
         const rd = new FileReader();
         rd.onload = () => {
@@ -6228,7 +6262,7 @@ self.onmessage = async ev => {
     iam: 'Gli assiemi di Inventor (.iam) non si possono aprire: in Inventor esportali in STEP (.stp), poi «Importa STEP o IGES».',
     x_t: 'I file Parasolid (.x_t) non si possono aprire: esporta il pezzo in STEP (.step) dal programma d\'origine.',
     sat: 'I file ACIS (.sat) non si possono aprire: esporta il pezzo in STEP (.step) dal programma d\'origine.',
-    dwg: 'I file DWG non si possono aprire: salva il disegno come DXF e usa «Importa DXF (schizzo)».',
+    dwg: 'I file DWG non si aprono direttamente: trasformali in DXF con il Convertitore DWG → DXF (pagina a parte, gratuita), poi usa «Importa DXF (schizzo)».',
     dxf: 'I file DXF sono disegni 2D: usa «Importa DXF (schizzo)».',
   })[ext] || '';
 
@@ -6248,7 +6282,7 @@ self.onmessage = async ev => {
       { label: 'Annulla', fn: () => { if (cadBusy) cadCancel(); } },
       { label: 'Importa', primary: true, keep: true, fn: () => {
         const inp = $('#cadFile'), file = inp && inp.files[0];
-        const err = t => { const e = $('#cadErr'); e.textContent = t; e.classList.add('err'); e.hidden = false; };
+        const err = t => { const e = $('#cadErr'); e.textContent = t; e.classList.add('err'); e.hidden = false; dwgLink(e); };
         if (!file) { err('Scegli prima il file.'); return; }
         const rd = new FileReader();
         rd.onload = () => runCadImport(file.name, new Uint8Array(rd.result), { zUp: $('#cadZup').checked, colors: $('#cadColors').checked }, err, '#cadErr');
@@ -6389,23 +6423,33 @@ self.onmessage = async ev => {
   App.importCadData = importCadData;
   App.importCadDialog = importCadDialog;
   /* ---------- importazione DXF in uno schizzo (come «Importa in un nuovo schizzo 2D» e «Inserisci DXF» di SolidWorks) ---------- */
+  // Convertitore DWG → DXF: programma separato (licenza GPL 3, cartella convertitore-dwg del repository), pubblicato a parte.
+  // I messaggi sui file DWG portano il collegamento alla sua pagina.
+  const DWG_CONVERTER_URL = 'https://claude.ai/artifact/8PeF7HpK8VZ1RFpsfAJYkY';
+  App.DWG_CONVERTER_URL = DWG_CONVERTER_URL;
+  function dwgLink(e) {
+    if (!e || !/Convertitore DWG → DXF/.test(e.textContent)) return;
+    const a = document.createElement('a');
+    a.href = DWG_CONVERTER_URL; a.target = '_blank'; a.rel = 'noopener'; a.className = 'dwg-link'; a.textContent = 'Apri il Convertitore DWG → DXF';
+    e.append(' ', a);
+  }
   const DXF_UNIT_NAMES = { mm: 'millimetri', cm: 'centimetri', dm: 'decimetri', m: 'metri', in: 'pollici', ft: 'piedi', mil: 'millesimi di pollice', uin: 'milionesimi di pollice', um: 'micrometri' };
   function importDxfDialog() {
     const inSketch = App.mode === 'sketch';
     if (inSketch && Sketcher.session() && Sketcher.session().opts.hole) { toast('Nello schizzo delle posizioni dei fori non si importano file DXF.'); return; }
     modal('Importa un file DXF', `<p class="note">Linee, archi e cerchi del disegno entrano ${inSketch ? 'nello <b>schizzo aperto</b>' : 'in uno <b>schizzo nuovo</b>'}: poi li estrudi, o li fai ruotare attorno a una linea di mezzeria. <b>Ellissi e spline</b> diventano archi tangenti tra loro, vicinissimi alla curva vera. Testi, quote e tratteggi non si importano.</p>
-      <p><input type="file" id="dxfFile" accept=".dxf"></p>
+      <p><input type="file" id="dxfFile" accept=".dxf,.zip"></p>
       <div class="dxf-prev" id="dxfPrev"><span class="ph">Scegli un file: qui vedrai l'anteprima del disegno.</span></div>
       <p class="dxf-cap" id="dxfCap"></p>
       <div class="dxf-layers" id="dxfLayers" hidden></div>
       ${inSketch ? '' : '<div class="row"><label for="dxfPlane">Piano dello schizzo</label><select id="dxfPlane"><option value="front">Piano frontale</option><option value="top">Piano superiore</option><option value="right">Piano destro</option></select></div>'}
       <div class="row"><label for="dxfUnit">Unità del file</label><select id="dxfUnit"><option value="file">dal file</option><option value="mm">millimetri</option><option value="cm">centimetri</option><option value="m">metri</option><option value="in">pollici</option></select></div>
       <div class="row"><label for="dxfOrigin">Posizione</label><select id="dxfOrigin"><option value="file">come nel file</option><option value="corner">angolo in basso a sinistra sull'origine</option><option value="center">centro sull'origine</option></select></div>
-      <p class="note">Nell'anteprima la crocetta rossa è il punto che andrà sull'origine dello schizzo. Togli la spunta ai <b>layer</b> che non servono (cartiglio, quote, squadratura). Le linee tratto-punto (assi) diventano <b>linee di mezzeria</b>, quelle tratteggiate <b>geometria di costruzione</b>. Gli estremi molto vicini vengono uniti e le entità doppie tolte. Se il file non dice l'unità si usano i millimetri. Un file DWG va prima salvato come DXF.</p>
+      <p class="note">Nell'anteprima la crocetta rossa è il punto che andrà sull'origine dello schizzo. Togli la spunta ai <b>layer</b> che non servono (cartiglio, quote, squadratura). Le linee tratto-punto (assi) diventano <b>linee di mezzeria</b>, quelle tratteggiate <b>geometria di costruzione</b>. Gli estremi molto vicini vengono uniti e le entità doppie tolte. Se il file non dice l'unità si usano i millimetri. Va bene anche uno <b>.zip</b> con il DXF dentro. Un file DWG va prima convertito in DXF con il Convertitore DWG → DXF.</p>
       <p class="note err" id="dxfErr" hidden></p>`, [
       { label: 'Annulla' },
       { label: 'Importa', primary: true, keep: true, fn: async () => {
-        const err = t => { const e = $('#dxfErr'); e.textContent = t; e.hidden = false; };
+        const err = t => { const e = $('#dxfErr'); e.textContent = t; e.hidden = false; dwgLink(e); };
         if (!cur && loading) await loading;   // il file scelto si sta ancora leggendo
         if (!cur) { err('Scegli prima il file.'); return; }
         if (cur.error) { err(cur.error); return; }
@@ -6418,7 +6462,7 @@ self.onmessage = async ev => {
     // file letto: nome, byte, layer del file (oppure error con il messaggio, se il file non va bene)
     let cur = null, loading = null;
     const chosenLayers = () => [...document.querySelectorAll('#dxfLayers input[data-ly]')].filter(x => x.checked).map(x => x.dataset.ly);
-    const showErr = t => { const e = $('#dxfErr'); e.textContent = t || ''; e.hidden = !t; };
+    const showErr = t => { const e = $('#dxfErr'); e.textContent = t || ''; e.hidden = !t; dwgLink(e); };
     const placeholder = t => { $('#dxfPrev').innerHTML = `<span class="ph">${esc(t)}</span>`; };
     $('#dxfFile').addEventListener('change', () => {
       const file = $('#dxfFile').files[0];
@@ -6427,7 +6471,17 @@ self.onmessage = async ev => {
       placeholder('Lettura del file…');
       loading = new Promise(res => {
         const rd = new FileReader();
-        rd.onload = () => { try { loadDxfPreview(file.name, new Uint8Array(rd.result)); } finally { res(); } };
+        rd.onload = async () => {
+          try {
+            let name = file.name, data = new Uint8Array(rd.result);
+            // .zip (per esempio salvato dal Convertitore DWG → DXF): si prende il DXF che c'è dentro
+            if (/\.zip$/i.test(name)) {
+              try { ({ name, data } = await Import.unzipDxf(data)); }
+              catch (e) { cur = { name, error: e.message }; placeholder('Nessuna anteprima'); showErr(e.message); return; }
+            }
+            loadDxfPreview(name, data);
+          } finally { res(); }
+        };
         rd.onerror = () => { cur = { name: file.name, error: 'Il file non si riesce a leggere.' }; placeholder(cur.error); res(); };
         rd.readAsArrayBuffer(file);
       });
@@ -6495,8 +6549,8 @@ self.onmessage = async ev => {
   }
   function importDxfData(name, data, opts = {}) {
     const ext = (String(name).split('.').pop() || '').toLowerCase();
-    if (ext === 'dwg') throw new Error('I file DWG sono un formato chiuso di AutoCAD: salvalo come DXF (da AutoCAD, DraftSight o con ODA File Converter, gratuito) e importa quello.');
-    if (ext !== 'dxf') throw new Error('Qui si importano file .dxf. Per i pezzi 3D usa «Importa STL o OBJ».');
+    if (ext === 'dwg') throw new Error('I file DWG sono il formato chiuso di AutoCAD: trasformalo in DXF con il Convertitore DWG → DXF (pagina a parte, gratuita) e importa quello. In alternativa salvalo come DXF da AutoCAD o DraftSight.');
+    if (ext !== 'dxf') throw new Error('Qui si importano file .dxf (anche dentro uno .zip). Per i pezzi 3D usa «Importa STL o OBJ».');
     const r = Import.parseDXF(data, opts.layers ? { layers: opts.layers } : {});
     if (opts.layers && !opts.layers.length) throw new Error('Scegli almeno un layer da importare.');
     const unit = opts.unit && opts.unit !== 'file' ? opts.unit : (r.unit || 'mm');
@@ -11414,7 +11468,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Importazione', 'Opzioni di importazione', [], 'Le scelte che servono per leggere bene il file: l\'unità di misura e quale asse è verso l\'alto. Si possono cambiare in ogni momento con doppio clic su «Importato» nell\'albero.'],
     ['Importazione', 'Corpo chiuso', ['corpo non chiuso', 'lati liberi'], 'Un corpo a faccette è chiuso quando ogni lato di triangolo è in comune con esattamente un altro triangolo: allora racchiude un volume. Se ci sono lati liberi (buchi nella superficie) volume e massa non sono attendibili e le funzioni aggiunte sopra possono fallire.'],
     ['Importazione', 'Inserisci DXF', ['importa dxf', 'importa dxf (schizzo)', 'importare un dxf'], 'Porta in uno schizzo le linee, gli archi e i cerchi di un disegno 2D fatto con un altro programma (AutoCAD, DraftSight, LibreCAD, la messa in tavola di SolidWorks…). Fuori da uno schizzo, o da Progetto › Importa DXF (schizzo), crea uno schizzo nuovo sul piano scelto; dentro uno schizzo aggiunge la geometria a quello aperto. Le entità arrivano senza quote, quindi blu (sotto definite): si possono estrudere o far ruotare subito, oppure quotare.'],
-    ['Importazione', 'File DXF', ['.dxf', 'dwg', 'formato dxf'], 'Formato di scambio dei disegni 2D, nato con AutoCAD e letto da quasi tutti i CAD. Qui si leggono i file DXF di testo (ASCII): linee, archi, cerchi, polilinee (anche con tratti curvi), ellissi, spline e blocchi. Ellissi e spline diventano archi tangenti tra loro (biarchi). Testi, quote e tratteggi si saltano. Il DWG è il formato chiuso di AutoCAD: va prima salvato come DXF.'],
+    ['Importazione', 'File DXF', ['.dxf', 'formato dxf'], 'Formato di scambio dei disegni 2D, nato con AutoCAD e letto da quasi tutti i CAD. Qui si leggono i file DXF di testo (ASCII): linee, archi, cerchi, polilinee (anche con tratti curvi), ellissi, spline e blocchi. Ellissi e spline diventano archi tangenti tra loro (biarchi). Testi, quote e tratteggi si saltano. Si può scegliere anche uno .zip con il DXF dentro. Il DWG è il formato chiuso di AutoCAD: va prima trasformato in DXF (vedi Convertitore DWG → DXF).'],
+    ['Importazione', 'Convertitore DWG → DXF', ['dwg', '.dwg', 'convertitore', 'libredwg', 'convertire un dwg'], 'Pagina a parte, gratuita, che trasforma i disegni di AutoCAD (.dwg, dalla versione R1.4 alla 2018 e oltre) in file DXF da importare qui. Lavora nel browser, senza mandare il file da nessuna parte, con il lettore libero LibreDWG. È un programma separato dal Banco CAD perché ha un\'altra licenza (GNU GPL 3). Le spline arrivano con i soli punti di passaggio: la curva ricostruita qui può scostarsi da quella di AutoCAD di qualche decimo di millimetro per metro (nelle prove 0,1 e 0,3 mm/m).'],
     ['Importazione', 'Ellisse', ['ellissi', 'ellipse'], 'Curva chiusa «schiacciata», come un cerchio visto di sbieco: ha un semiasse maggiore a e uno minore b; l\'area è π·a·b. Nei file DXF può essere intera o solo un tratto (arco di ellisse). Nel Banco CAD, come in molti CAD, l\'ellisse importata diventa una catena di archi tangenti (biarchi) molto vicina alla curva vera.'],
     ['Importazione', 'Spline', ['spline', 'nurbs', 'curva spline', 'b-spline'], 'Curva libera e morbida definita da pochi punti: i punti di controllo la «tirano» verso di sé (spline NURBS, con eventuali pesi), oppure la curva passa esattamente per i punti di passaggio. Serve per profili che non sono fatti di rette e archi (carrozzerie, camme, sagome). Importata da un DXF diventa una catena di archi tangenti (biarchi).'],
     ['Importazione', 'Biarco', ['biarchi', 'archi tangenti'], 'Coppia di archi tangenti tra loro, che parte e arriva con la stessa direzione della curva da imitare. Con tanti biarchi uno dopo l\'altro si segue un\'ellisse o una spline senza spigoli: dove lo scostamento è troppo grande il tratto viene diviso a metà, finché resta sotto 1/10 000 della dimensione minore della curva. Nel pezzo le facce di questi archi si vedono come una superficie sola, senza righe tra l\'una e l\'altra, e i loro centri non compaiono nello schizzo.'],
@@ -12546,15 +12601,15 @@ if (isNode) {
     why: 'Usare il contorno di un pezzo disegnato con un altro programma (AutoCAD, DraftSight, LibreCAD, la tavola di SolidWorks…) senza ridisegnarlo.',
     cmd: { tab: 'sketch', id: 'dxf' },
     steps: [
-      'Nel programma d\'origine salva il disegno come [[File DXF]], meglio se con il solo contorno del pezzo (senza cartiglio, quote e tratteggi).',
+      'Nel programma d\'origine salva il disegno come [[File DXF]], meglio se con il solo contorno del pezzo (senza cartiglio, quote e tratteggi). Se hai solo il file **.dwg**, trasformalo con il [[Convertitore DWG → DXF]] (pagina a parte: il messaggio sui DWG porta il collegamento).',
       'Scheda **Schizzo › Inserisci DXF** (oppure **Progetto › Importa DXF (schizzo)**). Fuori da uno schizzo scegli il **piano**; dentro uno schizzo la geometria va in quello aperto.',
       'Scegli il file: nella finestra compare l\'**anteprima** del disegno, con una crocetta rossa sul punto che andrà nell\'origine. Se il disegno ha più [[Layer|layer]], togli la spunta a quelli che non servono (cartiglio, quote, squadratura): l\'anteprima si aggiorna.',
       'Scegli l\'[[Unità del file]] (di solito «dal file») e la **posizione**: come nel file, oppure con l\'angolo in basso a sinistra o il centro sull\'origine. Premi **Importa**.',
       'Le entità arrivano selezionate e blu ([[Sotto definito]]): controlla che i contorni siano chiusi, poi premi ✓. Le [[Ellisse|ellissi]] e le [[Spline|spline]] arrivano come catene di archi tangenti ([[Biarco|biarchi]]).',
       'Seleziona lo schizzo e usa **Estrusione base**, oppure **Rivoluzione base** se c\'è una [[Linea di mezzeria]].',
     ],
-    tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Il messaggio finale dice in quanti archi è stata divisa ogni ellisse o spline e lo [[Scostamento dalla curva]]: di solito pochi millesimi di millimetro.', 'Al massimo 3000 entità: togli i layer che non servono, oppure pulisci il disegno prima (una spline lunga e tortuosa può diventare molti archi).', 'I layer spenti o congelati nel file partono senza spunta.'],
-    terms: ['Inserisci DXF', 'File DXF', 'Layer', 'Tipo di linea', 'Unità del file', 'Ellisse', 'Spline', 'Biarco', 'Scostamento dalla curva'],
+    tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Il messaggio finale dice in quanti archi è stata divisa ogni ellisse o spline e lo [[Scostamento dalla curva]]: di solito pochi millesimi di millimetro.', 'Al massimo 3000 entità: togli i layer che non servono, oppure pulisci il disegno prima (una spline lunga e tortuosa può diventare molti archi).', 'I layer spenti o congelati nel file partono senza spunta.', 'Puoi scegliere anche uno **.zip** con il DXF dentro: è così che il Convertitore DWG → DXF salva i file nella pagina pubblicata.'],
+    terms: ['Inserisci DXF', 'File DXF', 'Convertitore DWG → DXF', 'Layer', 'Tipo di linea', 'Unità del file', 'Ellisse', 'Spline', 'Biarco', 'Scostamento dalla curva'],
   });
   add('Schizzo', 'sk-converti', 'Converti entità', {
     why: 'Usare gli spigoli del pezzo nello schizzo (per esempio per una borchia sul bordo).',

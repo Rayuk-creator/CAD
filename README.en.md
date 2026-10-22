@@ -38,6 +38,8 @@ With **Progetto › Importa STL o OBJ** (Project › Import STL or OBJ) you can 
 
 With **Progetto › Importa DXF (schizzo)** (Project › Import DXF), or **Inserisci DXF** (Insert DXF) in the Sketch tab, a 2D drawing (AutoCAD, DraftSight, LibreCAD, a SolidWorks drawing…) becomes a sketch: lines, arcs, circles, polylines, ellipses, splines and blocks, in the file's units; ellipses and splines become chains of tangent arcs (biarcs) within a few thousandths of a millimetre of the true curve; dash-dot axes become centerlines. The dialog shows a preview of the drawing and lets you pick the layers to import (for example without the title block and dimensions). Then you extrude or revolve it.
 
+AutoCAD **DWG** files are first turned into DXF with the **DWG → DXF converter** (*Convertitore DWG → DXF*), a separate page (folder `convertitore-dwg/`): it works in the browser with the free LibreDWG reader, from release R1.4 to 2018 (so files from AutoCAD 2019–2025 too). It is a separate program under the GNU GPL 3; Banco CAD links to it when a DWG is chosen and also opens the `.zip` in which the published page saves DXF files.
+
 ## Your first part in 6 steps
 
 Every model follows the same path: **dimensioned sketch → feature**.
@@ -121,8 +123,8 @@ The program is one file, `index.html` (about 5 MB), with HTML, CSS and JavaScrip
 npm install
 npx playwright install chromium   # first time only
 npm test                          # all tests
-npm run test:kernel               # calculations only (129 + 14 STEP/IGES tests, a few seconds)
-npm run test:ui                   # interface only, in Chromium (49 tests)
+npm run test:kernel               # calculations only (129 + 14 STEP/IGES + 11 DWG converter tests, a few seconds)
+npm run test:ui                   # interface only, in Chromium (52 tests)
 ```
 
 If you already have Chromium installed you can point to it with `CHROMIUM_PATH=/path/to/chrome npm run test:ui`. When a test fails, screenshots are saved in `tests/output/`.
@@ -135,8 +137,10 @@ tests/kernel.test.js  calculation tests (the same as the in-app Self-check)
 tests/ui.test.js      interface tests with Playwright
 tests/step.test.js    tests of the real STEP/IGES reader
 tests/stepgen.js      writes small STEP test files (igesgen.js: IGES)
+tests/dwg.test.js     tests of the DWG → DXF converter (DWG from R11 to 2018, compared with reference DXF files)
 tools/incorpora-occt.js  inserts or updates the STEP/IGES reader in the page
 licenze/              licences of the STEP/IGES reader (LGPL 2.1)
+convertitore-dwg/     DWG → DXF converter, a separate GPL 3 program (LibreDWG): page, LEGGIMI (readme), tests
 ```
 
 The interface tests use the program the way a student would: they draw with the mouse, type dimensions, press buttons, simulate fingers on a tablet and reload the page. They also check that every command is explained in the Guide and the Glossary.

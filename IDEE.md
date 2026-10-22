@@ -11,7 +11,7 @@ Il 20 ottobre 2026 abbiamo valutato l'importazione di altri formati. Il 21 ottob
 | STL, OBJ | Sì, facile | Solido a faccette da vedere, misurare, mettere in tavola, calcolarne volume e massa | **Fatto** il 21 ottobre 2026 |
 | DXF | Sì, medio | Linee, archi e cerchi importati in uno schizzo, poi estrusione o rivoluzione | **Fatto** il 21 ottobre 2026 (polilinee con tratti curvi, blocchi, unità, assi tratto-punto → mezzerie; ellissi e spline come archi tangenti) |
 | STEP (.stp, .step), IGES (.igs, .iges) | Sì, impegnativo | Solido con le facce vere, diviso in triangoli fitti (errore su volume e massa molto sotto l'1 %) | **Fatto** il 21 ottobre 2026 con occt-import-js (OpenCascade in WebAssembly, LGPL 2.1), compresso dentro `index.html`: la pagina passa da ~0,8 MB a ~5 MB |
-| DWG | Difficile | — | Formato chiuso di AutoCAD; consigliare la conversione in DXF (AutoCAD, DraftSight o ODA File Converter gratuito) |
+| DWG | Difficile | DXF da importare negli schizzi | **Fatto** il 22 ottobre 2026 come **pagina separata** (Convertitore DWG → DXF, cartella `convertitore-dwg/`, LibreDWG, licenza GPL 3 solo per quella pagina); il Banco CAD rimanda alla pagina e apre anche lo .zip che la pagina salva |
 | SolidWorks (.sldprt, .sldasm, .slddrw), Inventor (.ipt, .iam, .idw, .ipn) | No | — | Formati proprietari senza specifiche pubbliche; consigliare di esportare in STEP (parti, assiemi) o DXF (tavole) dal programma d'origine |
 
 Limite comune: i pezzi importati arrivano **senza la storia delle funzioni** (le quote originali non si modificano); si possono aggiungere funzioni nuove sopra. Gli schizzi DXF arrivano senza quote (blu): si possono quotare.
@@ -44,4 +44,5 @@ Deciso con l'utente il 21 ottobre 2026: **prossimo lavoro grande**, da fare in u
 
 ## Altro ancora da fare
 
-- La pagina pubblicata su claude.ai (artifact «Banco CAD», versione 10) è aggiornata al 21 ottobre notte (tutto compreso); la versione di riferimento resta `index.html` in questo repository.
+- Convertitore DWG → DXF, possibili miglioramenti: ricompilare libredwg-web con meno memoria iniziale (oggi ≈ 1 GB) per i tablet; anteprima del disegno direttamente nella pagina del convertitore; più file salvati insieme in un solo .zip.
+- Le pagine pubblicate su claude.ai («Banco CAD» e «Convertitore DWG → DXF») sono aggiornate al 22 ottobre mattina; la versione di riferimento resta `index.html` in questo repository.
