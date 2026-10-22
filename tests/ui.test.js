@@ -54,7 +54,7 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
   const fresh = async () => { await page.evaluate(() => { if (App.mode === 'sketch') Sketcher.exit(false); App.setCmdTab('features'); App.change(() => { App.doc = Model.newDoc(); App.sel = []; }); }); await page.waitForTimeout(150); };
   const click = async (u, v, opts) => { const [x, y] = await page.evaluate(([u, v]) => __scr(u, v), [u, v]); await page.mouse.move(x, y); await page.waitForTimeout(30); await page.mouse.click(x, y, opts); await page.waitForTimeout(80); };
   const tool = async id => { if (await page.evaluate(id => App.mode === 'sketch' && Sketcher.session().tool === id, id)) return; await page.click(`#cmdBar [data-cmd="${id}"]`); await page.waitForTimeout(80); };
-  const props = async () => { await page.waitForFunction(() => App.st && App.st.body.length && !document.querySelector('.pm-ok'), null, { timeout: 5000 }).catch(() => {}); return page.evaluate(() => { const m = Model.massProperties(App.st, App.doc); if (!m) console.log('DIAG ' + JSON.stringify({ feats: App.doc.features.map(f => f.type), mode: App.mode, undo: App.undoStack && App.undoStack.length, st: App.st && App.st.body.length, pm: !!App.pm, err: App.st ? [...App.st.errors.values()] : null, stack: new Error().stack.slice(0, 50) })); return m && { V: m.volume, A: m.area, bb: [m.bbox.mn, m.bbox.mx], err: [...App.st.errors.values()], feats: App.doc.features.map(f => f.type) }; }); };
+  const props = async () => { await page.waitForFunction(() => App.st && App.st.body.length && !App.pm, null, { timeout: 5000 }).catch(() => {}); return page.evaluate(() => { const m = Model.massProperties(App.st, App.doc); if (!m) console.log('DIAG ' + JSON.stringify({ feats: App.doc.features.map(f => f.type), mode: App.mode, undo: App.undoStack && App.undoStack.length, st: App.st && App.st.body.length, pm: !!App.pm, err: App.st ? [...App.st.errors.values()] : null, stack: new Error().stack.slice(0, 50) })); return m && { V: m.volume, A: m.area, bb: [m.bbox.mn, m.bbox.mx], err: [...App.st.errors.values()], feats: App.doc.features.map(f => f.type) }; }); };
   const startSketchOn = async planeName => {
     await page.evaluate(() => App.setCmdTab('sketch'));
     await page.locator('.tnode', { hasText: planeName }).first().click();
@@ -464,7 +464,7 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     const dep = page.locator('.pm-body .row', { hasText: 'Profondità' }).first().locator('input');
     await dep.fill('10'); await dep.press('Tab');
     await page.click('.pm-ok');
-    await page.waitForFunction(() => App.st && App.st.body.length && !document.querySelector('.pm-ok'), null, { timeout: 120000 });
+    await page.waitForFunction(() => App.st && App.st.body.length && !App.pm, null, { timeout: 120000 });
     const p = await props();
     const ok = !capAll.warn && !capAll.err && /^3\.084 tra linee, archi e cerchi/.test(capAll.t) && /^3\.044 tra linee, archi e cerchi/.test(cap)
       && sk.ln === 4 + 8 * nO + 2 * nS && sk.ar === 2 * nS && sk.st === 'under' && tMove < 5000 && p && rel(p.V, 10 * area) < TOL;
