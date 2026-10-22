@@ -45,4 +45,4 @@ Deciso con l'utente il 21 ottobre 2026: **prossimo lavoro grande**, da fare in u
 ## Altro ancora da fare
 
 - Convertitore DWG → DXF, possibili miglioramenti: ricompilare libredwg-web con meno memoria iniziale (oggi ≈ 1 GB) per i tablet; anteprima del disegno direttamente nella pagina del convertitore; più file salvati insieme in un solo .zip.
-- Le pagine pubblicate su claude.ai («Banco CAD» e «Convertitore DWG → DXF») sono aggiornate al 22 ottobre mattina; la versione di riferimento resta `index.html` in questo repository.
+- Le pagine pubblicate su claude.ai («Banco CAD» e «Convertitore DWG → DXF») sono aggiornate al 22 ottobre («Banco CAD» fine mattina, con i DXF senza limite); la versione di riferimento resta `index.html` in questo repository.
