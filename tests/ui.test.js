@@ -323,13 +323,13 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
       return Buffer.concat([lh, nm, buf, ch, nm, end]); };
     await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
     await page.setInputFiles('#dxfFile', { name: 'piastra.dxf.zip', mimeType: 'application/zip', buffer: zipStore('piastra.dxf', Buffer.from(file)) });
-    await page.waitForFunction(() => /entità/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 5000 });
+    await page.waitForFunction(() => /tra linee, archi e cerchi/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 5000 });
     const cap = await page.evaluate(() => document.querySelector('#dxfCap').textContent);
     await page.click('#modalActions .btn-primary');
     await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 10000 });
     const z = await page.evaluate(() => { const s = Sketcher.session(); return { n: s.sk.ents.filter(e => e.t !== 'pt').length, toast: document.querySelector('#toast').textContent }; });
     await page.evaluate(() => Sketcher.exit(false));
-    rec('Interfaccia: importa DXF da uno .zip (come lo salva il Convertitore DWG → DXF)', z.n === 5 && /100 × 60 mm/.test(z.toast) && /5 entità/.test(cap), `entità ${z.n}; anteprima «${cap}»; «${z.toast}»`);
+    rec('Interfaccia: importa DXF da uno .zip (come lo salva il Convertitore DWG → DXF)', z.n === 5 && /100 × 60 mm/.test(z.toast) && /^5 tra linee, archi e cerchi/.test(cap), `entità ${z.n}; anteprima «${cap}»; «${z.toast}»`);
   } catch (e) { rec('Interfaccia: importa DXF da uno .zip (come lo salva il Convertitore DWG → DXF)', false, e.message.split('\n')[0]); await page.evaluate(() => { const m = document.querySelector('#modal'); if (m && !m.hidden) { const b = document.querySelector('#modalActions .btn:not(.btn-primary)'); if (b) b.click(); } if (App.mode === 'sketch') Sketcher.exit(false); }); }
 
   // 3m-bis. DXF con ellisse e spline: piastra 120 × 80 con un foro ellittico 40 × 60 e un foro a spline chiusa
@@ -419,11 +419,61 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     await page.click('.pm-ok'); await page.waitForTimeout(300);
     const p = await props();
     const Ve = 10 * (4000 - 100 * Math.PI);
-    const ok = a.boxes === 'CARTIGLIO:1 PEZZO:1 QUOTE:0' && /^9 entità · ingombro 290 × 210 mm/.test(a.cap) && a.svg && /^5 entità · ingombro 80 × 50 mm/.test(b.cap) && b.vb !== a.vb
-      && !c.svg && /Nessun layer/.test(c.ph) && /almeno un layer/.test(errNone) && /^5 entità/.test(d.cap) && sk.ln === 4 && sk.ci === 1 && p && rel(p.V, Ve) < TOL && rel(p.bb[1][0], 80) < TOL && Math.abs(p.bb[0][0]) < 1e-6;
+    const ok = a.boxes === 'CARTIGLIO:1 PEZZO:1 QUOTE:0' && /^9 tra linee, archi e cerchi \(polilinee e blocchi divisi nei loro tratti\) · ingombro 290 × 210 mm/.test(a.cap) && a.svg && /^5 tra linee, archi e cerchi .* · ingombro 80 × 50 mm/.test(b.cap) && b.vb !== a.vb
+      && !c.svg && /Nessun layer/.test(c.ph) && /almeno un layer/.test(errNone) && /^5 tra linee/.test(d.cap) && sk.ln === 4 && sk.ci === 1 && p && rel(p.V, Ve) < TOL && rel(p.bb[1][0], 80) < TOL && Math.abs(p.bb[0][0]) < 1e-6;
     rec('Interfaccia: DXF con più layer (caselle, anteprima, solo il pezzo)', ok,
       `layer «${a.boxes}»; «${a.cap}» → senza cartiglio «${b.cap}» → nessuno: «${c.ph}» / «${errNone}»; schizzo ${sk.ln} linee e ${sk.ci} cerchio; V ${p && p.V.toFixed(1)} (${Ve.toFixed(1)}), x ${p && p.bb[0][0].toFixed(3)}…${p && p.bb[1][0].toFixed(3)}`);
   } catch (e) { rec('Interfaccia: DXF con più layer (caselle, anteprima, solo il pezzo)', false, e.message.split('\n')[0]); }
+
+  // 3m-bis2. DXF grande (oltre il vecchio limite di 3000 entità): piastra 600×600 con 360 fori ottagonali e 40 asole
+  //          (3044 entità, come nella prova di calcolo) più un cartiglio su un altro layer. La finestra non dà avvisi,
+  //          si importa, il mouse sullo schizzo resta veloce, si esce dallo schizzo e l'estrusione dà il volume calcolato a mano
+  try {
+    await fresh();
+    const PL = (pts, ly = 'PEZZO') => ['0', 'LWPOLYLINE', '8', ly, '90', pts.length, '70', 1, ...pts.flatMap(p => ['10', p[0], '20', p[1], '42', p[2] || 0])];
+    const ents = [PL([[-300, -300], [300, -300], [300, 300], [-300, 300]])];
+    let nO = 0, nS = 0;
+    for (let i = 0; i < 20; i++) for (let j = 0; j < 20; j++) {
+      const x = -266 + 28 * i, y = -266 + 28 * j;
+      if ((i * 20 + j) % 10 === 3) { ents.push(PL([[x - 5, y - 4], [x + 5, y - 4, 1], [x + 5, y + 4], [x - 5, y + 4, 1]])); nS++; }
+      else { const q = []; for (let k = 0; k < 8; k++) q.push([x + 6 * Math.cos(Math.PI / 8 + k * Math.PI / 4), y + 6 * Math.sin(Math.PI / 8 + k * Math.PI / 4)]); ents.push(PL(q)); nO++; }
+    }
+    for (let k = 0; k < 40; k++) ents.push(['0', 'LINE', '8', 'CARTIGLIO', '10', 320 + k * 5, '20', -350, '30', 0, '11', 320 + k * 5, '21', -310, '31', 0]);
+    const area = 360000 - nO * 2 * Math.SQRT2 * 36 - nS * (80 + 16 * Math.PI);
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', { name: 'piastra-grande.dxf', mimeType: 'application/dxf', buffer: Buffer.from(dxfText(ents, 4)) });
+    await page.waitForFunction(() => /tra linee, archi e cerchi/.test(document.querySelector('#dxfCap').textContent) && !document.querySelector('#dxfLayers').hidden, null, { timeout: 30000 });
+    const capAll = await page.evaluate(() => ({ t: document.querySelector('#dxfCap').textContent, warn: document.querySelector('#dxfCap').classList.contains('warn'), err: document.querySelector('#dxfErr').hidden ? '' : document.querySelector('#dxfErr').textContent }));
+    await page.locator('#dxfLayers label.chk', { hasText: 'CARTIGLIO' }).locator('input').uncheck(); await page.waitForTimeout(150);
+    const cap = await page.evaluate(() => document.querySelector('#dxfCap').textContent);
+    const t0 = Date.now();
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 60000 });
+    const tImp = Date.now() - t0;
+    const sk = await page.evaluate(() => { const s = Sketcher.session(); return { ln: s.sk.ents.filter(e => e.t === 'ln').length, ar: s.sk.ents.filter(e => e.t === 'ar').length, st: s.an && s.an.status }; });
+    // 10 movimenti del mouse sopra il disegno (evidenziazione e agganci): prima ognuno bloccava la pagina per secondi
+    const box = await page.locator('.view canvas').first().boundingBox();
+    const t1 = Date.now();
+    for (let i = 0; i < 10; i++) await page.mouse.move(box.x + box.width * (0.35 + 0.03 * i), box.y + box.height * (0.45 + 0.01 * i));
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(r)));
+    const tMove = Date.now() - t1;
+    await page.screenshot({ path: path.join(OUT, 'dxf-grande.png') });
+    await page.keyboard.press('Escape');
+    await tool('exitSketch'); await page.evaluate(() => App.setCmdTab('features'));
+    await tool('extrude');
+    const dep = page.locator('.pm-body .row', { hasText: 'Profondità' }).first().locator('input');
+    await dep.fill('10'); await dep.press('Tab');
+    await page.click('.pm-ok');
+    await page.waitForFunction(() => App.st && App.st.body.length && !document.querySelector('.pm-ok'), null, { timeout: 120000 });
+    const p = await props();
+    const ok = !capAll.warn && !capAll.err && /^3\.084 tra linee, archi e cerchi/.test(capAll.t) && /^3\.044 tra linee, archi e cerchi/.test(cap)
+      && sk.ln === 4 + 8 * nO + 2 * nS && sk.ar === 2 * nS && sk.st === 'under' && tMove < 5000 && p && rel(p.V, 10 * area) < TOL;
+    rec('Interfaccia: DXF grande (3044 entità, oltre il vecchio limite di 3000): senza avvisi, schizzo, mouse veloce, estrusione', ok,
+      `«${capAll.t}»${capAll.warn ? ' (avviso)' : ''}${capAll.err ? ' errore «' + capAll.err + '»' : ''} → senza cartiglio «${cap}»; importazione ${tImp} ms; schizzo ${sk.ln} linee, ${sk.ar} archi (${sk.st}); 10 movimenti del mouse ${tMove} ms; V ${p && p.V.toFixed(1)} (${(10 * area).toFixed(1)})`);
+  } catch (e) {
+    rec('Interfaccia: DXF grande (3044 entità, oltre il vecchio limite di 3000): senza avvisi, schizzo, mouse veloce, estrusione', false, e.message.split('\n')[0]);
+    await page.evaluate(() => { if (!document.querySelector('#modal').hidden) document.querySelector('#modalActions .btn')?.click(); if (App.mode === 'sketch') Sketcher.exit(false); if (App.pm) App.closePM(false); }).catch(() => {});
+  }
 
   // 3m-ter. raccordo sul bordo di un foro ellittico: un clic sceglie tutto il bordo (≈ 56 archi), un clic in un altro punto
   //         dello stesso bordo lo toglie; raccordo R3 confermato: materiale tolto = r²(1 − π/4)·(L + 2πc)
@@ -883,7 +933,7 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     await fresh();
     await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
     await page.setInputFiles('#dxfFile', dxfPath);
-    await page.waitForFunction(() => /entità/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 5000 });
+    await page.waitForFunction(() => /tra linee, archi e cerchi/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 5000 });
     await page.click('#modalActions .btn-primary');
     await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 10000 });
     // il DWG R14 di prova ha la stessa porta disegnata due volte (16 LINE con handle diversi, 8 posizioni): il Banco CAD

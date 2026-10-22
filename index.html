@@ -755,9 +755,23 @@ label.chk .gl-i { margin-left: 2px; }
     let poly = outer.map(p => p.slice());
     if (area2(poly) < 0) poly.reverse();
     const hs = holes.map(h => { const c = h.map(p => p.slice()); if (area2(c) > 0) c.reverse(); return c; });
-    hs.sort((a, b) => Math.max(...b.map(p => p[0])) - Math.max(...a.map(p => p[0])));
+    sortHoles(hs);
     for (let k = 0; k < hs.length; k++) poly = bridge(poly, hs[k], hs.slice(k + 1));
     return earClip(poly);
+  }
+  // fori in ordine di x massima decrescente (come prima; il massimo senza «...», che con fori di decine di migliaia di
+  // punti supera la pila delle chiamate)
+  function sortHoles(hs) {
+    const mx = new Map(hs.map(h => { let m = -Infinity; for (const p of h) if (p[0] > m) m = p[0]; return [h, m]; }));
+    hs.sort((a, b) => mx.get(b) - mx.get(a));
+  }
+  // rettangolo d'ingombro di un anello (memorizzato sull'anello stesso: i fori non cambiano)
+  function ringBox(ring) {
+    if (ring._bb && ring._bb.n === ring.length) return ring._bb;
+    const b = { n: ring.length, x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    for (const p of ring) { if (p[0] < b.x0) b.x0 = p[0]; if (p[0] > b.x1) b.x1 = p[0]; if (p[1] < b.y0) b.y0 = p[1]; if (p[1] > b.y1) b.y1 = p[1]; }
+    Object.defineProperty(ring, '_bb', { value: b, writable: true, configurable: true });
+    return b;
   }
   // il segmento M–P si può usare come ponte: non taglia lati del contorno né dei fori e passa dentro la faccia
   function segCross(a, b, c, d) {
@@ -779,19 +793,26 @@ label.chk .gl-i { margin-left: 2px; }
     }
     return c;
   }
+  // Con migliaia di fori si saltano i lati e i fori lontani: un lato fuori dall'ingombro del ponte (più un margine molto
+  // più largo della tolleranza di segCross) non lo può tagliare, e un punto fuori dall'ingombro di un foro non è nel foro.
+  // Il risultato è lo stesso di quando si guardava tutto.
   function bridgeOk(M, P, poly, hole, others) {
     const same = (u, v) => u[0] === v[0] && u[1] === v[1];
     if (same(M, P)) return false;
+    const m = 1e-9 * (1 + Math.abs(M[0]) + Math.abs(M[1]) + Math.abs(P[0]) + Math.abs(P[1]));
+    const x0 = Math.min(M[0], P[0]) - m, x1 = Math.max(M[0], P[0]) + m, y0 = Math.min(M[1], P[1]) - m, y1 = Math.max(M[1], P[1]) + m;
     for (const ring of [poly, hole, ...others]) {
+      if (ring !== poly) { const b = ringBox(ring); if (b.x1 < x0 || b.x0 > x1 || b.y1 < y0 || b.y0 > y1) continue; }
       for (let i = 0; i < ring.length; i++) {
         const a = ring[i], b = ring[(i + 1) % ring.length];
+        if ((a[0] < x0 && b[0] < x0) || (a[0] > x1 && b[0] > x1) || (a[1] < y0 && b[1] < y0) || (a[1] > y1 && b[1] > y1)) continue;
         if (same(a, M) || same(b, M) || same(a, P) || same(b, P)) continue;
         if (segCross(M, P, a, b)) return false;
       }
     }
     const mid = [(M[0] + P[0]) / 2, (M[1] + P[1]) / 2];
     if (!inPolyEO(mid, poly) || inPolyEO(mid, hole)) return false;
-    for (const h of others) if (inPolyEO(mid, h)) return false;
+    for (const h of others) { const b = ringBox(h); if (mid[0] < b.x0 || mid[0] > b.x1 || mid[1] < b.y0 || mid[1] > b.y1) continue; if (inPolyEO(mid, h)) return false; }
     return true;
   }
   function bridge(poly, hole, others = []) {
@@ -799,9 +820,23 @@ label.chk .gl-i { margin-left: 2px; }
     let hi = 0;
     for (let i = 1; i < hole.length; i++) if (hole[i][0] > hole[hi][0]) hi = i;
     const M = hole[hi];
-    // ponte verso il vertice del contorno più vicino che si vede senza tagliare niente
-    const order = poly.map((_, i) => i).sort((i, j) => ((poly[i][0] - M[0]) ** 2 + (poly[i][1] - M[1]) ** 2) - ((poly[j][0] - M[0]) ** 2 + (poly[j][1] - M[1]) ** 2));
-    for (const i of order) {
+    // ponte verso il vertice del contorno più vicino che si vede senza tagliare niente. I candidati arrivano in ordine di
+    // distanza (a pari distanza, per indice, come con l'ordinamento di prima); di solito va bene il primo, quindi si
+    // ordina tutto il contorno solo dopo qualche tentativo fallito
+    const dist = new Float64Array(poly.length);
+    for (let i = 0; i < poly.length; i++) dist[i] = (poly[i][0] - M[0]) ** 2 + (poly[i][1] - M[1]) ** 2;
+    function* nearest() {
+      const tried = new Uint8Array(poly.length);
+      for (let t = 0; t < 8 && t < poly.length; t++) {
+        let bi = -1;
+        for (let i = 0; i < poly.length; i++) if (!tried[i] && (bi < 0 || dist[i] < dist[bi])) bi = i;
+        tried[bi] = 1; yield bi;
+      }
+      const rest = []; for (let i = 0; i < poly.length; i++) if (!tried[i]) rest.push(i);
+      rest.sort((i, j) => dist[i] - dist[j]);
+      yield* rest;
+    }
+    for (const i of nearest()) {
       if (!bridgeOk(M, poly[i], poly, hole, others)) continue;
       const out = [];
       for (let k = 0; k <= i; k++) out.push(poly[k]);
@@ -850,42 +885,87 @@ label.chk .gl-i { margin-left: 2px; }
     const neg = d1 < -1e-12 || d2 < -1e-12 || d3 < -1e-12, pos = d1 > 1e-12 || d2 > 1e-12 || d3 > 1e-12;
     return !(neg && pos);
   }
+  // Ogni passo toglie un vertice, quindi i passi sono al massimo quanti i vertici (prima c'era un limite fisso di 100 000:
+  // una faccia più grande restava a metà senza avviso). I punti che potrebbero stare dentro un'orecchio si cercano in una
+  // griglia, solo vicino al triangolo: l'esito di ogni prova, e quindi i triangoli, sono gli stessi di prima.
   function earClip(pts) {
-    const idx = pts.map((_, i) => i);
+    // vertici ancora presenti in una lista collegata (prima/dopo): togliere un vertice costa un passo, invece di spostare
+    // tutto l'elenco; la ricerca riparte sempre dal primo vertice rimasto, come prima, quindi i triangoli sono gli stessi
+    const N = pts.length, nxt = new Int32Array(N), prv = new Int32Array(N);
+    for (let i = 0; i < N; i++) { nxt[i] = (i + 1) % N; prv[i] = (i + N - 1) % N; }
+    let head = 0, count = N;
+    const unlink = v => { nxt[prv[v]] = nxt[v]; prv[nxt[v]] = prv[v]; if (v === head) head = nxt[v]; count--; alive[v] = 0; };
     const tris = [];
     const crossz = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-    let guard = 0;
-    while (idx.length > 3 && guard++ < 100000) {
+    const alive = new Uint8Array(pts.length).fill(1);
+    // griglia: celle con in media ~2 punti
+    let gx0 = Infinity, gy0 = Infinity, gx1 = -Infinity, gy1 = -Infinity;
+    for (const p of pts) { if (p[0] < gx0) gx0 = p[0]; if (p[0] > gx1) gx1 = p[0]; if (p[1] < gy0) gy0 = p[1]; if (p[1] > gy1) gy1 = p[1]; }
+    const gw = Math.max(gx1 - gx0, gy1 - gy0, 1e-9), cells = Math.max(1, Math.ceil(Math.sqrt(pts.length / 2)));
+    const cs = gw / cells, gn = Math.ceil((gx1 - gx0) / cs) + 1;
+    const gny = Math.ceil((gy1 - gy0) / cs) + 1;
+    const cellOf = (x, y) => [Math.min(gn - 1, Math.max(0, Math.floor((x - gx0) / cs))), Math.min(gny - 1, Math.max(0, Math.floor((y - gy0) / cs)))];
+    const grid = new Map();
+    pts.forEach((p, j) => { const [cx, cy] = cellOf(p[0], p[1]); const k = cy * gn + cx; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(j); });
+    const blocked = (ia, ib, ic, a, b, c) => {
+      // margine: strictIn accetta i punti a distanza ≤ δ = 10⁻¹² / lato da ogni lato, cioè il triangolo allargato di δ;
+      // allargare tutti i lati di δ vuol dire ingrandirlo attorno al centro del cerchio inscritto (raggio ri) di
+      // (ri + δ) / ri, quindi i punti accettati stanno entro δ / ri × lato più lungo dal triangolo. Con un triangolo quasi
+      // piatto il margine diventa enorme (i punti in fila lontani contano come dentro): si guardano tutti i punti
+      const la = Math.hypot(b[0] - a[0], b[1] - a[1]), lb = Math.hypot(c[0] - b[0], c[1] - b[1]), lc = Math.hypot(a[0] - c[0], a[1] - c[1]);
+      const lmin = Math.min(la, lb, lc), lmax = Math.max(la, lb, lc), ri = crossz(a, b, c) / (la + lb + lc);
+      const m = lmin > 0 && ri > 0 ? 1e-9 + 1.01 * (1e-12 / lmin) / ri * lmax : Infinity;
+      const test = j => {
+        if (!alive[j] || j === ia || j === ib || j === ic) return false;
+        const p = pts[j];
+        if ((p[0] === a[0] && p[1] === a[1]) || (p[0] === b[0] && p[1] === b[1]) || (p[0] === c[0] && p[1] === c[1])) return false;
+        return strictIn(a, b, c, p);
+      };
+      if (!Number.isFinite(m) || m > gw) { for (let k = 0, j = head; k < count; k++, j = nxt[j]) if (test(j)) return true; return false; }
+      // righe di celle toccate; in ogni riga solo le celle dove passa il triangolo (un triangolo lungo e sottile, come quelli
+      // a ventaglio, attraversa poche celle anche se il suo ingombro copre tutta la griglia). Un punto accettato dista al
+      // più m dal triangolo: sta nella fascia della riga allargata di m, entro m dal pezzo di triangolo in quella fascia.
+      const cy0 = cellOf(0, Math.min(a[1], b[1], c[1]) - m)[1];
+      const cy1 = cellOf(0, Math.max(a[1], b[1], c[1]) + m)[1];
+      const T = [a, b, c];
+      for (let y = cy0; y <= cy1; y++) {
+        const lo = (y === 0 ? -Infinity : gy0 + y * cs) - m, hi = (y === gny - 1 ? Infinity : gy0 + (y + 1) * cs) + m;
+        let xa = Infinity, xb = -Infinity;
+        for (let k = 0; k < 3; k++) {
+          const P = T[k], Q = T[(k + 1) % 3];
+          if (P[1] >= lo && P[1] <= hi) { xa = Math.min(xa, P[0]); xb = Math.max(xb, P[0]); }
+          for (const yy of [lo, hi]) if (Number.isFinite(yy) && (P[1] - yy) * (Q[1] - yy) < 0) { const x = P[0] + (Q[0] - P[0]) * (yy - P[1]) / (Q[1] - P[1]); xa = Math.min(xa, x); xb = Math.max(xb, x); }
+        }
+        if (xa > xb) continue;
+        const mm = m + 1e-12 * (Math.abs(xa) + Math.abs(xb));
+        const x0 = cellOf(xa - mm, 0)[0], x1 = cellOf(xb + mm, 0)[0];
+        for (let x = x0; x <= x1; x++) { const l = grid.get(y * gn + x); if (l) for (const j of l) if (test(j)) return true; }
+      }
+      return false;
+    };
+    while (count > 3) {
       let clipped = false;
-      for (let i = 0; i < idx.length; i++) {
-        const ia = idx[(i + idx.length - 1) % idx.length], ib = idx[i], ic = idx[(i + 1) % idx.length];
+      for (let k = 0, ib = head; k < count; k++, ib = nxt[ib]) {
+        const ia = prv[ib], ic = nxt[ib];
         const a = pts[ia], b = pts[ib], c = pts[ic];
         const cz = crossz(a, b, c);
         if (cz <= 1e-14) continue;
-        let ok = true;
-        for (const j of idx) {
-          if (j === ia || j === ib || j === ic) continue;
-          const p = pts[j];
-          if ((p[0] === a[0] && p[1] === a[1]) || (p[0] === b[0] && p[1] === b[1]) || (p[0] === c[0] && p[1] === c[1])) continue;
-          if (strictIn(a, b, c, p)) { ok = false; break; }
-        }
-        if (!ok) continue;
+        if (blocked(ia, ib, ic, a, b, c)) continue;
         tris.push([ia, ib, ic]);
-        idx.splice(i, 1);
+        unlink(ib);
         clipped = true;
         break;
       }
       if (!clipped) {
         // poligono degenere: togli un vertice collineare
         let removed = false;
-        for (let i = 0; i < idx.length; i++) {
-          const a = pts[idx[(i + idx.length - 1) % idx.length]], b = pts[idx[i]], c = pts[idx[(i + 1) % idx.length]];
-          if (Math.abs(crossz(a, b, c)) <= 1e-12) { idx.splice(i, 1); removed = true; break; }
+        for (let k = 0, v = head; k < count; k++, v = nxt[v]) {
+          if (Math.abs(crossz(pts[prv[v]], pts[v], pts[nxt[v]])) <= 1e-12) { unlink(v); removed = true; break; }
         }
         if (!removed) break;
       }
     }
-    if (idx.length === 3) tris.push(idx.slice());
+    if (count === 3) tris.push([head, nxt[head], nxt[nxt[head]]]);
     return tris;
   }
   function strictIn(a, b, c, p) {
@@ -1099,7 +1179,7 @@ label.chk .gl-i { margin-left: 2px; }
     let poly = outer.map(p => p.slice());
     if (area2(poly) < 0) poly.reverse();
     const hs = holes.map(h => { const c = h.map(p => p.slice()); if (area2(c) > 0) c.reverse(); return c; });
-    hs.sort((a, b) => Math.max(...b.map(p => p[0])) - Math.max(...a.map(p => p[0])));
+    sortHoles(hs);
     for (const h of hs) poly = bridge(poly, h);
     return poly;
   }
@@ -1288,7 +1368,8 @@ label.chk .gl-i { margin-left: 2px; }
     const bb = { mn: [Infinity, Infinity, Infinity], mx: [-Infinity, -Infinity, -Infinity] };
     for (const v of verts) for (let k = 0; k < 3; k++) { bb.mn[k] = Math.min(bb.mn[k], v[k]); bb.mx[k] = Math.max(bb.mx[k], v[k]); }
     const size = Math.max(bb.mx[0] - bb.mn[0], bb.mx[1] - bb.mn[1], bb.mx[2] - bb.mn[2], 1e-6);
-    const cell = size / 48;
+    // celle: almeno 48 per lato, di più con tanti vertici (una piastra con migliaia di fori), così ogni cella ne ha pochi
+    const cell = size / Math.max(48, Math.min(4096, Math.ceil(Math.sqrt(verts.length))));
     const grid = new Map();
     const ck = (x, y, z) => x + ',' + y + ',' + z;
     const cOf = v => [Math.floor((v[0] - bb.mn[0]) / cell), Math.floor((v[1] - bb.mn[1]) / cell), Math.floor((v[2] - bb.mn[2]) / cell)];
@@ -1755,11 +1836,131 @@ label.chk .gl-i { margin-left: 2px; }
 
   function norm2(r) { let s = 0; for (const x of r) s += x * x; return Math.sqrt(s); }
 
+  /* ---------------- blocchi indipendenti ---------------- */
+  // Le incognite si dividono in blocchi che nessun vincolo collega tra loro (per esempio le entità di un disegno DXF
+  // che non si toccano): lo jacobiano è diagonale a blocchi e ogni blocco si calcola da solo. I numeri sono gli stessi
+  // del calcolo con la matrice intera, ma il tempo cresce con la dimensione dei blocchi, non dello schizzo.
+  // indici delle incognite toccate dalle entità ids (punti, linee, cerchi, archi), senza doppioni, crescenti
+  function depsOf(V, ids) {
+    const out = new Set();
+    const add = k => { const i = V.idx.get(k); if (i !== undefined) out.add(i); };
+    for (const id of ids) {
+      const e = V.E.get(id); if (!e) continue;
+      if (e.t === 'pt') { add(id + '.x'); add(id + '.y'); }
+      else if (e.t === 'ln') { add(e.a + '.x'); add(e.a + '.y'); add(e.b + '.x'); add(e.b + '.y'); }
+      else if (e.t === 'ci') { add(e.c + '.x'); add(e.c + '.y'); add(id + '.r'); }
+      else if (e.t === 'ar') for (const p of [e.c, e.a, e.b]) { add(p + '.x'); add(p + '.y'); }
+    }
+    return [...out].sort((a, b) => a - b);
+  }
+  const consIds = c => c.at ? c.e.concat([c.at]) : c.e;
+  const activeCon = c => !c.driven && c.t !== 'fix';
+  // gli elementi che danno righe, nell'ordine di residuals: prima gli archi (raggio costante), poi i vincoli
+  function rowItems(sk, V) {
+    const items = [];
+    for (const e of sk.ents) if (e.t === 'ar') items.push({ sk: { ents: [e], cons: [] }, d: depsOf(V, [e.id]) });
+    for (const c of sk.cons) if (activeCon(c)) items.push({ sk: { ents: [], cons: [c] }, d: depsOf(V, consIds(c)) });
+    return items;
+  }
+  // blocchi: { sk: {ents: archi, cons: vincoli} (le righe del blocco, nello stesso ordine di residuals), vars: indici
+  // delle incognite (crescenti), V: incognite del blocco, items }. Le righe che non toccano incognite (tutto fisso) vanno
+  // in un blocco senza incognite; le incognite che nessun vincolo tocca non sono in nessun blocco (sono libere).
+  function blocks(sk, V) {
+    const n = V.vars.length, par = new Int32Array(n);
+    for (let i = 0; i < n; i++) par[i] = i;
+    const find = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+    const items = rowItems(sk, V);
+    for (const it of items) for (let k = 1; k < it.d.length; k++) { const a = find(it.d[0]), b = find(it.d[k]); if (a !== b) par[a] = b; }
+    const byRoot = new Map(), out = [];
+    let fixedRows = null;
+    const newBlock = () => { const b = { sk: { ents: [], cons: [] }, vars: [], items: [] }; out.push(b); return b; };
+    for (const it of items) {
+      let b;
+      if (it.d.length) { const root = find(it.d[0]); b = byRoot.get(root); if (!b) { b = newBlock(); byRoot.set(root, b); } }
+      else b = fixedRows || (fixedRows = newBlock());
+      b.items.push(it);
+      if (it.sk.ents.length) b.sk.ents.push(it.sk.ents[0]); else b.sk.cons.push(it.sk.cons[0]);
+    }
+    // archi prima dei vincoli anche dentro items (come in residuals)
+    for (const b of out) b.items.sort((p, q) => (q.sk.ents.length - p.sk.ents.length));
+    for (let i = 0; i < n; i++) { const b = byRoot.get(find(i)); if (b) b.vars.push(i); }
+    for (const b of out) b.V = { vars: b.vars.map(i => V.vars[i]), E: V.E };
+    return out;
+  }
+  // righe dello jacobiano di un elenco di elementi, sparse: per ogni riga le derivate (differenze centrali, come in
+  // jacobian) rispetto alle sole incognite che l'elemento tocca. Map(indice incognita → derivata), senza gli zeri.
+  function sparseRows(items, V) {
+    const rows = [];
+    for (const it of items) {
+      const r0 = []; residuals(it.sk, V.E, r0);
+      const R = r0.map(() => new Map());
+      for (const j of it.d) {
+        const [e, k] = V.vars[j];
+        const x0 = e[k];
+        const h = 1e-7 * Math.max(1, Math.abs(x0));
+        e[k] = x0 + h; const rp = []; residuals(it.sk, V.E, rp);
+        e[k] = x0 - h; const rm = []; residuals(it.sk, V.E, rm);
+        e[k] = x0;
+        for (let i = 0; i < r0.length; i++) { const d = (rp[i] - rm[i]) / (2 * h); if (d !== 0) R[i].set(j, d); }
+      }
+      for (const x of R) rows.push(x);
+    }
+    return rows;
+  }
+  function blockResiduals(b, E) { const r = []; residuals(b.sk, E, r); return r; }
+  // righe sparse di un blocco (Map indice locale dell'incognita → derivata) e residui
+  function blockSparse(b, V) {
+    const r = []; residuals(b.sk, V.E, r);
+    const loc = new Map(); b.vars.forEach((i, j) => loc.set(i, j));
+    const rows = sparseRows(b.items, V).map(R => { const L = new Map(); for (const [j, d] of R) L.set(loc.get(j), d); return L; });
+    return { rows, r };
+  }
+  // J Jᵀ + mu I dalle righe sparse: si sommano solo i prodotti delle righe che hanno un'incognita in comune. Le somme
+  // seguono lo stesso ordine del calcolo con la matrice piena (incognite crescenti, mu per ultimo), quindi i numeri sono
+  // identici fino all'ultima cifra: conta negli schizzi con vincoli ridondanti, dove la matrice è quasi singolare e
+  // amplifica ogni arrotondamento
+  function gram(rows, mu) {
+    const m = rows.length, G = [];
+    for (let i = 0; i < m; i++) G.push(new Array(m).fill(0));
+    const byVar = new Map();
+    rows.forEach((R, i) => { for (const [j, d] of R) { if (!byVar.has(j)) byVar.set(j, []); byVar.get(j).push([i, d]); } });
+    for (const j of [...byVar.keys()].sort((a, b) => a - b)) { const list = byVar.get(j); for (const [i, a] of list) for (const [k, c] of list) G[i][k] += a * c; }
+    for (let i = 0; i < m; i++) G[i][i] += mu;
+    return G;
+  }
+  // passo di Newton a norma minima con le righe sparse: dx = −Jᵀ (J Jᵀ + mu I)⁻¹ r (come newtonStep)
+  function newtonSparse(rows, r, n, mu) {
+    const y = solveLin(gram(rows, mu), r.map(x => -x));
+    if (!y) return null;
+    const dx = new Array(n).fill(0);
+    rows.forEach((R, i) => { for (const [j, d] of R) dx[j] += d * y[i]; });
+    return dx;
+  }
+  // minimi quadrati (Jᵀ J + mu I) dx = −Jᵀ r (come lsqStep) con le righe sparse. Con meno righe che incognite si usa la
+  // forma equivalente dx = −Jᵀ (J Jᵀ + mu I)⁻¹ r: un sistema m × m invece di n × n (un estremo di una polilinea con
+  // 186 archi: 188 righe invece di 746 incognite, da secondi a millisecondi a ogni movimento del mouse)
+  // La forma ridotta si usa solo con molte incognite (oltre 64, cioè le entità importate): negli schizzi fatti a mano
+  // resta il calcolo di sempre, con gli stessi numeri fino all'ultima cifra.
+  function lsqSparse(rows, r, n, mu) {
+    if (!n) return null;
+    if (n > 64 && rows.length < n) return newtonSparse(rows, r, n, mu);
+    const A = [];
+    for (let a = 0; a < n; a++) A.push(new Array(n).fill(0));
+    const g = new Array(n).fill(0);
+    rows.forEach((R, i) => {
+      const ent = [...R].sort((p, q) => p[0] - q[0]);
+      for (const [a, da] of ent) { g[a] += da * r[i]; for (const [b, db] of ent) A[a][b] += da * db; }
+    });
+    for (let a = 0; a < n; a++) { A[a][a] += mu; g[a] = -g[a]; }
+    return solveLin(A, g);
+  }
+
   // risolve lo schizzo; drag = {id, x, y} (punto trascinato) oppure {id, r} (cerchio)
   function solve(sk, opts = {}) {
     normalizeArcs(sk);
     const V = buildVars(sk);
     const n = V.vars.length;
+    const B = blocks(sk, V);
     if (opts.drag) {
       // 1) spostamento "morbido" verso la posizione del mouse (uno o più punti, o il raggio di un cerchio)
       const drags = Array.isArray(opts.drag) ? opts.drag : [opts.drag];
@@ -1770,23 +1971,60 @@ label.chk .gl-i { margin-left: 2px; }
         if (dg.x !== undefined && V.idx.has(d.id + '.x')) rows.push({ d, k: 'x', i: V.idx.get(d.id + '.x'), v: dg.x }, { d, k: 'y', i: V.idx.get(d.id + '.y'), v: dg.y });
         if (dg.r !== undefined && V.idx.has(d.id + '.r')) rows.push({ d, k: 'r', i: V.idx.get(d.id + '.r'), v: dg.r });
       }
-      if (rows.length) {
+      if (rows.length && n) {
+        // il sistema (Jt J + mu I) dx = −Jt r è diagonale a blocchi: le righe del mouse vanno nel blocco della loro
+        // incognita; un'incognita trascinata che nessun vincolo tocca forma un blocco da sola
+        const where = new Map();
+        B.forEach((b, bi) => b.vars.forEach((i, j) => where.set(i, [bi, j])));
+        const extra = new Map();   // blocco → righe del mouse; le incognite sole hanno chiave 'v' + indice
+        for (const rw of rows) {
+          const w = where.get(rw.i), key = w ? w[0] : 'v' + rw.i;
+          if (!extra.has(key)) extra.set(key, []);
+          extra.get(key).push({ rw, j: w ? w[1] : 0 });
+        }
+        const w = 0.01;
+        // scorciatoia: con i punti trascinati già sotto il mouse, se i vincoli del loro blocco restano soddisfatti
+        // (entità spostate tutte insieme, senza relazioni con il resto) quella è già la soluzione dei minimi quadrati
+        // (scarto nullo): il blocco non si calcola. Un'incognita trascinata che nessun vincolo tocca va sotto il mouse.
+        const done = new Set();
+        for (const [key, ex] of extra) {
+          if (typeof key === 'string') { for (const { rw } of ex) rw.d[rw.k] = rw.v; done.add(key); continue; }
+          const b = B[key], keep = b.vars.map(i => V.vars[i][0][V.vars[i][1]]);
+          const r0 = norm2(blockResiduals(b, V.E));
+          for (const { rw } of ex) rw.d[rw.k] = rw.v;
+          if (norm2(blockResiduals(b, V.E)) <= Math.max(1e-10, r0)) done.add(key);
+          else b.vars.forEach((i, j) => { const [e, k] = V.vars[i]; e[k] = keep[j]; });
+        }
         for (let it = 0; it < 30; it++) {
-          const { J, r } = jacobian(sk, V);
-          const w = 0.01;
-          for (const rw of rows) { const row = new Array(n).fill(0); row[rw.i] = w; J.push(row); r.push(w * (rw.d[rw.k] - rw.v)); }
-          const dx = lsqStep(J, r, 1e-9);
-          if (!dx) break;
+          const dx = new Array(n).fill(0);
+          let fail = false;
+          for (let bi = 0; bi < B.length && !fail; bi++) {
+            const b = B[bi]; if (!b.vars.length || done.has(bi)) continue;
+            const ex = extra.get(bi);
+            if (!ex && blockResiduals(b, V.E).every(x => x === 0)) continue;   // passo nullo
+            const { rows: J, r } = blockSparse(b, V);
+            if (ex) for (const { rw, j } of ex) { J.push(new Map([[j, w]])); r.push(w * (rw.d[rw.k] - rw.v)); }
+            const d = lsqSparse(J, r, b.vars.length, 1e-9);
+            if (!d) { fail = true; break; }
+            b.vars.forEach((i, j) => { dx[i] = d[j]; });
+          }
+          if (fail) break;
+          for (const [key, ex] of extra) if (typeof key === 'string' && !done.has(key)) {
+            const d = lsqStep(ex.map(() => [w]), ex.map(({ rw }) => w * (rw.d[rw.k] - rw.v)), 1e-9);
+            if (!d) { fail = true; break; }
+            dx[ex[0].rw.i] = d[0];
+          }
+          if (fail) break;
           let mx = 0;
           V.vars.forEach(([e, k], j) => { e[k] += dx[j]; mx = Math.max(mx, Math.abs(dx[j])); });
           if (mx < 1e-10) break;
         }
       }
-      const res = project(sk, V);
-      if (!res.ok) { V.vars.forEach(([e, k], j) => { e[k] = save[j]; }); project(sk, V); return { ok: false, rejected: true }; }
+      const res = project(sk, V, B);
+      if (!res.ok) { V.vars.forEach(([e, k], j) => { e[k] = save[j]; }); project(sk, V, B); return { ok: false, rejected: true }; }
       return res;
     }
-    return project(sk, V);
+    return project(sk, V, B);
   }
   // minimi quadrati: (Jt J + mu I) dx = -Jt r
   function lsqStep(J, r, mu) {
@@ -1803,16 +2041,30 @@ label.chk .gl-i { margin-left: 2px; }
     for (let a = 0; a < n; a++) { let s = 0; for (let i = 0; i < m; i++) s += J[i][a] * r[i]; g[a] = -s; }
     return solveLin(A, g);
   }
+  // passo di Newton a norma minima di tutto lo schizzo, blocco per blocco (i blocchi già a posto danno passo nullo)
+  function blockNewton(B, V, n, mu) {
+    const dx = new Array(n).fill(0);
+    for (const b of B) {
+      if (!b.vars.length) continue;
+      if (blockResiduals(b, V.E).every(x => x === 0)) continue;
+      const { rows, r } = blockSparse(b, V);
+      const d = newtonSparse(rows, r, b.vars.length, mu);
+      if (!d) return null;
+      b.vars.forEach((i, j) => { dx[i] = d[j]; });
+    }
+    return dx;
+  }
   // proiezione sui vincoli (Newton a norma minima, con ricerca lineare)
-  function project(sk, V) {
-    let last = Infinity;
+  function project(sk, V, B) {
+    B = B || blocks(sk, V);
+    const n = V.vars.length;
     for (let it = 0; it < 80; it++) {
-      const { J, r } = jacobian(sk, V);
+      const r = []; residuals(sk, V.E, r);
       const nr = norm2(r);
       if (nr < 1e-10) return { ok: true, iters: it, residual: nr };
-      if (!V.vars.length) return { ok: nr < 1e-8, residual: nr };
-      let dx = newtonStep(J, r, 1e-12);
-      if (!dx) dx = newtonStep(J, r, 1e-6);
+      if (!n) return { ok: nr < 1e-8, residual: nr };
+      let dx = blockNewton(B, V, n, 1e-12);
+      if (!dx) dx = blockNewton(B, V, n, 1e-6);
       if (!dx) return { ok: false, residual: nr };
       // ricerca lineare
       const save = V.vars.map(([e, k]) => e[k]);
@@ -1824,7 +2076,6 @@ label.chk .gl-i { margin-left: 2px; }
         step /= 2;
       }
       if (!improved) { V.vars.forEach(([e, k], j) => { e[k] = save[j]; }); return { ok: nr < 1e-8, residual: nr }; }
-      last = nr;
     }
     const r = []; residuals(sk, V.E, r);
     return { ok: norm2(r) < 1e-8, residual: norm2(r) };
@@ -1840,42 +2091,135 @@ label.chk .gl-i { margin-left: 2px; }
   }
 
   /* ---------------- stato di definizione ---------------- */
+  // Riduzione di un insieme di righe sparse prima della scomposizione (SVD).
+  // Una riga che contiene un'incognita usata solo da lei (per esempio il centro di un arco importato) è indipendente
+  // da tutte le altre: aumenta il rango di 1 e si può togliere insieme a quell'incognita (il «perno»), poi si ripete.
+  // È esatto: con operazioni sulle colonne la riga diventa un solo numero nella colonna del perno. Si usa solo un perno
+  // ben condizionato: almeno 1/1000 del valore più grande della riga e almeno pivMin, ben sopra il rumore delle
+  // derivate numeriche (≈ 10⁻⁹: una derivata che vale 0 può uscire −5·10⁻¹⁰, e la SVD la tratta come zero).
+  // Le righe che restano (il «nucleo») si scompongono con la SVD come prima.
+  // Restituisce { m, peel: [{row, v}], core: {vars, s, basis (vettori della base dello spazio delle righe, dopo la
+  // soglia), Ut | Vm}, rowMax (norma più grande delle righe tolte), rows }.
+  function reduceRows(rows, pivMin) {
+    const m = rows.length;
+    const where = new Map();   // incognita → righe ancora presenti che la contengono
+    rows.forEach((R, k) => { for (const j of R.keys()) { if (!where.has(j)) where.set(j, new Set()); where.get(j).add(k); } });
+    const alive = new Array(m).fill(true), peel = [];
+    const pivotOf = k => {
+      const R = rows[k]; let mx = 0; for (const d of R.values()) mx = Math.max(mx, Math.abs(d));
+      if (!(mx >= pivMin)) return -1;
+      let best = -1, bv = 0;
+      for (const [j, d] of R) if (where.get(j).size === 1 && Math.abs(d) >= 1e-3 * mx && Math.abs(d) >= pivMin && Math.abs(d) > bv) { best = j; bv = Math.abs(d); }
+      return best;
+    };
+    const queue = [];
+    for (let k = 0; k < m; k++) queue.push(k);
+    let rowMax = 0;
+    while (queue.length) {
+      const k = queue.pop();
+      if (!alive[k]) continue;
+      const v = pivotOf(k);
+      if (v < 0) continue;
+      alive[k] = false; peel.push({ row: k, v });
+      let nr = 0; for (const d of rows[k].values()) nr += d * d; rowMax = Math.max(rowMax, Math.sqrt(nr));
+      for (const j of rows[k].keys()) {
+        const S = where.get(j); S.delete(k);
+        if (S.size === 1) for (const k2 of S) queue.push(k2);   // l'incognita ora è di una sola riga: forse un perno nuovo
+      }
+    }
+    // nucleo: righe rimaste, sulle incognite che toccano
+    const coreRows = []; rows.forEach((R, k) => { if (alive[k]) coreRows.push(R); });
+    const vset = new Set(); for (const R of coreRows) for (const j of R.keys()) vset.add(j);
+    const vars = [...vset].sort((a, b) => a - b), loc = new Map(); vars.forEach((j, i) => loc.set(j, i));
+    const cm = coreRows.length, cn = vars.length;
+    const core = { vars, loc, m: cm, n: cn, s: [] };
+    if (cm && cn) {
+      const J = coreRows.map(R => { const row = new Array(cn).fill(0); for (const [j, d] of R) row[loc.get(j)] = d; return row; });
+      if (cm < cn) { const d = svd(transpose(J, cm, cn), cn, cm); core.s = d.s; core.Ut = d.U; }
+      else { const d = svd(J, cm, cn); core.s = d.s; core.Vm = d.V; }
+    }
+    return { m, peel, core, rowMax, rows };
+  }
+  // perno minimo: 10⁻⁵ della norma più grande delle righe (che non supera il valore singolare massimo), cioè almeno
+  // 1000 volte la soglia della SVD (10⁻⁸ del valore singolare massimo)
+  function pivotMin(groups) {
+    let mx = 0;
+    for (const rows of groups) for (const R of rows) { let q = 0; for (const d of R.values()) q += d * d; if (q > mx) mx = q; }
+    return 1e-5 * Math.max(1, Math.sqrt(mx));
+  }
+  const redSmax = red => { let s = red.rowMax; for (const x of red.core.s) if (x > s) s = x; return s; };
+  const redRank = (red, tol) => { let r = red.peel.length; for (const x of red.core.s) if (x > tol) r++; return r; };
+  // incognite libere (con una parte nel nucleo dello jacobiano) tra quelle delle righe ridotte, con la soglia tol
+  function redFree(red, tol, out) {
+    const { core, peel, rows } = red, s = core.s;
+    // base ortonormale dello spazio delle righe del nucleo (sulle sue incognite)
+    const basis = [];
+    if (core.Ut) { for (let k = 0; k < core.m; k++) if (s[k] > tol) { const u = new Float64Array(core.n); for (let i = 0; i < core.n; i++) u[i] = core.Ut[i][k] / s[k]; basis.push(u); } }
+    else if (core.Vm) { for (let j = 0; j < s.length; j++) if (s[j] > tol) { const u = new Float64Array(core.n); for (let i = 0; i < core.n; i++) u[i] = core.Vm[i][j]; basis.push(u); } }
+    // incognite del nucleo: libere se e_i ha una parte nel nucleo, |P e_i|² = 1 − Σ_b b_i² > 10⁻¹² (come prima)
+    const isFree = new Map();
+    core.vars.forEach((j, i) => { let q = 0; for (const b of basis) q += b[i] * b[i]; isFree.set(j, 1 - q > 1e-12); });
+    // incognite non perno fuori dal nucleo: compaiono solo in righe tolte, quindi sono libere
+    const pivots = new Set(peel.map(p => p.v));
+    for (const p of peel) for (const j of rows[p.row].keys()) if (!pivots.has(j) && !core.loc.has(j)) isFree.set(j, true);
+    // perni, dall'ultimo tolto al primo: sulle soluzioni del sistema il perno vale L·x (x = incognite non perno);
+    // è libero se L ha una parte non nulla sul nucleo dello jacobiano (soglia 10⁻¹², come per le altre incognite)
+    const L = new Map();
+    for (let t = peel.length - 1; t >= 0; t--) {
+      const { row, v } = peel[t], R = rows[row], dv = R.get(v);
+      const Lv = new Map();
+      for (const [j, d] of R) {
+        if (j === v) continue;
+        const c = -d / dv;
+        if (pivots.has(j)) { for (const [u, w] of L.get(j)) Lv.set(u, (Lv.get(u) || 0) + c * w); }
+        else Lv.set(j, (Lv.get(j) || 0) + c);
+      }
+      L.set(v, Lv);
+      let q = 0; const lc = new Float64Array(core.n); let inCore = false;
+      for (const [u, w] of Lv) { if (core.loc.has(u)) { lc[core.loc.get(u)] = w; inCore = true; } else q += w * w; }
+      if (inCore) {
+        // parte di L_nucleo fuori dallo spazio delle righe: si toglie la proiezione dal vettore (e non |L|² − proiezione²,
+        // che con L grande perde le cifre e lascia un resto di 10⁻¹² dove dovrebbe esserci zero)
+        for (const b of basis) { let d = 0; for (let i = 0; i < core.n; i++) d += b[i] * lc[i]; for (let i = 0; i < core.n; i++) lc[i] -= d * b[i]; }
+        for (const x of lc) q += x * x;
+      }
+      isFree.set(v, q > 1e-12);
+    }
+    for (const [j, f] of isFree) if (f) out.add(j);
+    return out;
+  }
   // restituisce { dof, status: 'under'|'full'|'over', free: Set(id entità non definite), conflicts: [con] }
   function analyze(sk) {
     const V = buildVars(sk);
     const n = V.vars.length;
-    const { J, r } = jacobian(sk, V);
+    const r = []; residuals(sk, V.E, r);
     const m = r.length;
     const resid = norm2(r);
     if (n === 0) return { dof: 0, status: resid > 1e-7 ? 'over' : (m ? 'full' : 'full'), free: new Set(), redundant: false, unsolved: resid > 1e-7 };
-    let s = [], Vm = null, Ut = null;
-    // con meno vincoli che incognite (m < n) si scompone la trasposta: Jacobi su m colonne invece di n, stesso rango
-    // e stesso nucleo, ma molto più veloce (schizzi con tanti archi da un DXF: da secondi a millisecondi)
-    if (m > 0 && m < n) { const d = svd(transpose(J, m, n), n, m); s = d.s; Ut = d.U; }
-    else if (m > 0) { const d = svd(J, m, n); s = d.s; Vm = d.V; }
-    const smax = Math.max(1e-12, ...s);
+    const B = blocks(sk, V);
+    const rowsOf = B.map(b => sparseRows(b.items, V));
+    const pmin = pivotMin(rowsOf);
+    const D = rowsOf.map(rows => reduceRows(rows, pmin));
+    // soglia unica per tutto lo schizzo, come con la matrice intera
+    let smax = 1e-12;
+    for (const d of D) smax = Math.max(smax, redSmax(d));
     const tol = 1e-8 * Math.max(1, smax);
-    let rank = 0; for (const x of s) if (x > tol) rank++;
+    let rank = 0;
+    for (const d of D) rank += redRank(d, tol);
     const dof = n - rank;
+    // incognite libere: quelle che nessun vincolo tocca, più quelle libere nei blocchi
+    const freeVar = new Set();
+    const inBlock = new Set(); for (const b of B) for (const i of b.vars) inBlock.add(i);
+    for (let i = 0; i < n; i++) if (!inBlock.has(i)) freeVar.add(i);
+    D.forEach((d, bi) => {
+      redFree(d, tol, freeVar);
+      // incognite del blocco con derivata nulla in tutte le righe (il vincolo le nomina ma non le muove): libere
+      const seen = new Set(); for (const R of d.rows) for (const j of R.keys()) seen.add(j);
+      for (const i of B[bi].vars) if (!seen.has(i)) freeVar.add(i);
+    });
     const free = new Set();
-    // variabili libere = componenti non nulle del nucleo
-    const freeVar = new Array(n).fill(false);
-    if (m === 0) freeVar.fill(true);
-    else if (Ut) {
-      // colonne di Ut = s_k · u_k, con u_k base ortonormale dello spazio delle righe di J; la variabile i è libera se e_i
-      // ha una parte nel nucleo: |P_nucleo e_i|² = 1 − Σ_k (Ut[i][k] / s_k)²  (> 10⁻¹², cioè una componente > 10⁻⁶)
-      for (let i = 0; i < n; i++) {
-        let q = 0; for (let k = 0; k < m; k++) if (s[k] > tol) { const u = Ut[i][k] / s[k]; q += u * u; }
-        if (1 - q > 1e-12) freeVar[i] = true;
-      }
-    } else {
-      const nullCols = [];
-      s.forEach((x, j) => { if (x <= tol) nullCols.push(j); });
-      for (const j of nullCols) for (let i = 0; i < n; i++) if (Math.abs(Vm[i][j]) > 1e-6) freeVar[i] = true;
-    }
-    V.vars.forEach(([e, k], i) => { if (freeVar[i]) free.add(e.id); });
+    V.vars.forEach(([e, k], i) => { if (freeVar.has(i)) free.add(e.id); });
     // entità composte: una linea è libera se lo è un suo estremo
-    const E = V.E;
     const freeEnt = new Set();
     for (const e of sk.ents) {
       if (e.t === 'pt' && free.has(e.id)) freeEnt.add(e.id);
@@ -1890,23 +2234,41 @@ label.chk .gl-i { margin-left: 2px; }
     return { dof, status, free: freeEnt, redundant, unsolved, rank, m, n };
   }
 
-  // rango del jacobiano dei vincoli
-  function rankOf(sk) {
+  // norma più grande delle righe di tutto lo schizzo (stima dal basso del valore singolare massimo)
+  function rowNormMax(sk) {
     const V = buildVars(sk);
-    const { J, r } = jacobian(sk, V);
-    const m = r.length, n = V.vars.length;
-    if (!m || !n) return { rank: 0, m, n };
-    const d = m < n ? svd(transpose(J, m, n), n, m) : svd(J, m, n);   // il rango è lo stesso: si scompone la forma più piccola
-    const smax = Math.max(1e-12, ...d.s);
-    let rank = 0; for (const x of d.s) if (x > 1e-8 * Math.max(1, smax)) rank++;
-    return { rank, m, n };
+    let mx = 0;
+    for (const R of sparseRows(rowItems(sk, V), V)) { let q = 0; for (const d of R.values()) q += d * d; if (q > mx) mx = q; }
+    return Math.sqrt(mx);
   }
-  // un nuovo vincolo è ridondante se non aumenta il rango di tante righe quante ne aggiunge
+  // rango delle righe di sub ({ents: archi, cons: vincoli}) rispetto alle incognite di sk; smin: valore singolare massimo
+  // almeno così grande (per usare la soglia di tutto lo schizzo, come lo stato dello schizzo)
+  function rankRows(sk, sub, smin = 0) {
+    const V = buildVars(sk);
+    const rows = sparseRows(rowItems(sub, V), V);
+    const red = reduceRows(rows, Math.max(pivotMin([rows]), 1e-5 * smin));
+    const tol = 1e-8 * Math.max(1, smin, redSmax(red));
+    return { rank: redRank(red, tol), m: red.m, n: V.vars.length };
+  }
+  // rango del jacobiano dei vincoli (tutto lo schizzo)
+  function rankOf(sk) { return rankRows(sk, sk); }
+  // un nuovo vincolo è ridondante se non aumenta il rango di tante righe quante ne aggiunge. Cambiano solo i blocchi
+  // che il vincolo tocca: il conto si fa su quelli (con «Fissa» le incognite toccate diventano costanti)
   function wouldOverdefine(sk, con) {
-    const a = rankOf(sk);
+    const V = buildVars(sk);
+    const B = blocks(sk, V);
+    const where = new Map();
+    B.forEach((b, bi) => b.vars.forEach(i => where.set(i, bi)));
+    const touched = new Set();
+    for (const i of depsOf(V, consIds(con))) if (where.has(i)) touched.add(where.get(i));
+    const sub = { ents: [], cons: [] };
+    for (const bi of [...touched].sort((a, b) => a - b)) { sub.ents.push(...B[bi].sk.ents); sub.cons.push(...B[bi].sk.cons); }
+    const g0 = rowNormMax(sk);
+    const a = rankRows(sk, sub, g0);
     sk.cons.push(con);
-    const b = rankOf(sk);
-    sk.cons.pop();
+    let b;
+    try { b = rankRows(sk, { ents: sub.ents, cons: sub.cons.concat([con]) }, Math.max(g0, rowNormMax(sk))); }
+    finally { sk.cons.pop(); }
     return (b.rank - a.rank) < (b.m - a.m);
   }
 
@@ -1937,6 +2299,57 @@ label.chk .gl-i { margin-left: 2px; }
     return 0;
   }
 
+  // nodi del grafo dei contorni: punti uniti per posizione (entro 10⁻⁶ mm). Una griglia trova i vicini senza guardare
+  // tutti i nodi; tra quelli abbastanza vicini si prende il primo creato, come facendo il giro di tutti
+  function nodeFinder(E, nodes) {
+    const h = 1e-6, grid = new Map();
+    const key = (i, j) => i + ',' + j;
+    return id => {
+      const p = E.get(id);
+      const gi = Math.floor(p.x / h), gj = Math.floor(p.y / h);
+      let best = -1;
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+        const list = grid.get(key(gi + di, gj + dj)); if (!list) continue;
+        for (const i of list) if ((best < 0 || i < best) && Math.hypot(nodes[i].x - p.x, nodes[i].y - p.y) < 1e-6) best = i;
+      }
+      if (best >= 0) return best;
+      nodes.push({ x: p.x, y: p.y, edges: [] });
+      const k = key(gi, gj);
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(nodes.length - 1);
+      return nodes.length - 1;
+    };
+  }
+  // rettangolo d'ingombro di un tratto di geoSegments, allargato di un margine (le intersezioni hanno tolleranze piccole)
+  function segBox(s) {
+    let x0, y0, x1, y1;
+    if (s.kind === 'l') { x0 = Math.min(s.a[0], s.b[0]); x1 = Math.max(s.a[0], s.b[0]); y0 = Math.min(s.a[1], s.b[1]); y1 = Math.max(s.a[1], s.b[1]); }
+    else { const r = Math.abs(s.r); x0 = s.c[0] - r; x1 = s.c[0] + r; y0 = s.c[1] - r; y1 = s.c[1] + r; }   // il cerchio intero contiene l'arco (raggio anche negativo, in uno schizzo rovinato)
+    const m = 1e-6 + 1e-6 * Math.max(x1 - x0, y1 - y0);
+    return [x0 - m, y0 - m, x1 + m, y1 + m];
+  }
+  // coppie di tratti con gli ingombri che si sovrappongono (le altre non possono intersecarsi): scorrimento lungo x.
+  // visit(i, j) con i < j; se restituisce true la ricerca si ferma
+  function boxPairs(segs, visit) {
+    const bx = segs.map(segBox);
+    const ord = segs.map((_, i) => i).sort((a, b) => bx[a][0] - bx[b][0]);
+    for (let p = 0; p < ord.length; p++) {
+      const i = ord[p], A = bx[i];
+      for (let q = p + 1; q < ord.length; q++) {
+        const j = ord[q], C = bx[j];
+        if (C[0] > A[2]) break;
+        if (C[1] > A[3] || C[3] < A[1]) continue;
+        if (visit(Math.min(i, j), Math.max(i, j))) return;
+      }
+    }
+  }
+  function polyBox(p) {
+    const b = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const q of p) { if (q[0] < b[0]) b[0] = q[0]; if (q[1] < b[1]) b[1] = q[1]; if (q[0] > b[2]) b[2] = q[0]; if (q[1] > b[3]) b[3] = q[1]; }
+    return b;
+  }
+  const inBox = (pt, b) => pt[0] >= b[0] && pt[0] <= b[2] && pt[1] >= b[1] && pt[1] <= b[3];
+
   /* ---------------- contorni chiusi ---------------- */
   // restituisce { regions: [{outer, holes}], loops, errors: [testo], axis: [linee di mezzeria] }
   function profiles(sk) {
@@ -1945,12 +2358,7 @@ label.chk .gl-i { margin-left: 2px; }
     const errors = [];
     // nodi: punti uniti per posizione
     const nodes = [];
-    const nodeOf = id => {
-      const p = E.get(id);
-      for (let i = 0; i < nodes.length; i++) if (Math.hypot(nodes[i].x - p.x, nodes[i].y - p.y) < 1e-6) return i;
-      nodes.push({ x: p.x, y: p.y, edges: [] });
-      return nodes.length - 1;
-    };
+    const nodeOf = nodeFinder(E, nodes);
     const loops = [];
     const edges = [];
     for (const g of geo) {
@@ -1965,17 +2373,18 @@ label.chk .gl-i { margin-left: 2px; }
         const ed = { g, ia, ib }; edges.push(ed); nodes[ia].edges.push(ed); nodes[ib].edges.push(ed);
       }
     }
-    // controllo delle intersezioni tra entità (non ammesse se non negli estremi)
+    // controllo delle intersezioni tra entità (non ammesse se non negli estremi); si guardano solo le coppie vicine
     const segs = geoSegments(sk, geo);
-    cross: for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
+    boxPairs(segs, (i, j) => {
       const pts = intersectSeg(segs[i], segs[j]);
-      if (pts.length && touchOnly(segs[i], segs[j])) continue;
+      if (pts.length && touchOnly(segs[i], segs[j])) return false;
       for (const p of pts) {
         const atEndI = segs[i].ends.some(q => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1e-6);
         const atEndJ = segs[j].ends.some(q => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1e-6);
-        if (!(atEndI && atEndJ)) { errors.push('Alcune entità si intersecano: usa «Taglia entità» per eliminare le parti in più, così i contorni sono chiusi e separati.'); break cross; }
+        if (!(atEndI && atEndJ)) { errors.push('Alcune entità si intersecano: usa «Taglia entità» per eliminare le parti in più, così i contorni sono chiusi e separati.'); return true; }
       }
-    }
+      return false;
+    });
     for (const n of nodes) {
       if (n.edges.length === 1) errors.push('Il contorno è aperto: un estremo non è collegato a nessun\'altra entità.');
       else if (n.edges.length > 2) errors.push('Tre o più entità si incontrano nello stesso punto: il contorno deve essere una linea chiusa senza diramazioni.');
@@ -1986,8 +2395,7 @@ label.chk .gl-i { margin-left: 2px; }
         if (used.has(start)) continue;
         const loop = [];
         let cur = start, from = start.ia;
-        let guard = 0;
-        while (cur && !used.has(cur) && guard++ < 10000) {
+        while (cur && !used.has(cur)) {
           used.add(cur);
           const to = cur.ia === from ? cur.ib : cur.ia;
           loop.push(segOf(E, cur.g, from === cur.ia));
@@ -1997,16 +2405,18 @@ label.chk .gl-i { margin-left: 2px; }
         loops.push(loop);
       }
     }
-    // regioni: annidamento pari/dispari
+    // regioni: annidamento pari/dispari (un contorno può stare dentro un altro solo se è nel suo ingombro)
     const polys = loops.map(l => sampleLoop(l));
+    const boxes = polys.map(polyBox);
     const exactArea = loops.map(loopArea);
     const areas = polys.map(p => polyArea(p));
-    const depth = polys.map((p, i) => polys.reduce((s, q, j) => s + (j !== i && Math.abs(areas[j]) > Math.abs(areas[i]) && pointInPoly(p[0], q) ? 1 : 0), 0));
+    const inside = (i, j) => inBox(polys[i][0], boxes[j]) && pointInPoly(polys[i][0], polys[j]);   // il contorno i è dentro j
+    const depth = polys.map((p, i) => polys.reduce((s, q, j) => s + (j !== i && Math.abs(areas[j]) > Math.abs(areas[i]) && inside(i, j) ? 1 : 0), 0));
     const regions = [];
     polys.forEach((p, i) => {
       if (depth[i] % 2) return;
       const holes = [];
-      polys.forEach((q, j) => { if (depth[j] === depth[i] + 1 && pointInPoly(q[0], p)) holes.push(loops[j]); });
+      polys.forEach((q, j) => { if (depth[j] === depth[i] + 1 && inside(j, i)) holes.push(loops[j]); });
       regions.push({ outer: loops[i], holes, area: Math.abs(exactArea[i]) - holes.reduce((s, h) => s + Math.abs(loopArea(h)), 0) });
     });
     const axes = sk.ents.filter(e => e.t === 'ln' && e.center).map(l => { const a = E.get(l.a), b = E.get(l.b); return { id: l.id, a: [a.x, a.y], b: [b.x, b.y] }; });
@@ -2017,11 +2427,7 @@ label.chk .gl-i { margin-left: 2px; }
     const E = byId(sk);
     const geo = sk.ents.filter(e => (e.t === 'ln' || e.t === 'ar' || e.t === 'ci') && !e.cons && !e.ext);
     const nodes = [], edges = [], out = [], errors = [];
-    const nodeOf = id => {
-      const p = E.get(id);
-      for (let i = 0; i < nodes.length; i++) if (Math.hypot(nodes[i].x - p.x, nodes[i].y - p.y) < 1e-6) return i;
-      nodes.push({ x: p.x, y: p.y, edges: [] }); return nodes.length - 1;
-    };
+    const nodeOf = nodeFinder(E, nodes);
     for (const g of geo) {
       if (g.t === 'ci') { const c = E.get(g.c); out.push({ segs: [{ type: 'arc', c: [c.x, c.y], r: g.r, a0: 0, a1: TAU, id: g.id }], closed: true }); continue; }
       if (g.t === 'ln') { const a = E.get(g.a), b = E.get(g.b); if (Math.hypot(a.x - b.x, a.y - b.y) < 1e-9) continue; }
@@ -2036,8 +2442,8 @@ label.chk .gl-i { margin-left: 2px; }
       for (const start of starts) {
         if (used.has(start)) continue;
         let from = nodes[start.ia].edges.length === 1 ? start.ia : nodes[start.ib].edges.length === 1 ? start.ib : start.ia;
-        const segs = []; let cur = start, guard = 0;
-        while (cur && !used.has(cur) && guard++ < 10000) {
+        const segs = []; let cur = start;
+        while (cur && !used.has(cur)) {
           used.add(cur);
           const to = cur.ia === from ? cur.ib : cur.ia;
           segs.push(segOf(E, cur.g, from === cur.ia));
@@ -2552,7 +2958,6 @@ self.onmessage = async ev => {
   const DXF_UNITS = { 1: 'in', 2: 'ft', 4: 'mm', 5: 'cm', 6: 'm', 8: 'uin', 9: 'mil', 13: 'um', 14: 'dm' };
   const DXF_SCALE = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8, uin: 25.4e-6, mil: 0.0254, um: 0.001, dm: 100 };
   const DXF_IGNORED = { TEXT: 'testi', MTEXT: 'testi', DIMENSION: 'quote', HATCH: 'tratteggi', SOLID: 'riempimenti', POINT: 'punti', ELLIPSE: 'ellissi', SPLINE: 'curve spline', LEADER: 'richiami', MLEADER: 'richiami', '3DFACE': 'facce 3D', ATTRIB: 'attributi', ATTDEF: 'attributi', IMAGE: 'immagini', VIEWPORT: 'finestre', WIPEOUT: 'mascherature', RAY: 'semirette', XLINE: 'rette infinite', TOLERANCE: 'tolleranze', INSERT: 'blocchi' };
-  const DXF_MAXENT = 3000;
 
   /* ---- ellissi e spline: approssimazione con archi tangenti (biarchi) ---- */
   // scostamento massimo ammesso tra la curva vera e gli archi: 1/10 000 della dimensione della curva
@@ -3086,7 +3491,6 @@ self.onmessage = async ev => {
   function dxfToSketch(sk, geo, opts = {}) {
     const sc = opts.scale || 1;
     if (!geo.length) throw new Error('Nel file non ci sono linee, archi o cerchi da importare.');
-    if (geo.length > DXF_MAXENT) throw new Error(`Il file ha ${geo.length.toLocaleString('it-IT')} entità: il massimo è ${DXF_MAXENT.toLocaleString('it-IT')}. Tieni nel DXF solo il contorno del pezzo (senza cartiglio, quote e tratteggi) e riprova.`);
     // ingombro e origine dal contorno vero (gli assi spesso sporgono)
     const solid = geo.filter(g => !g.kind);
     const bb = dxfBox(solid.length ? solid : geo);
@@ -3199,7 +3603,7 @@ self.onmessage = async ev => {
     throw new Error(names.some(x => /\.dwg$/i.test(x)) ? 'Nello zip c\'è un DWG, non un DXF: convertilo prima con il Convertitore DWG → DXF.' : 'Nello zip non c\'è nessun file .dxf.');
   }
 
-  const api = { unzipDxf, parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS, parseDXF, dxfToSketch, DXF_SCALE, DXF_UNITS, DXF_MAXENT, pickBodies, cadWorkerSource, DXF_CURVE_TOL, curveToArcs, nurbsEval, fitSpline, loadOCCT, readCAD, cadKind, CAD_EXT, CAD_LEVELS, CAD_MAX };
+  const api = { unzipDxf, parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS, parseDXF, dxfToSketch, DXF_SCALE, DXF_UNITS, pickBodies, cadWorkerSource, DXF_CURVE_TOL, curveToArcs, nurbsEval, fitSpline, loadOCCT, readCAD, cadKind, CAD_EXT, CAD_LEVELS, CAD_MAX };
   if (typeof module !== 'undefined') module.exports = api; else root.Import = api;
 })(this);
 
@@ -6498,7 +6902,7 @@ self.onmessage = async ev => {
       const box = $('#dxfLayers');
       if (cur.layers) {
         box.innerHTML = `<div class="lh"><b>Layer da importare</b><button type="button" data-all="1">Tutti</button><button type="button" data-all="0">Nessuno</button></div>` +
-          cur.layers.map(l => `<label class="chk"><input type="checkbox" data-ly="${esc(l.name)}" ${l.off ? '' : 'checked'}> ${esc(l.name)}${l.off ? ' <i>(spento nel file)</i>' : ''}<span class="n">${l.count} entità</span></label>`).join('');
+          cur.layers.map(l => `<label class="chk"><input type="checkbox" data-ly="${esc(l.name)}" ${l.off ? '' : 'checked'}> ${esc(l.name)}${l.off ? ' <i>(spento nel file)</i>' : ''}<span class="n">${l.count.toLocaleString('it-IT')} entità nel file</span></label>`).join('');
         box.hidden = false;
         box.querySelectorAll('input[data-ly]').forEach(x => x.addEventListener('change', drawDxfPreview));
         box.querySelectorAll('button[data-all]').forEach(b => b.addEventListener('click', () => { box.querySelectorAll('input[data-ly]').forEach(x => { x.checked = b.dataset.all === '1'; }); drawDxfPreview(); }));
@@ -6543,8 +6947,7 @@ self.onmessage = async ev => {
         stroke(paths.cons, 'var(--ink-3)', '5 4') + stroke(paths.center, 'var(--accent)', '10 3 2 3') + stroke(paths.n, 'var(--ink)') +
         `<path d="M${P([O[0] - cs, O[1]])}L${P([O[0] + cs, O[1]])}M${P([O[0], O[1] - cs])}L${P([O[0], O[1] + cs])}" stroke="#d92d20" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
       const n = r.geo.length, fmtN = x => (Math.round(x * k * 100) / 100).toLocaleString('it-IT');
-      cap.textContent = `${n.toLocaleString('it-IT')} entità · ingombro ${fmtN(w)} × ${fmtN(h)} mm (unità: ${DXF_UNIT_NAMES[unit] || unit}${r.unit || $('#dxfUnit').value !== 'file' ? '' : ', il file non la dice'})`;
-      if (n > Import.DXF_MAXENT) { cap.textContent += ` — troppe: il massimo è ${Import.DXF_MAXENT.toLocaleString('it-IT')}, togli qualche layer.`; cap.classList.add('warn'); }
+      cap.textContent = `${n.toLocaleString('it-IT')} tra linee, archi e cerchi (polilinee e blocchi divisi nei loro tratti) · ingombro ${fmtN(w)} × ${fmtN(h)} mm (unità: ${DXF_UNIT_NAMES[unit] || unit}${r.unit || $('#dxfUnit').value !== 'file' ? '' : ', il file non la dice'})`;
     }
   }
   function importDxfData(name, data, opts = {}) {
@@ -6556,7 +6959,6 @@ self.onmessage = async ev => {
     const unit = opts.unit && opts.unit !== 'file' ? opts.unit : (r.unit || 'mm');
     const scale = Import.DXF_SCALE[unit];
     if (!r.geo.length) throw new Error('Nel file non ci sono linee, archi o cerchi da importare' + (Object.keys(r.skipped).length ? ' (solo ' + Object.keys(r.skipped).join(', ') + ').' : '.'));
-    if (r.geo.length > Import.DXF_MAXENT) throw new Error(`${opts.layers ? 'I layer scelti hanno' : 'Il file ha'} ${r.geo.length.toLocaleString('it-IT')} entità: il massimo è ${Import.DXF_MAXENT.toLocaleString('it-IT')}. Togli la spunta ai layer che non servono (cartiglio, squadratura) o tieni nel DXF solo il contorno del pezzo, e riprova.`);
     if (App.mode === 'drawing') App.setCmdTab('features');
     if (App.mode !== 'sketch') {
       if (App.pm) App.closePM(false);
@@ -6901,10 +7303,13 @@ self.onmessage = async ev => {
 
   /* ---------------- modifiche con annulla ---------------- */
   function snap() { return JSON.stringify(ss.sk); }
+  // passi di Annulla nello schizzo: con uno schizzo grande (una tavola DXF da 1 MB) ogni passo occupa molta memoria,
+  // se ne tengono meno (come per il progetto)
+  function trimUndo(s) { const max = s.length > 1e6 ? 15 : s.length > 2e5 ? 40 : 100; while (ss.undo.length > max) ss.undo.shift(); }
   function edit(fn) {
     const before = snap();
     const r = fn();
-    ss.undo.push(before); if (ss.undo.length > 100) ss.undo.shift();
+    ss.undo.push(before); trimUndo(before);
     ss.redo.length = 0;
     solveAndAnalyze();
     return r;
@@ -6934,7 +7339,17 @@ self.onmessage = async ev => {
   }
 
   /* ---------------- entità ---------------- */
-  const E = () => S.byId(ss.sk);
+  // mappa id → entità dello schizzo aperto. Si rifà solo quando lo schizzo cambia (altro schizzo o altro elenco, entità
+  // aggiunte o tolte: cambiano il numero, il contatore degli id o gli estremi dell'elenco). Rifarla a ogni chiamata
+  // (una per arco mentre il mouse passa sul disegno) con migliaia di entità bloccava la pagina per secondi.
+  let eCache = null;
+  const E = () => {
+    const sk = ss.sk, ents = sk.ents, n = ents.length;
+    const c = eCache;
+    if (c && c.sk === sk && c.ents === ents && c.n === n && c.next === sk.next && c.first === ents[0] && c.last === ents[n - 1]) return c.m;
+    eCache = { sk, ents, n, next: sk.next, first: ents[0], last: ents[n - 1], m: S.byId(sk) };
+    return eCache.m;
+  };
   function nid(p) { return p + (ss.sk.next++); }
   function addPt(x, y, extra = {}) { const id = nid('p'); ss.sk.ents.push({ id, t: 'pt', x, y, ...extra }); return id; }
   function addEnt(o) { o.id = nid(o.t === 'ln' ? 'l' : o.t === 'ci' ? 'c' : o.t === 'ar' ? 'a' : 'e'); ss.sk.ents.push(o); return o.id; }
@@ -7102,8 +7517,8 @@ self.onmessage = async ev => {
       return;
     }
     // fine trascinamento
-    if (d.h.kind === 'dim') { ss.undo.push(d.before); ss.redo.length = 0; }
-    else { ss.undo.push(d.before); ss.redo.length = 0; solveAndAnalyze(); }
+    if (d.h.kind === 'dim') { ss.undo.push(d.before); trimUndo(d.before); ss.redo.length = 0; }
+    else { ss.undo.push(d.before); trimUndo(d.before); ss.redo.length = 0; solveAndAnalyze(); }
   };
   SK.click = function (sx, sy, e) {
     // clic nel vuoto (non intercettato da down)
@@ -7686,14 +8101,14 @@ self.onmessage = async ev => {
     // ridondante? allora la proponiamo come quota condotta
     if (S.wouldOverdefine(ss.sk, { ...c })) {
       ss.sk.cons.push({ ...c, driven: true });
-      ss.undo.push(before); ss.redo.length = 0;
+      ss.undo.push(before); trimUndo(before); ss.redo.length = 0;
       ss.ts = null;
       analyze(); showProps(); A().redraw();
       A().toast('Questa quota renderebbe lo schizzo sovradefinito: è stata aggiunta come quota condotta (solo lettura, tra parentesi).', 4500);
       return;
     }
     ss.sk.cons.push(c);
-    ss.undo.push(before); ss.redo.length = 0;
+    ss.undo.push(before); trimUndo(before); ss.redo.length = 0;
     ss.ts = null;
     analyze();
     openModify(c.id, true);
@@ -7753,7 +8168,7 @@ self.onmessage = async ev => {
       A().toast('Con questo valore lo schizzo non si può risolvere: prova un valore diverso.');
       return;
     }
-    if (!modifyNew) { ss.undo.push(before); ss.redo.length = 0; }
+    if (!modifyNew) { ss.undo.push(before); trimUndo(before); ss.redo.length = 0; }
     closeModify();
     analyze(); showProps(); A().redraw();
   }
@@ -8219,20 +8634,38 @@ self.onmessage = async ev => {
     // assi dello schizzo attraverso l'origine (tratteggiati, come riferimento)
     c.save();
     c.lineWidth = 1;
-    // entità
+    // entità e punti raggruppati per aspetto (colore, spessore, tratteggio): un solo comando di disegno per gruppo invece
+    // di uno per entità (una tavola DXF ne ha migliaia). Il tratteggio riparte all'inizio di ogni entità come prima.
+    // Si disegnano per ultimi i gruppi in evidenza (selezione, sotto il mouse), così restano sopra.
+    const rank = col => col === '#e8900c' ? 3 : col === '#1f6fe0' ? 2 : col === '#d1241a' ? 1 : 0;
+    const groups = new Map();
+    const pathOf = (col, w, dash) => {
+      const k = col + '|' + w + '|' + dash;
+      let g = groups.get(k);
+      if (!g) { g = { col, w, dash, path: new Path2D() }; groups.set(k, g); }
+      return g.path;
+    };
     for (const e of ss.sk.ents) {
       if (e.t === 'pt') continue;
-      c.strokeStyle = colorOf(e);
-      c.lineWidth = ss.sel.has(e.id) || (ss.hover && ss.hover.id === e.id) ? 2.6 : (e.cons ? 1.2 : 1.8);
-      if (e.center) c.setLineDash([12, 4, 2, 4]); else if (e.cons) c.setLineDash([6, 4]); else if (e.ext) c.setLineDash([]); else c.setLineDash([]);
-      c.beginPath();
-      if (e.t === 'ln') { const a = m.get(e.a), b = m.get(e.b); const p = scr(a.x, a.y), q = scr(b.x, b.y); c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]); }
-      else if (e.t === 'ci') { const ce = m.get(e.c); polyArc(c, ce.x, ce.y, e.r, 0, TAU); }
-      else if (e.t === 'ar') { const ce = m.get(e.c), a = m.get(e.a), b = m.get(e.b); const r = Math.hypot(a.x - ce.x, a.y - ce.y); let a0 = Math.atan2(a.y - ce.y, a.x - ce.x), a1 = Math.atan2(b.y - ce.y, b.x - ce.x); while (a1 <= a0) a1 += TAU; polyArc(c, ce.x, ce.y, r, a0, a1); }
-      c.stroke();
+      const w = ss.sel.has(e.id) || (ss.hover && ss.hover.id === e.id) ? 2.6 : (e.cons ? 1.2 : 1.8);
+      const P = pathOf(colorOf(e), w, e.center ? 'mezzeria' : e.cons ? 'costruzione' : '');
+      if (e.t === 'ln') { const a = m.get(e.a), b = m.get(e.b); const p = scr(a.x, a.y), q = scr(b.x, b.y); P.moveTo(p[0], p[1]); P.lineTo(q[0], q[1]); }
+      else if (e.t === 'ci') { const ce = m.get(e.c); polyArc(P, ce.x, ce.y, e.r, 0, TAU); }
+      else if (e.t === 'ar') { const ce = m.get(e.c), a = m.get(e.a), b = m.get(e.b); const r = Math.hypot(a.x - ce.x, a.y - ce.y); let a0 = Math.atan2(a.y - ce.y, a.x - ce.x), a1 = Math.atan2(b.y - ce.y, b.x - ce.x); while (a1 <= a0) a1 += TAU; polyArc(P, ce.x, ce.y, r, a0, a1); }
+    }
+    for (const g of [...groups.values()].sort((p, q) => rank(p.col) - rank(q.col))) {
+      c.strokeStyle = g.col; c.lineWidth = g.w;
+      c.setLineDash(g.dash === 'mezzeria' ? [12, 4, 2, 4] : g.dash === 'costruzione' ? [6, 4] : []);
+      c.stroke(g.path);
     }
     c.setLineDash([]);
-    // punti
+    // punti: quelli usati da linee, archi o cerchi sono più piccoli (insieme calcolato una volta, non per ogni punto)
+    const used = new Set();
+    for (const x of ss.sk.ents) {
+      if (x.t === 'ln' || x.t === 'ar') { used.add(x.a); used.add(x.b); }
+      if (x.t === 'ci' || x.t === 'ar') used.add(x.c);
+    }
+    const dots = new Map();
     for (const e of ss.sk.ents) {
       if (e.t !== 'pt' || e.hc) continue;
       const q = scr(e.x, e.y);
@@ -8242,13 +8675,14 @@ self.onmessage = async ev => {
         c.fillStyle = '#c0392b'; c.beginPath(); c.arc(q[0], q[1], 2.6, 0, TAU); c.fill();
         continue;
       }
-      const used = ss.sk.ents.some(x => (x.t === 'ln' || x.t === 'ar') && (x.a === e.id || x.b === e.id)) || ss.sk.ents.some(x => (x.t === 'ci' || x.t === 'ar') && x.c === e.id);
-      c.fillStyle = colorOf(e);
       if (e.hole) { c.strokeStyle = colorOf(e); c.lineWidth = 1.5; c.beginPath(); c.arc(q[0], q[1], 6, 0, TAU); c.moveTo(q[0] - 9, q[1]); c.lineTo(q[0] + 9, q[1]); c.moveTo(q[0], q[1] - 9); c.lineTo(q[0], q[1] + 9); c.stroke(); continue; }
       if (e.virtual) { c.strokeStyle = colorOf(e); c.lineWidth = 1; c.beginPath(); c.moveTo(q[0] - 4, q[1] - 4); c.lineTo(q[0] + 4, q[1] + 4); c.moveTo(q[0] + 4, q[1] - 4); c.lineTo(q[0] - 4, q[1] + 4); c.stroke(); continue; }
-      const r = ss.sel.has(e.id) || (ss.hover && ss.hover.id === e.id) ? 4 : (used ? 2.4 : 3.2);
-      c.beginPath(); c.arc(q[0], q[1], r, 0, TAU); c.fill();
+      const r = ss.sel.has(e.id) || (ss.hover && ss.hover.id === e.id) ? 4 : (used.has(e.id) ? 2.4 : 3.2);
+      const col = colorOf(e), k = col + '|' + r;
+      if (!dots.has(k)) dots.set(k, { col, path: new Path2D() });
+      const P = dots.get(k).path; P.moveTo(q[0] + r, q[1]); P.arc(q[0], q[1], r, 0, TAU);
     }
+    for (const g of [...dots.values()].sort((p, q) => rank(p.col) - rank(q.col))) { c.fillStyle = g.col; c.fill(g.path); }
     // relazioni (simboli)
     if (ss.showRel !== false) drawRelations(c, m, font);
     // quote
@@ -11628,6 +12062,7 @@ const path = isNode ? require('path') : null;
 const dir = isNode ? path.resolve(process.argv[2] || path.join(__dirname, 'core')) : null;
 const Model = isNode ? require(path.join(dir, 'model.js')) : root.Model;
 const Sketch = isNode ? require(path.join(dir, 'sketch.js')) : root.Sketch;
+const Geom = isNode ? require(path.join(dir, 'geom.js')) : root.Geom;
 const TOL = isNode ? +(process.env.TOL || 0.01) : 0.01;
 const PI = Math.PI;
 
@@ -12061,6 +12496,24 @@ T('DXF: flangia con angoli raggiati R10 (LWPOLYLINE), 4 fori Ø8 e foro Ø28', (
   const doc = D0('flangia'); feat(doc, { type: 'extrude', sketch: sketch(doc, STD('top'), b), end: 'blind', depth: 12 }); return doc;
 }, { V: 12 * (6000 - (4 - PI) * 100 - 4 * PI * 16 - PI * 196), C: [50, 6, -30], bb: [[0, 0, -60], [100, 12, 0]] });
 
+/* ---------- DXF grandi (oltre il vecchio limite di 3000 entità) ---------- */
+// piastra 600×600 con una griglia 20×20 di fori a passo 28: 360 ottagoni regolari (raggio 6, 8 LINE da una LWPOLYLINE)
+// e 40 asole (interasse 10, raggio 4: 2 linee e 2 semicerchi). Entità: 4 + 360·8 + 40·4 = 3044
+const BIG = (() => {
+  const ents = [dPoly([[-300, -300], [300, -300], [300, 300], [-300, 300]], true)], oct = [], slots = [];
+  for (let i = 0; i < 20; i++) for (let j = 0; j < 20; j++) {
+    const x = -266 + 28 * i, y = -266 + 28 * j;
+    if ((i * 20 + j) % 10 === 3) { ents.push(dPoly([[x - 5, y - 4], [x + 5, y - 4, 1], [x + 5, y + 4], [x - 5, y + 4, 1]], true)); slots.push([x, y]); }
+    else { const R = 6, q = []; for (let k = 0; k < 8; k++) q.push([x + R * Math.cos(PI / 8 + k * PI / 4), y + R * Math.sin(PI / 8 + k * PI / 4)]); ents.push(dPoly(q, true)); oct.push([x, y]); }
+  }
+  const nO = oct.length, nS = slots.length;
+  // area: piastra − ottagoni (2√2·R²) − asole (rettangolo 10×8 + cerchio R4)
+  const area = 360000 - nO * 2 * Math.SQRT2 * 36 - nS * (80 + 16 * PI);
+  return { text: dxfFile(ents), nO, nS, area, ents: 4 + 8 * nO + 4 * nS };
+})();
+T('DXF grande, 3044 entità (oltre il vecchio limite di 3000): piastra 600×600 con 360 fori ottagonali e 40 asole, estrusa 10', () => dxfPart(BIG.text),
+  { V: 10 * BIG.area, bb: [[-300, -300, 0], [300, 300, 10]] });
+
 /* ---------- DXF: ellissi e spline (diventano archi tangenti) ---------- */
 // ELLIPSE: centro, estremo del semiasse maggiore (relativo al centro), rapporto minore/maggiore, parametri iniziale e finale (radianti)
 const dEll = (cx, cy, mx, my, ratio, t0 = 0, t1 = 2 * PI, nz = 1) => ['0', 'ELLIPSE', '8', '0', '10', cx, '20', cy, '30', 0, '11', mx, '21', my, '31', 0, '210', 0, '220', 0, '230', nz, '40', ratio, '41', t0, '42', t1];
@@ -12326,6 +12779,50 @@ SK.push(['Schizzo con due linee incrociate (più un\'altra): messaggio «si inte
   const b = SB(); b.line(b.pt(0, 0), b.pt(10, 10)); b.line(b.pt(0, 10), b.pt(10, 0)); b.line(b.pt(20, 0), b.pt(30, 0));
   const p = Sketch.profiles(b.s);
   return { ok: true, got: [p.errors.some(e => /si intersecano/.test(e)) ? 1 : 0], exp: [1] };
+}]);
+
+// schizzi grandi: niente limite, calcoli a blocchi. I conteggi (interi) devono essere esatti, non entro l'1 %
+const sameInts = (got, exp) => got.every((g, i) => !Number.isInteger(exp[i]) || g === exp[i]);
+SK.push(['DXF grande, 3044 entità: schizzo, stato (gradi di libertà e rango contati a mano) e contorni (area a mano)', () => {
+  const r = MI.parseDXF(BIG.text); const b = SB(); const info = MI.dxfToSketch(b.s, r.geo, {});
+  const t = Date.now(); const a = Sketch.analyze(b.s); const p = Sketch.profiles(b.s); const ms = Date.now() - t;
+  // incognite: x e y dei punti (4 della piastra, 8 per ottagono, 4 + 2 centri per asola); vincoli: uno per arco (raggio costante)
+  const P = 4 + 8 * BIG.nO + 6 * BIG.nS;
+  const got = [r.geo.length, info.count.line, info.count.arc, a.n, a.rank, a.dof, a.free.size, p.regions.length, p.regions[0].holes.length, p.regions[0].area];
+  const exp = [BIG.ents, 4 + 8 * BIG.nO + 2 * BIG.nS, 2 * BIG.nS, 2 * P, 2 * BIG.nS, 2 * P - 2 * BIG.nS, b.s.ents.length - 1, 1, BIG.nO + BIG.nS, BIG.area];
+  return { ok: a.status === 'under' && !p.errors.length && ms < 30000 && sameInts(got, exp), got, exp };
+}]);
+SK.push(['Schizzo grande: un vertice trascinato va sotto il mouse e il resto non si muove; «Orizzontale» su un lato orizzontale sì, ripetuto no', () => {
+  const r = MI.parseDXF(BIG.text); const b = SB(); MI.dxfToSketch(b.s, r.geo, {});
+  const E = Sketch.byId(b.s);
+  // vertice dell'ottagono nel primo foro (−266, −266): quello a 22,5°
+  const vx = -266 + 6 * Math.cos(PI / 8), vy = -266 + 6 * Math.sin(PI / 8);
+  const v = b.s.ents.find(e => e.t === 'pt' && Math.hypot(e.x - vx, e.y - vy) < 1e-9);
+  const before = b.s.ents.filter(e => e.t === 'pt' && e !== v).map(e => [e.x, e.y]);
+  const res = Sketch.solve(b.s, { drag: { id: v.id, x: vx + 3, y: vy - 2 } });
+  const moved = b.s.ents.filter(e => e.t === 'pt' && e !== v).filter((e, k) => Math.abs(e.x - before[k][0]) > 1e-12 || Math.abs(e.y - before[k][1]) > 1e-12).length;
+  // lato in basso dell'ottagono del secondo foro (vertici a 247,5° e 292,5°): è orizzontale
+  const y0 = -238 + 6 * Math.sin(PI / 8 + 5 * PI / 4);
+  const low = b.s.ents.find(e => e.t === 'ln' && Math.abs(E.get(e.a).y - y0) < 1e-9 && Math.abs(E.get(e.b).y - y0) < 1e-9 && Math.abs(E.get(e.a).x + 266) < 7);
+  const c = { id: 'kh1', t: 'horizontal', e: [low.id] };
+  const first = Sketch.wouldOverdefine(b.s, c); b.s.cons.push(c);
+  const second = Sketch.wouldOverdefine(b.s, { id: 'kh2', t: 'horizontal', e: [low.id] });
+  return { ok: res.ok && !first && second && moved === 0, got: [v.x, v.y, moved], exp: [vx + 3, vy - 2, 0] };
+}]);
+SK.push(['Contorno di 12 000 lati (LWPOLYLINE): una regione con l\'area del poligono (prima il giro si fermava a 10 000 lati)', () => {
+  const N = 12000, R = 300, q = [];
+  for (let k = 0; k < N; k++) q.push([R * Math.cos(2 * PI * k / N), R * Math.sin(2 * PI * k / N)]);
+  const r = MI.parseDXF(dxfFile([dPoly(q, true)])); const b = SB(); MI.dxfToSketch(b.s, r.geo, {});
+  const p = Sketch.profiles(b.s), c = Sketch.chains(b.s);
+  const got = [p.regions.length, p.loops[0].length, p.regions[0].area, c.chains.length, c.chains[0].segs.length, c.chains[0].closed ? 1 : 0], exp = [1, N, N * R * R * Math.sin(2 * PI / N) / 2, 1, N, 1];
+  return { ok: !p.errors.length && !c.errors.length && sameInts(got, exp), got, exp };
+}]);
+SK.push(['Faccia di 100 100 vertici divisa in triangoli: 100 098 triangoli con l\'area del poligono (prima si fermava a 100 000 passi)', () => {
+  const N = 100100, R = 500, q = [];
+  for (let k = 0; k < N; k++) q.push([R * Math.cos(2 * PI * k / N), R * Math.sin(2 * PI * k / N)]);
+  const tr = Geom.triangulate(q, []);
+  let A = 0; for (const [i, j, k] of tr) A += ((q[j][0] - q[i][0]) * (q[k][1] - q[i][1]) - (q[j][1] - q[i][1]) * (q[k][0] - q[i][0])) / 2;
+  return { ok: tr.length === N - 2, got: [tr.length, A], exp: [N - 2, N * R * R * Math.sin(2 * PI / N) / 2] };
 }]);
 
 // STEP: se i triangoli sono troppi si rilegge il file con triangoli più grandi (livello successivo)
@@ -12608,7 +13105,7 @@ if (isNode) {
       'Le entità arrivano selezionate e blu ([[Sotto definito]]): controlla che i contorni siano chiusi, poi premi ✓. Le [[Ellisse|ellissi]] e le [[Spline|spline]] arrivano come catene di archi tangenti ([[Biarco|biarchi]]).',
       'Seleziona lo schizzo e usa **Estrusione base**, oppure **Rivoluzione base** se c\'è una [[Linea di mezzeria]].',
     ],
-    tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Il messaggio finale dice in quanti archi è stata divisa ogni ellisse o spline e lo [[Scostamento dalla curva]]: di solito pochi millesimi di millimetro.', 'Al massimo 3000 entità: togli i layer che non servono, oppure pulisci il disegno prima (una spline lunga e tortuosa può diventare molti archi).', 'I layer spenti o congelati nel file partono senza spunta.', 'Puoi scegliere anche uno **.zip** con il DXF dentro: è così che il Convertitore DWG → DXF salva i file nella pagina pubblicata.'],
+    tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Il messaggio finale dice in quanti archi è stata divisa ogni ellisse o spline e lo [[Scostamento dalla curva]]: di solito pochi millesimi di millimetro.', 'Si importano anche tavole intere, con migliaia di entità; per avere solo il pezzo togli la spunta ai layer che non servono (cartiglio, squadratura, quote).', 'I layer spenti o congelati nel file partono senza spunta.', 'Puoi scegliere anche uno **.zip** con il DXF dentro: è così che il Convertitore DWG → DXF salva i file nella pagina pubblicata.'],
     terms: ['Inserisci DXF', 'File DXF', 'Convertitore DWG → DXF', 'Layer', 'Tipo di linea', 'Unità del file', 'Ellisse', 'Spline', 'Biarco', 'Scostamento dalla curva'],
   });
   add('Schizzo', 'sk-converti', 'Converti entità', {

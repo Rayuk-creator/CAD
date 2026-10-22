@@ -7,6 +7,7 @@ const path = isNode ? require('path') : null;
 const dir = isNode ? path.resolve(process.argv[2] || path.join(__dirname, 'core')) : null;
 const Model = isNode ? require(path.join(dir, 'model.js')) : root.Model;
 const Sketch = isNode ? require(path.join(dir, 'sketch.js')) : root.Sketch;
+const Geom = isNode ? require(path.join(dir, 'geom.js')) : root.Geom;
 const TOL = isNode ? +(process.env.TOL || 0.01) : 0.01;
 const PI = Math.PI;
 
@@ -440,6 +441,24 @@ T('DXF: flangia con angoli raggiati R10 (LWPOLYLINE), 4 fori Ø8 e foro Ø28', (
   const doc = D0('flangia'); feat(doc, { type: 'extrude', sketch: sketch(doc, STD('top'), b), end: 'blind', depth: 12 }); return doc;
 }, { V: 12 * (6000 - (4 - PI) * 100 - 4 * PI * 16 - PI * 196), C: [50, 6, -30], bb: [[0, 0, -60], [100, 12, 0]] });
 
+/* ---------- DXF grandi (oltre il vecchio limite di 3000 entità) ---------- */
+// piastra 600×600 con una griglia 20×20 di fori a passo 28: 360 ottagoni regolari (raggio 6, 8 LINE da una LWPOLYLINE)
+// e 40 asole (interasse 10, raggio 4: 2 linee e 2 semicerchi). Entità: 4 + 360·8 + 40·4 = 3044
+const BIG = (() => {
+  const ents = [dPoly([[-300, -300], [300, -300], [300, 300], [-300, 300]], true)], oct = [], slots = [];
+  for (let i = 0; i < 20; i++) for (let j = 0; j < 20; j++) {
+    const x = -266 + 28 * i, y = -266 + 28 * j;
+    if ((i * 20 + j) % 10 === 3) { ents.push(dPoly([[x - 5, y - 4], [x + 5, y - 4, 1], [x + 5, y + 4], [x - 5, y + 4, 1]], true)); slots.push([x, y]); }
+    else { const R = 6, q = []; for (let k = 0; k < 8; k++) q.push([x + R * Math.cos(PI / 8 + k * PI / 4), y + R * Math.sin(PI / 8 + k * PI / 4)]); ents.push(dPoly(q, true)); oct.push([x, y]); }
+  }
+  const nO = oct.length, nS = slots.length;
+  // area: piastra − ottagoni (2√2·R²) − asole (rettangolo 10×8 + cerchio R4)
+  const area = 360000 - nO * 2 * Math.SQRT2 * 36 - nS * (80 + 16 * PI);
+  return { text: dxfFile(ents), nO, nS, area, ents: 4 + 8 * nO + 4 * nS };
+})();
+T('DXF grande, 3044 entità (oltre il vecchio limite di 3000): piastra 600×600 con 360 fori ottagonali e 40 asole, estrusa 10', () => dxfPart(BIG.text),
+  { V: 10 * BIG.area, bb: [[-300, -300, 0], [300, 300, 10]] });
+
 /* ---------- DXF: ellissi e spline (diventano archi tangenti) ---------- */
 // ELLIPSE: centro, estremo del semiasse maggiore (relativo al centro), rapporto minore/maggiore, parametri iniziale e finale (radianti)
 const dEll = (cx, cy, mx, my, ratio, t0 = 0, t1 = 2 * PI, nz = 1) => ['0', 'ELLIPSE', '8', '0', '10', cx, '20', cy, '30', 0, '11', mx, '21', my, '31', 0, '210', 0, '220', 0, '230', nz, '40', ratio, '41', t0, '42', t1];
@@ -705,6 +724,50 @@ SK.push(['Schizzo con due linee incrociate (più un\'altra): messaggio «si inte
   const b = SB(); b.line(b.pt(0, 0), b.pt(10, 10)); b.line(b.pt(0, 10), b.pt(10, 0)); b.line(b.pt(20, 0), b.pt(30, 0));
   const p = Sketch.profiles(b.s);
   return { ok: true, got: [p.errors.some(e => /si intersecano/.test(e)) ? 1 : 0], exp: [1] };
+}]);
+
+// schizzi grandi: niente limite, calcoli a blocchi. I conteggi (interi) devono essere esatti, non entro l'1 %
+const sameInts = (got, exp) => got.every((g, i) => !Number.isInteger(exp[i]) || g === exp[i]);
+SK.push(['DXF grande, 3044 entità: schizzo, stato (gradi di libertà e rango contati a mano) e contorni (area a mano)', () => {
+  const r = MI.parseDXF(BIG.text); const b = SB(); const info = MI.dxfToSketch(b.s, r.geo, {});
+  const t = Date.now(); const a = Sketch.analyze(b.s); const p = Sketch.profiles(b.s); const ms = Date.now() - t;
+  // incognite: x e y dei punti (4 della piastra, 8 per ottagono, 4 + 2 centri per asola); vincoli: uno per arco (raggio costante)
+  const P = 4 + 8 * BIG.nO + 6 * BIG.nS;
+  const got = [r.geo.length, info.count.line, info.count.arc, a.n, a.rank, a.dof, a.free.size, p.regions.length, p.regions[0].holes.length, p.regions[0].area];
+  const exp = [BIG.ents, 4 + 8 * BIG.nO + 2 * BIG.nS, 2 * BIG.nS, 2 * P, 2 * BIG.nS, 2 * P - 2 * BIG.nS, b.s.ents.length - 1, 1, BIG.nO + BIG.nS, BIG.area];
+  return { ok: a.status === 'under' && !p.errors.length && ms < 30000 && sameInts(got, exp), got, exp };
+}]);
+SK.push(['Schizzo grande: un vertice trascinato va sotto il mouse e il resto non si muove; «Orizzontale» su un lato orizzontale sì, ripetuto no', () => {
+  const r = MI.parseDXF(BIG.text); const b = SB(); MI.dxfToSketch(b.s, r.geo, {});
+  const E = Sketch.byId(b.s);
+  // vertice dell'ottagono nel primo foro (−266, −266): quello a 22,5°
+  const vx = -266 + 6 * Math.cos(PI / 8), vy = -266 + 6 * Math.sin(PI / 8);
+  const v = b.s.ents.find(e => e.t === 'pt' && Math.hypot(e.x - vx, e.y - vy) < 1e-9);
+  const before = b.s.ents.filter(e => e.t === 'pt' && e !== v).map(e => [e.x, e.y]);
+  const res = Sketch.solve(b.s, { drag: { id: v.id, x: vx + 3, y: vy - 2 } });
+  const moved = b.s.ents.filter(e => e.t === 'pt' && e !== v).filter((e, k) => Math.abs(e.x - before[k][0]) > 1e-12 || Math.abs(e.y - before[k][1]) > 1e-12).length;
+  // lato in basso dell'ottagono del secondo foro (vertici a 247,5° e 292,5°): è orizzontale
+  const y0 = -238 + 6 * Math.sin(PI / 8 + 5 * PI / 4);
+  const low = b.s.ents.find(e => e.t === 'ln' && Math.abs(E.get(e.a).y - y0) < 1e-9 && Math.abs(E.get(e.b).y - y0) < 1e-9 && Math.abs(E.get(e.a).x + 266) < 7);
+  const c = { id: 'kh1', t: 'horizontal', e: [low.id] };
+  const first = Sketch.wouldOverdefine(b.s, c); b.s.cons.push(c);
+  const second = Sketch.wouldOverdefine(b.s, { id: 'kh2', t: 'horizontal', e: [low.id] });
+  return { ok: res.ok && !first && second && moved === 0, got: [v.x, v.y, moved], exp: [vx + 3, vy - 2, 0] };
+}]);
+SK.push(['Contorno di 12 000 lati (LWPOLYLINE): una regione con l\'area del poligono (prima il giro si fermava a 10 000 lati)', () => {
+  const N = 12000, R = 300, q = [];
+  for (let k = 0; k < N; k++) q.push([R * Math.cos(2 * PI * k / N), R * Math.sin(2 * PI * k / N)]);
+  const r = MI.parseDXF(dxfFile([dPoly(q, true)])); const b = SB(); MI.dxfToSketch(b.s, r.geo, {});
+  const p = Sketch.profiles(b.s), c = Sketch.chains(b.s);
+  const got = [p.regions.length, p.loops[0].length, p.regions[0].area, c.chains.length, c.chains[0].segs.length, c.chains[0].closed ? 1 : 0], exp = [1, N, N * R * R * Math.sin(2 * PI / N) / 2, 1, N, 1];
+  return { ok: !p.errors.length && !c.errors.length && sameInts(got, exp), got, exp };
+}]);
+SK.push(['Faccia di 100 100 vertici divisa in triangoli: 100 098 triangoli con l\'area del poligono (prima si fermava a 100 000 passi)', () => {
+  const N = 100100, R = 500, q = [];
+  for (let k = 0; k < N; k++) q.push([R * Math.cos(2 * PI * k / N), R * Math.sin(2 * PI * k / N)]);
+  const tr = Geom.triangulate(q, []);
+  let A = 0; for (const [i, j, k] of tr) A += ((q[j][0] - q[i][0]) * (q[k][1] - q[i][1]) - (q[j][1] - q[i][1]) * (q[k][0] - q[i][0])) / 2;
+  return { ok: tr.length === N - 2, got: [tr.length, A], exp: [N - 2, N * R * R * Math.sin(2 * PI / N) / 2] };
 }]);
 
 // STEP: se i triangoli sono troppi si rilegge il file con triangoli più grandi (livello successivo)
