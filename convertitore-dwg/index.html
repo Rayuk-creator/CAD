@@ -390,7 +390,6 @@ self.postMessage({ hello: true });`;
     if (Object.keys(sk).length) add('Saltati', listCounts(sk));
     item.append(rows);
     if (r.warn) item.append(el('p', { class: 'msg warn' }, 'LibreDWG ha segnalato qualche oggetto che non conosce bene (codice ' + r.code + '): il resto del disegno è convertito. Controlla l\'anteprima quando lo importi.'));
-    if (nRead > 3000) item.append(el('p', { class: 'msg warn' }, 'Il Banco CAD importa al massimo 3000 entità per volta: nella finestra di importazione togli la spunta ai layer che non servono.'));
   }
   async function handle(name, data) {
     $('#empty').hidden = true;
@@ -420,7 +419,7 @@ self.postMessage({ hello: true });`;
   drop.addEventListener('drop', e => { const fs = [...(e.dataTransfer && e.dataTransfer.files || [])]; if (fs.length) handleFiles(fs); });
 
   // per le prove automatiche
-  window.Convertitore = { convertFile, summary, dwgKind, Engine, handle, results, zipOne };
+  window.Convertitore = { convertFile, summary, dwgKind, Engine, handle, results, zipOne, render };
 })();
 </script>
 <!-- LETTORE DWG: inizio -->

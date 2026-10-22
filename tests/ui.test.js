@@ -928,6 +928,14 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     const dxfPath = path.join(OUT, 'v-r14.dxf'); await dl.saveAs(dxfPath);
     const dxf = require('fs').readFileSync(dxfPath);
     const okDxf = dl.suggestedFilename() === 'v-r14.dxf' && /\$ACADVER\s*\r?\n\s*1\s*\r?\nAC1014/.test(dxf.toString('latin1')) && /\n\s*0\s*\r?\nEOF/.test(dxf.toString('latin1'));
+    // disegno grande (5200 entità lette): il Banco CAD non ha più il limite di 3000, quindi niente avviso
+    const big = await cpage.evaluate(() => {
+      const it = document.createElement('li'); it.className = 'item';
+      Convertitore.render(it, { name: 'tavola.dwg', kind: { name: 'AutoCAD 2018' }, code: 0, ms: 300, dxf: new Uint8Array(1000),
+        s: { ver: 'AC1032', units: 4, ents: { LINE: 4000, ARC: 1200, TEXT: 30 }, total: 5230, blocks: 0, ok: true } });
+      return { text: it.textContent.replace(/\s+/g, ' '), warn: it.querySelectorAll('.msg.warn').length, chip: it.querySelector('.chip').textContent };
+    });
+    const okBig = big.chip === 'Pronto' && /4\.000 linee, 1\.200 archi/.test(big.text) && /30 testi/.test(big.text) && !big.warn && !/3000|3\.000|al massimo/.test(big.text);
     await cpage.close();
     // il DXF salvato, importato nel Banco CAD
     await fresh();
@@ -942,10 +950,10 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     await page.evaluate(() => Sketcher.exit(false));
     const ok = mode === 'worker' && rows.length === 4 && by('v-r14.dwg').chip === 'Pronto' && /R14 → DXF AC1014/.test(by('v-r14.dwg').text) && /16 linee/.test(by('v-r14.dwg').text) && /1 testo/.test(by('v-r14.dwg').text)
       && by('esempio-2013.dwg').chip === 'Pronto' && /AutoCAD 2013 → DXF AC1027/.test(by('esempio-2013.dwg').text) && /8 linee/.test(by('esempio-2013.dwg').text) && /2 spline/.test(by('esempio-2013.dwg').text) && /1 ellisse/.test(by('esempio-2013.dwg').text)
-      && by('esempio-libredwg-r11.dwg').chip === 'Pronto' && by('pezzo.step').chip === 'Errore' && /file STEP/.test(by('pezzo.step').text) && okDxf && imp.n === 8 && /Tolte 8 entità doppie/.test(imp.toast) && !cerr.length;
-    rec('Convertitore DWG → DXF: più file, esempio, file sbagliato, DXF salvato e importato nel Banco CAD', ok,
-      `lettore: ${mode}; ${rows.map(r => r.name + ' ' + r.chip).join(', ')}; file salvato ${dl.suggestedFilename()} (${dxf.length} byte, ${okDxf ? 'DXF R14 completo' : 'NON valido'}); nel Banco CAD ${imp.n} linee («${imp.toast}»)${cerr.length ? '; errori: ' + cerr.join(' | ') : ''}`);
-  } catch (e) { rec('Convertitore DWG → DXF: più file, esempio, file sbagliato, DXF salvato e importato nel Banco CAD', false, e.message.split('\n')[0]); }
+      && by('esempio-libredwg-r11.dwg').chip === 'Pronto' && by('pezzo.step').chip === 'Errore' && /file STEP/.test(by('pezzo.step').text) && okDxf && okBig && imp.n === 8 && /Tolte 8 entità doppie/.test(imp.toast) && !cerr.length;
+    rec('Convertitore DWG → DXF: più file, esempio, file sbagliato, disegno grande senza avviso, DXF salvato e importato nel Banco CAD', ok,
+      `lettore: ${mode}; ${rows.map(r => r.name + ' ' + r.chip).join(', ')}; disegno grande: «${big.text.slice(0, 120)}…»${big.warn ? ' CON AVVISO' : ' senza avvisi'}; file salvato ${dl.suggestedFilename()} (${dxf.length} byte, ${okDxf ? 'DXF R14 completo' : 'NON valido'}); nel Banco CAD ${imp.n} linee («${imp.toast}»)${cerr.length ? '; errori: ' + cerr.join(' | ') : ''}`);
+  } catch (e) { rec('Convertitore DWG → DXF: più file, esempio, file sbagliato, disegno grande senza avviso, DXF salvato e importato nel Banco CAD', false, e.message.split('\n')[0]); }
 
   rec('Nessun errore JavaScript durante i test', !errors.length, errors.slice(0, 5).join(' | '));
   await page.screenshot({ path: path.join(OUT, 'ui-last.png') });
