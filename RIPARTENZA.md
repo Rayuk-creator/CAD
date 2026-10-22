@@ -6,6 +6,24 @@ Ultimo aggiornamento: 22 ottobre 2026, mattina (Convertitore DWG → DXF, pagina
 
 **Stato attuale:** ultima modifica su `main` = il commit «Convertitore DWG → DXF (pagina separata, GPL 3)…» del 22 ottobre mattina (vedi `git log`). Tutte le prove superate: 129/129 di calcolo, 14/14 STEP/IGES, 11/11 del convertitore DWG, 52/52 dell'interfaccia, Autoverifica 129/129. Nessun lavoro lasciato a metà.
 
+### LAVORO IN CORSO (22 ottobre, mattina tardi) — ramo `lavoro-dxf-grandi`, NON ancora su `main`
+
+Richiesta dell'utente: **togliere il limite di 3000 entità del DXF** («altrimenti non serve a niente»). File di prova vero dell'utente: tavola 0A00011792.01 (5836 tra linee, archi e cerchi → 15 589 elementi nello schizzo); se serve, chiederlo di nuovo all'utente.
+
+Fatto nel ramo (commit «DXF senza limite di entità (lavoro in corso)»):
+- tolto `DXF_MAXENT`; didascalia della finestra: «N tra linee, archi e cerchi (polilinee e blocchi divisi nei loro tratti)», accanto ai layer «N entità nel file»; suggerimento della Guida cambiato.
+- `Sketch`: blocchi indipendenti (`blocks`, `depsOf`, `sparseRows`), riduzione delle righe con perno privato (`reduceRows`, `redFree`, soglia `pivotMin`), `solve`/`project` a blocchi con scorciatoia esatta nel trascinamento, `gram`/`newtonSparse`/`lsqSparse` (somme nello stesso ordine della matrice piena: numeri identici; forma duale solo oltre 64 incognite), `wouldOverdefine` sui soli blocchi toccati con la soglia di tutto lo schizzo; `profiles`/`chains` con griglia per i nodi e confronto delle sole coppie vicine (`boxPairs`), tolto il limite di 10 000 lati.
+- `Geom`: `earClip` con lista collegata e griglia (margine esatto con il raggio inscritto; triangoli identici), tolto il limite di 100 000 passi; `bridge` con candidati in ordine di distanza e salto dei fori lontani; `topology` con celle proporzionate ai vertici.
+- `Sketcher`: mappa delle entità `E()` memorizzata; disegno raggruppato per aspetto (Path2D); punti «usati» calcolati una volta; Annulla dello schizzo limitati per schizzi grandi (`trimUndo`).
+- Tempi con la tavola vera: importazione < 1 s, stato dello schizzo 0,16 s (prima > 10 min), mouse ~60 ms (prima 3–4 s), trascinamento ~0,2 s per passo. Piastra con 1040 fori estrusa: 6 s (prima 20 s), volume identico.
+- Confronti vecchio/nuovo: 15 000 schizzi casuali identici (salvo ~10 casi con un valore singolare proprio sulla soglia, in schizzi già rossi); 2000 triangolazioni identiche.
+- Prove: kernel **134/134** (5 nuove, falliscono sulla versione vecchia); Autoverifica ricopiata; interfaccia **52/53**.
+
+Da fare:
+1. Capire perché la prova nuova dell'interfaccia «DXF grande (3044 entità…)» in `tests/ui.test.js` non passa (guardare il messaggio e `tests/output/dxf-grande.png`; può essere un errore della prova). La suite dell'interfaccia ora dura ~5 min invece di 1–2: controllare se è questa prova.
+2. Glossario/Guida: aggiornare il testo dell'argomento «Importare un disegno DXF» (niente limite) se serve.
+3. Schermata di controllo, poi unire il ramo in `main`, push, mandare `index.html` all'utente; aggiornare questo file (togliere «massimo 3000 entità» nei punti 2 e 6) e `IDEE.md`.
+
 ---
 
 ## 1. Messaggio da incollare nella nuova task
