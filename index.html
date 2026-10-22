@@ -6065,9 +6065,9 @@ self.onmessage = async ev => {
       let dy = e.deltaY * unit, dx = e.deltaX * unit;
       // con Maiusc alcuni sistemi trasformano la rotella in scorrimento orizzontale: si usa quello che c'è
       if (e.shiftKey && !dy) { dy = dx; dx = 0; }
-      if (e.shiftKey) r.zoomAt(Math.exp(dy * 0.0015), x, y);          // Maiusc + rotella: zoom verso il puntatore
-      else if (e.ctrlKey || e.metaKey) r.rotate((dy + dx) * 0.33, 0);  // Ctrl + rotella: ruota il modello attorno alla verticale
-      else r.pan(-(dy + dx) * 0.6, 0);                                 // rotella: sposta il modello a destra / sinistra
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey) r.rotate((dy + dx) * 0.33, 0);  // Ctrl + rotella: ruota il modello attorno alla verticale
+      else if (dy) r.zoomAt(Math.exp(dy * 0.0015), x, y);                         // rotella: zoom verso il puntatore (avanti ingrandisce)
+      else return;                                                                // solo scorrimento orizzontale: niente
       App.redraw();
       if (App.mode === 'sketch') Sketcher.move(x, y, e, false);
     }, { passive: false });
@@ -7004,7 +7004,7 @@ self.onmessage = async ev => {
   App.newPart = newPart;
   function help() {
     modal('Guida rapida', `<ul>
-      <li><b>Mouse:</b> trascina con il tasto sinistro nel vuoto per ruotare, con il destro (o Maiusc + sinistro) per spostare; rotella per spostare il modello a destra e sinistra, <kbd>Ctrl</kbd> + rotella per ruotarlo, <kbd>Maiusc</kbd> + rotella per lo zoom. Su tablet: due dita ingrandiscono; per ruotare e spostare tocca prima il pezzo (si colora il bordo della vista), poi un dito ruota e due dita spostano; tocca il vuoto o «Lascia» per rilasciarlo.</li>
+      <li><b>Mouse:</b> trascina con il tasto sinistro nel vuoto per ruotare, con il destro (o Maiusc + sinistro) per spostare; rotella per lo zoom (avanti ingrandisce, indietro riduce), <kbd>Ctrl</kbd> + rotella per ruotarlo. Su tablet: due dita ingrandiscono; per ruotare e spostare tocca prima il pezzo (si colora il bordo della vista), poi un dito ruota e due dita spostano; tocca il vuoto o «Lascia» per rilasciarlo.</li>
       <li><b>Primo pezzo:</b> scheda <i>Schizzo</i> › Schizzo › scegli un piano › disegna un contorno chiuso › metti le quote con <i>Quota intelligente</i> finché lo schizzo diventa nero › ✓ › <i>Estrusione base</i>.</li>
       <li><b>Colori dello schizzo:</b> blu = sotto definito (mancano quote o relazioni), nero = completamente definito, rosso = sovradefinito (quote in conflitto).</li>
       <li><b>Schizzo su una faccia:</b> seleziona una faccia piana e premi Schizzo, oppure tasto destro sulla faccia.</li>
@@ -10934,10 +10934,23 @@ self.onmessage = async ev => {
     holder.addEventListener('pointerdown', onDown);
     holder.addEventListener('pointermove', onMove);
     holder.addEventListener('pointerup', onUp);
-    document.querySelector('#sheetScroll').addEventListener('wheel', e => {
-      if (!e.ctrlKey && !e.metaKey) return;
+    // rotella: zoom del foglio verso il puntatore (avanti ingrandisce); il punto del foglio sotto il mouse resta fermo
+    const sc = document.querySelector('#sheetScroll');
+    sc.addEventListener('wheel', e => {
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+      let dy = e.deltaY * unit;
+      if (e.shiftKey && !dy) dy = e.deltaX * unit;   // con Maiusc alcuni sistemi danno lo scorrimento orizzontale
+      if (!dy) return;                               // solo scorrimento orizzontale: il foglio scorre
       e.preventDefault();
-      setZoom(zoom * Math.exp(-e.deltaY * 0.0015));
+      const svg = holder.querySelector('svg');
+      const b = svg ? svg.getBoundingClientRect() : null;
+      const fx = b && b.width ? (e.clientX - b.left) / b.width : 0.5, fy = b && b.height ? (e.clientY - b.top) / b.height : 0.5;
+      setZoom(zoom * Math.exp(-dy * 0.0015));
+      const s2 = holder.querySelector('svg');
+      if (!b || !s2) return;
+      const a = s2.getBoundingClientRect();
+      sc.scrollLeft += a.left + fx * a.width - e.clientX;
+      sc.scrollTop += a.top + fy * a.height - e.clientY;
     }, { passive: false });
   };
   D.enter = function () {
@@ -11749,7 +11762,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Interfaccia', 'Annulla / Ripeti', ['annulla', 'ripeti'], 'Tornano indietro o avanti di un\'operazione (Ctrl+Z e Ctrl+Y). Dentro uno schizzo annullano i singoli tratti.'],
     ['Interfaccia', 'Anteprima', ['anteprima arancione', 'anteprima rossa'], 'Mentre il PropertyManager è aperto, il materiale che verrà aggiunto si vede in arancione e quello che verrà tolto in rosso. Il pezzo cambia davvero solo quando confermi con ✓.'],
     ['Interfaccia', 'Guida', ['come si fa', 'how to'], 'Il pannello con le istruzioni passo per passo di ogni comando: a cosa serve, come si fa, i consigli e i termini. Il pulsante «Mostrami dove» apre la scheda giusta e fa lampeggiare il comando.'],
-    ['Interfaccia', 'Comandi del mouse', ['rotella', 'zoom', 'sposta', 'ruota'], 'Rotella: sposta il modello a destra e sinistra. Ctrl + rotella: ruota il modello attorno alla verticale. Maiusc + rotella: zoom verso il puntatore. Trascinando: tasto sinistro nel vuoto ruota, tasto destro (o Maiusc + sinistro) sposta. Su tablet: due dita ingrandiscono sempre; per ruotare e spostare tocca prima il pezzo, poi un dito ruota e due dita spostano. Tocca il vuoto per lasciarlo.'],
+    ['Interfaccia', 'Comandi del mouse', ['rotella', 'zoom', 'sposta', 'ruota'], 'Rotella: zoom verso il puntatore (in avanti ingrandisce, indietro riduce), anche nella messa in tavola. Ctrl + rotella: ruota il modello attorno alla verticale. Trascinando: tasto sinistro nel vuoto ruota, tasto destro (o Maiusc + sinistro) sposta. Su tablet: due dita ingrandiscono sempre; per ruotare e spostare tocca prima il pezzo, poi un dito ruota e due dita spostano. Tocca il vuoto per lasciarlo.'],
     ['Interfaccia', 'Isometrica', ['vista isometrica', 'iso'], 'Vista in cui i tre assi X, Y, Z formano angoli uguali sullo schermo: si vedono tre facce del pezzo insieme. È la vista standard per il modello 3D.'],
     ['Interfaccia', 'Normale a', ['vista normale'], 'Orienta la vista perpendicolare al piano o alla faccia scelta, così lo vedi «di fronte». Entrando in uno schizzo la vista si gira da sola normale al suo piano.'],
     ['Interfaccia', 'Adatta alla finestra', ['zoom adatta', 'adatta il foglio'], 'Zoom che fa entrare tutto il pezzo (o tutto il foglio, nella messa in tavola) nella finestra. In SolidWorks è il tasto F.'],
@@ -12920,9 +12933,8 @@ if (isNode) {
   add('Per iniziare', 'vista', 'Muovere la vista (mouse e tablet)', {
     why: 'Guardare il pezzo da tutte le parti senza modificarlo.',
     steps: [
-      '**Mouse – rotella:** sposta il modello a destra e a sinistra.',
+      '**Mouse – rotella:** zoom verso il punto in cui si trova il puntatore: in avanti ingrandisce, indietro riduce.',
       '**Ctrl + rotella:** ruota il modello attorno alla verticale.',
-      '**Maiusc + rotella:** zoom verso il punto in cui si trova il puntatore.',
       '**Trascinando:** tasto sinistro nel vuoto per ruotare; tasto destro (o Maiusc + sinistro) per spostare.',
       '**Tablet:** due dita che si allargano o si stringono fanno lo zoom. Per ruotare e spostare **tocca prima il pezzo** (il bordo della vista diventa blu e compare «Pezzo preso»): poi un dito ruota e due dita spostano. Tocca il vuoto o «Lascia» per rilasciarlo.',
       '**Tastiera:** barra spaziatrice per gli orientamenti (Fronte, Superiore, Isometrica…), F per adattare il pezzo alla finestra.',
@@ -13339,7 +13351,7 @@ if (isNode) {
       'Se vuoi l\'assonometria a colori spunta [[Assonometria ombreggiata]]: le facce prendono il colore del pezzo (anche quello di un file STEP), le altre viste restano a linee.',
       'Trascina le viste per sistemarle: quelle proiettate restano allineate alla frontale.',
       'Compila il [[Cartiglio]] (titolo, autore, classe, numero del disegno).',
-      '**Adatta il foglio** fa entrare tutta la tavola nella finestra; Ctrl + rotella ingrandisce o rimpicciolisce il foglio.',
+      '**Adatta il foglio** fa entrare tutta la tavola nella finestra; la rotella ingrandisce o rimpicciolisce il foglio attorno al puntatore.',
     ],
     terms: ['Messa in tavola', 'Metodo E', 'Proiezioni ortogonali', 'Foglio', 'Scala', 'Linee nascoste', 'Assonometria ombreggiata', 'Assi', 'Cartiglio'],
   });

@@ -806,46 +806,72 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     for (const [k, err, len, n] of res) rec(`Messa in tavola: ${k}`, !err && len > 3000 && n > 20, `${err} svg ${len} car., ${n} elementi`);
   } catch (e) { rec('Messa in tavola delle nuove funzioni', false, e.message.split('\n')[0]); }
 
-  // 3k. rotella: sposta a destra/sinistra; Ctrl + rotella ruota; Maiusc + rotella zoom
+  // 3k. rotella: zoom verso il puntatore (avanti ingrandisce, indietro riduce), niente spostamento di lato; Ctrl + rotella ruota;
+  //     Maiusc + rotella fa lo zoom come la rotella da sola. Il punto sotto il puntatore resta fermo.
   try {
     await fresh();
     await page.evaluate(() => { App.setCmdTab('features'); App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false); });
     await page.waitForTimeout(300);
     const box = await page.locator('#view').boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    const cam = () => page.evaluate(() => { const c = App.r.cam, b = App.r.basis(); const s = App.r.pxSize(); return { t: c.target.slice(), q: c.q.slice(), s: c.scale, r: b.right, u: b.up, px: s }; });
-    const dist = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
-    // la dimensione del pixel si legge dopo che la vista ha disegnato un fotogramma (prima può essere quella vecchia)
+    const cv = await page.evaluate(() => { const b = document.querySelector('.view canvas').getBoundingClientRect(); return [b.left, b.top]; });
+    // puntatore fuori centro: così si vede se il punto sotto il mouse scappa
+    const mx = box.x + box.width * 0.7, my = box.y + box.height * 0.35, lx = mx - cv[0], ly = my - cv[1];
+    await page.mouse.move(mx, my);
     await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const cam = () => page.evaluate(([lx, ly]) => { const c = App.r.cam; App.r.mats = App.r.matrices(); const o = App.r.ray(lx, ly).o, b = App.r.basis();
+      return { t: c.target.slice(), q: c.q.slice(), s: c.scale, px: App.r.pxSize(), h: o[0] * b.right[0] + o[1] * b.right[1] + o[2] * b.right[2], v: o[0] * b.up[0] + o[1] * b.up[1] + o[2] * b.up[2] }; }, [lx, ly]);
+    const dist = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
     const c0 = await cam();
-    await page.mouse.wheel(0, 100); await page.waitForTimeout(150);
+    await page.mouse.wheel(0, -100); await page.waitForTimeout(150);      // avanti: ingrandisce
     const c1 = await cam();
-    await page.keyboard.down('Control'); await page.mouse.wheel(0, 100); await page.keyboard.up('Control'); await page.waitForTimeout(150);
+    await page.mouse.wheel(0, 100); await page.waitForTimeout(150);       // indietro: riduce (si torna come prima)
     const c2 = await cam();
-    await page.keyboard.down('Shift'); await page.mouse.wheel(0, -100); await page.keyboard.up('Shift'); await page.waitForTimeout(150);
+    await page.keyboard.down('Control'); await page.mouse.wheel(0, 100); await page.keyboard.up('Control'); await page.waitForTimeout(150);
     const c3 = await cam();
-    const dt = c1.t.map((v, i) => v - c0.t[i]); const hpx = (dt[0] * c0.r[0] + dt[1] * c0.r[1] + dt[2] * c0.r[2]) / c0.px, vpx = (dt[0] * c0.u[0] + dt[1] * c0.u[1] + dt[2] * c0.u[2]) / c0.px;
-    c1.sx = -hpx; c1.sy = vpx; c0.sx = 0; c0.sy = 0; // spostamento del modello sullo schermo, in pixel
-    // rotella di 100 × 0,6 = 60 px di spostamento
-    const panOk = rel(Math.abs(hpx), 60) < TOL && Math.abs(vpx) < 1 && dist(c1.q, c0.q) < 1e-9 && c1.s === c0.s;
-    const rotOk = dist(c2.q, c1.q) > 0.05 && c2.s === c1.s && dist(c2.t, c1.t) < 1e-9;
-    const zoomOk = Math.abs(c3.s / c2.s - 1) > 0.05 && dist(c3.q, c2.q) < 1e-9;
-    rec('Rotella: sposta di lato, Ctrl ruota, Maiusc zoom', panOk && rotOk && zoomOk,
-      `spostamento orizzontale ${(c1.sx - c0.sx).toFixed(0)} px (verticale ${(c1.sy - c0.sy).toFixed(1)}), rotazione ${rotOk ? 'sì' : 'no'}, zoom ×${(c2.s / c3.s).toFixed(2)}`);
-  } catch (e) { rec('Rotella: sposta di lato, Ctrl ruota, Maiusc zoom', false, e.message.split('\n')[0]); }
-  // rotella usata mentre la vista sta ancora girando (animazione di un cambio di orientamento): lo spostamento non si perde
+    await page.keyboard.down('Shift'); await page.mouse.wheel(0, -100); await page.keyboard.up('Shift'); await page.waitForTimeout(150);
+    const c4 = await cam();
+    // zoom = e^(±100·0,0015) = ×1,1618; il punto del modello sotto il puntatore resta lo stesso (scarto in pixel)
+    const k = Math.exp(0.15);
+    const fixed = (a, b) => Math.hypot(a.h - b.h, a.v - b.v) / a.px;
+    const inOk = rel(c0.s / c1.s, k) < TOL && dist(c1.q, c0.q) < 1e-9 && fixed(c0, c1) < 0.5;
+    const outOk = rel(c2.s, c0.s) < 1e-9 && dist(c2.q, c0.q) < 1e-9 && fixed(c1, c2) < 0.5 && dist(c2.t, c0.t) < 1e-6 * c0.s;
+    const rotOk = dist(c3.q, c2.q) > 0.05 && c3.s === c2.s && dist(c3.t, c2.t) < 1e-9;
+    const shOk = rel(c3.s / c4.s, k) < TOL && dist(c4.q, c3.q) < 1e-9;
+    rec('Rotella: zoom verso il puntatore (avanti ingrandisce, indietro riduce), Ctrl ruota, Maiusc zoom', inOk && outOk && rotOk && shOk,
+      `avanti ×${(c0.s / c1.s).toFixed(4)} (${k.toFixed(4)}), indietro ×${(c1.s / c2.s).toFixed(4)}; punto sotto il puntatore spostato di ${fixed(c0, c1).toFixed(2)} e ${fixed(c1, c2).toFixed(2)} px; ritorno alla vista di partenza ${outOk ? 'sì' : 'NO'}; Ctrl ruota ${rotOk ? 'sì' : 'NO'}; Maiusc ×${(c3.s / c4.s).toFixed(4)}`);
+  } catch (e) { rec('Rotella: zoom verso il puntatore (avanti ingrandisce, indietro riduce), Ctrl ruota, Maiusc zoom', false, e.message.split('\n')[0]); }
+  // rotella usata mentre la vista sta ancora girando (animazione di un cambio di orientamento): lo zoom non si perde
   try {
     await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
-    const cam = () => page.evaluate(() => { const c = App.r.cam, b = App.r.basis(); return { t: c.target.slice(), q: c.q.slice(), r: b.right, px: App.r.pxSize() }; });
-    const a = await cam();
+    const a = await page.evaluate(() => App.r.cam.scale);
     await page.evaluate(() => App.r.setView(GLView.Renderer.viewQ('front')));
-    await page.mouse.wheel(0, 100); await page.waitForTimeout(700);
-    const b = await cam();
+    await page.mouse.wheel(0, -100); await page.waitForTimeout(700);
+    const b = await page.evaluate(() => ({ s: App.r.cam.scale, q: App.r.cam.q.slice() }));
     const front = await page.evaluate(() => GLView.Renderer.viewQ('front'));
-    const dt = b.t.map((v, i) => v - a.t[i]); const hpx = (dt[0] * b.r[0] + dt[1] * b.r[1] + dt[2] * b.r[2]) / b.px;
     const qOk = Math.min(Math.hypot(...b.q.map((v, i) => v - front[i])), Math.hypot(...b.q.map((v, i) => v + front[i]))) < 1e-9;
-    rec('Rotella durante un cambio di vista: lo spostamento resta', qOk && rel(Math.abs(hpx), 60) < TOL, `vista frontale ${qOk ? 'sì' : 'NO'}, spostamento ${hpx.toFixed(1)} px (60)`);
-  } catch (e) { rec('Rotella durante un cambio di vista: lo spostamento resta', false, e.message.split('\n')[0]); }
+    rec('Rotella durante un cambio di vista: lo zoom resta', qOk && rel(a / b.s, Math.exp(0.15)) < TOL, `vista frontale ${qOk ? 'sì' : 'NO'}, zoom ×${(a / b.s).toFixed(4)} (${Math.exp(0.15).toFixed(4)})`);
+  } catch (e) { rec('Rotella durante un cambio di vista: lo zoom resta', false, e.message.split('\n')[0]); }
+  // rotella nella messa in tavola: zoom del foglio (prima serviva Ctrl), avanti ingrandisce e indietro riduce,
+  // e il punto del foglio sotto il puntatore resta fermo (puntatore al centro in orizzontale, in alto in verticale)
+  try {
+    await fresh();
+    await page.evaluate(() => { App.change(() => { App.doc = JSON.parse(JSON.stringify(Lessons.ref(Lessons.list[0]).doc)); App.sel = []; }); App.drawingState = null; App.setCmdTab('drawing'); });
+    await page.waitForTimeout(500);
+    const sb = await page.locator('#sheetScroll').boundingBox();
+    const mx = sb.x + sb.width / 2, my = sb.y + sb.height * 0.3;
+    await page.mouse.move(mx, my);
+    const sh = () => page.evaluate(([mx, my]) => { const b = document.querySelector('#sheetHolder svg').getBoundingClientRect(); return { w: b.width, fx: (mx - b.left) / b.width, fy: (my - b.top) / b.height }; }, [mx, my]);
+    const s0 = await sh();
+    await page.mouse.wheel(0, -100); await page.waitForTimeout(200);
+    const s1 = await sh();
+    await page.mouse.wheel(0, 100); await page.waitForTimeout(200);
+    const s2 = await sh();
+    await page.evaluate(() => App.setCmdTab('features')); await page.waitForTimeout(200);
+    const k = Math.exp(0.15);
+    const ok = rel(s1.w / s0.w, k) < TOL && rel(s2.w, s0.w) < 1e-6 && Math.abs(s1.fx - s0.fx) * s1.w < 1.5 && Math.abs(s1.fy - s0.fy) * s1.w < 1.5 && Math.abs(s2.fy - s0.fy) * s2.w < 1.5;
+    rec('Messa in tavola: rotella = zoom del foglio verso il puntatore', ok,
+      `larghezza del foglio ${s0.w.toFixed(0)} → ${s1.w.toFixed(0)} (×${(s1.w / s0.w).toFixed(4)}, atteso ${k.toFixed(4)}) → ${s2.w.toFixed(0)}; punto sotto il puntatore spostato di ${(Math.abs(s1.fx - s0.fx) * s1.w).toFixed(2)} / ${(Math.abs(s1.fy - s0.fy) * s1.w).toFixed(2)} px`);
+  } catch (e) { rec('Messa in tavola: rotella = zoom del foglio verso il puntatore', false, e.message.split('\n')[0]); await page.evaluate(() => App.setCmdTab('features')).catch(() => {}); }
 
   // 3l. tablet: due dita = zoom sempre; ruotare/spostare solo dopo aver toccato il pezzo
   try {

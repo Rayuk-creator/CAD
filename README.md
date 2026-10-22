@@ -78,9 +78,8 @@ I colori dello schizzo dicono a che punto sei: **blu** = mancano quote o relazio
 
 | Azione | Mouse | Tablet |
 |---|---|---|
-| Spostare a destra / sinistra | rotella | tocca il pezzo, poi due dita |
+| Zoom (ingrandire e ridurre) | rotella, verso il puntatore: in avanti ingrandisce, indietro riduce (anche nella messa in tavola) | due dita (sempre) |
 | Ruotare | Ctrl + rotella, oppure trascina con il tasto sinistro nel vuoto | tocca il pezzo, poi un dito |
-| Zoom | Maiusc + rotella | due dita (sempre) |
 | Spostare in ogni direzione | trascina con il tasto destro (o Maiusc + sinistro) | tocca il pezzo, poi due dita |
 | Adattare il pezzo alla finestra | tasto **F** o il primo pulsante della barretta in alto | primo pulsante della barretta in alto |
 | Orientamenti (Fronte, Superiore, Isometrica…) | barra spaziatrice | pulsante degli orientamenti nella barretta |
@@ -142,7 +141,7 @@ Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScr
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (129 + 14 prove STEP/IGES + 11 del convertitore DWG, pochi secondi)
+npm run test:kernel               # solo i calcoli (134 + 14 prove STEP/IGES + 11 del convertitore DWG, pochi secondi)
 npm run test:ui                   # solo l'interfaccia in Chromium (52 prove)
 ```
 

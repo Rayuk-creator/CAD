@@ -4,7 +4,7 @@ File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima d
 
 Ultimo aggiornamento: 22 ottobre 2026, fine mattina (DXF senza limite di entità: schizzi grandi veloci).
 
-**Stato attuale:** ultima modifica su `main` = il ramo `lavoro-dxf-grandi` unito il 22 ottobre (DXF senza limite di entità; vedi `git log`). Tutte le prove superate: 134/134 di calcolo, 14/14 STEP/IGES, 11/11 del convertitore DWG, 53/53 dell'interfaccia, Autoverifica 134/134. Nessun lavoro lasciato a metà.
+**Stato attuale:** ultima modifica su `main` = rotella = zoom (22 ottobre, tarda mattina; prima il ramo `lavoro-dxf-grandi` unito: DXF senza limite di entità; vedi `git log`). Tutte le prove superate: 134/134 di calcolo, 14/14 STEP/IGES, 11/11 del convertitore DWG, 54/54 dell'interfaccia, Autoverifica 134/134. Nessun lavoro lasciato a metà.
 
 ---
 
@@ -38,7 +38,7 @@ Ultimo aggiornamento: 22 ottobre 2026, fine mattina (DXF senza limite di entità
 
 ### Comandi della vista (decisi dall'utente)
 
-- Mouse: **rotella = sposta a destra/sinistra**, **Ctrl + rotella = ruota**, **Maiusc + rotella = zoom**; trascinamento: sinistro ruota, destro (o Maiusc + sinistro) sposta; F = adatta; barra spaziatrice = orientamenti.
+- Mouse: **rotella = zoom** verso il puntatore (**avanti ingrandisce, indietro riduce**; anche Maiusc + rotella), **Ctrl + rotella = ruota**; nella **messa in tavola** la rotella fa lo zoom del foglio verso il puntatore (scelte dell'utente del 22 ottobre: niente più spostamento con la rotella); trascinamento: sinistro ruota, destro (o Maiusc + sinistro) sposta; F = adatta; barra spaziatrice = orientamenti.
 - Tablet: **due dita = zoom sempre**; per ruotare/spostare si **tocca prima il pezzo** («Pezzo preso», bordo blu), poi un dito ruota e due dita spostano; tocco nel vuoto o «Lascia» per rilasciare. Nello schizzo invariato.
 
 ---
@@ -79,7 +79,7 @@ tests/step.test.js    14 prove del lettore STEP/IGES vero (prende il lettore da 
 tests/stepgen.js      scrive file STEP di prova (blocco, cilindro, piastra con foro, due blocchi, due blocchi colorati, unità mm/cm/m)
 tests/igesgen.js      scrive file IGES di prova (blocco fatto di superfici piane tagliate)
 tests/dwg.test.js     11 prove del convertitore (prende il lettore dalla sua pagina; confronto con i DXF di riferimento)
-tests/ui.test.js      53 prove dell'interfaccia in Chromium (Playwright), compresa la pagina del convertitore
+tests/ui.test.js      54 prove dell'interfaccia in Chromium (Playwright), compresa la pagina del convertitore
 package.json          npm test / test:kernel (comprende step.test.js e dwg.test.js) / test:ui
 ```
 
@@ -109,7 +109,7 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 - Dopo ✓ aspettare la rigenerazione prima di leggere le proprietà (la funzione `props()` lo fa già).
 - Dopo aver caricato un pezzo a mano chiamare `App.r.fit(...)`, altrimenti i clic finiscono fuori dal pezzo.
 - Sul tablet toccare un punto **pieno** del pezzo (il centro della piastra forata è il foro!).
-- Lo spostamento con la rotella si misura sulla camera, non sulle coordinate dello schermo; la dimensione del pixel (`pxSize`) va letta dopo un fotogramma (`requestAnimationFrame`), altrimenti può essere quella vecchia.
+- Lo zoom con la rotella si misura sulla camera (`cam.scale` = altezza visibile in mm: più piccola = più ingrandito), non sulle coordinate dello schermo; la dimensione del pixel (`pxSize`) va letta dopo un fotogramma (`requestAnimationFrame`), altrimenti può essere quella vecchia.
 - Per i file da importare nei test: `page.setInputFiles('#meshFile', { name, mimeType, buffer })` (DXF: `#dxfFile`, STEP/IGES: `#cadFile`); nel codice c'è anche `App.importMeshData(nome, Uint8Array, { unit, zUp })`, `App.importDxfData(nome, Uint8Array, { unit, origin, plane })` e `await App.importCadData(nome, Uint8Array, { zUp })`.
 - Le caselle dei pannelli non hanno un id: si prendono con `page.locator('#pm label.chk', { hasText: '…' }).locator('input')`.
 - Una prova che conta qualcosa (spigoli, errori) può passare «a vuoto» se la funzione fallisce e non c'è il pezzo: controllare sempre `st.errors` e che `st.body` non sia vuoto (lo fa `sideEdges` in `kernel.test.js`).
@@ -143,6 +143,8 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 - 22 ottobre (mattina): **Convertitore DWG → DXF**, pagina separata con licenza GPL 3 (scelte dell'utente: cartella nel repository CAD; collegamento dai messaggi sui DWG del Banco CAD). LibreDWG preso da libredwg-web 0.8.2 (l'unico lettore DWG libero già compilato per il browser che sa scrivere i DXF; npm era bloccato, preso da GitHub). Converte da R1.4 a 2018; lettore in un Worker anche con la pagina aperta da disco. La pagina salva il DXF dentro uno .zip (nella pagina pubblicata i .dxf da soli non si possono scaricare): il Banco CAD ora apre anche lo .zip. Prove: 11 in Node (7 DWG da R11 a 2018; con i DXF di riferimento le entità del file sono **uguali** una per una, lunghezza totale e ingombro con scarto ≤ 0,0005 %; DWG 2000 e 2013 dello stesso disegno identici; file sbagliati e troncati; zip senza compressione e compresso) e 3 dell'interfaccia (collegamento dai messaggi DWG in tre finestre, DXF da .zip, pagina del convertitore con il file scaricato davvero e importato nel Banco CAD). Trovato e documentato: LibreDWG scrive le spline con i soli punti di passaggio, il riferimento con la NURBS di AutoCAD; la curva ricostruita dal Banco CAD si scosta di 0,11 mm su 1,16 m e 0,54 mm su 1,72 m (0,01 % e 0,03 %), prova apposita. Tolta dal riassunto della pagina la riga «Ingombro»: quello scritto nell'intestazione del DWG può essere enorme (rette infinite: 3,5 km nell'esempio). Le prove nuove del Banco CAD fatte girare sulla versione vecchia: falliscono. Glossario (Convertitore DWG → DXF) e Guida (Importare un disegno DXF) aggiornati.
 
 - 22 ottobre (fine mattina): **DXF senza limite di entità** (richiesta dell'utente: «altrimenti non serve a niente»), ramo `lavoro-dxf-grandi` unito in `main`. Risolutore dello schizzo a blocchi e con matrici sparse (numeri identici alla versione piena), contorni e triangolazione con griglie, disegno dello schizzo raggruppato. Con la tavola vera 0A00011792.01 (5836 tra linee, archi e cerchi → 15 589 elementi): importazione < 1 s, stato dello schizzo 0,16 s (prima più di 10 minuti), mouse ≈ 60 ms (prima 3–4 s); piastra con 1040 fori estrusa in 6 s (prima 20 s), volume identico. Confronti con la versione vecchia: 15 000 schizzi casuali e 2000 triangolazioni identici. 5 prove di calcolo nuove e 1 dell'interfaccia (piastra con 3044 entità, volume calcolato a mano), tutte falliscono sulla versione vecchia. Corretta anche un'attesa sbagliata nelle prove dell'interfaccia (aspettavano che sparisse il pulsante ✓, che invece resta nascosto nella pagina): la suite passa da 6 a meno di 3 minuti. Tolto anche dal Convertitore DWG → DXF l'avviso «il Banco CAD importa al massimo 3000 entità» (prova nell'interfaccia: scheda di un disegno con 5200 entità senza avvisi; `render` esposto in `window.Convertitore` per la prova); pagina del convertitore ripubblicata (versione 2, ancora **privata**). Su richiesta dell'utente, **avviso chiarissimo «Come si usa il Convertitore DWG → DXF»** (riquadro «Important» di GitHub) nel README italiano e inglese, in `convertitore-dwg/README.md` e in cima al LEGGIMI: su GitHub non funziona (il file è «troppo grande da mostrare», è normale), si scarica con «Download raw file», si rinomina (si chiama `index.html` come il Banco CAD), doppio clic, Salva DXF, Importa DXF. Stesso riquadro «Come si usa il Banco CAD» in «Per iniziare» dei due README (rinominare in `banco-cad.html`). Se si cambia il modo d'uso, aggiornare tutti i riquadri.
+
+- 22 ottobre (tarda mattina): **rotella = zoom** (richiesta dell'utente: «non mi piace lo zoom com'è adesso»). Rotella verso il puntatore, avanti ingrandisce e indietro riduce, nel 3D, nello schizzo e nella **messa in tavola** (prima Ctrl + rotella, e lo zoom del foglio partiva dall'angolo: ora il punto sotto il mouse resta fermo); Ctrl + rotella ruota come prima; tolto lo spostamento a destra/sinistra con la rotella (resta il trascinamento). Aiuto, Glossario (Comandi del mouse), Guida (Muovere la vista, Messa in tavola) e README aggiornati. Prove dell'interfaccia: 2 riscritte e 1 nuova (fattore e^0,15 = 1,1618 esatto, punto sotto il puntatore fermo entro 0,05 px nel 3D e 0,34 px nella tavola); sulla versione vecchia falliscono tutte e 3. Interfaccia 54/54.
 
 ## 6. Cose aperte
 

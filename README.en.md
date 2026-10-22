@@ -80,9 +80,8 @@ Sketch colours tell you where you are: **blue** = dimensions or relations still 
 
 | Action | Mouse | Tablet |
 |---|---|---|
-| Move left / right | wheel | tap the part, then two fingers |
+| Zoom (in and out) | wheel, towards the pointer: forward zooms in, backward zooms out (in drawings too) | two fingers (always) |
 | Rotate | Ctrl + wheel, or drag with the left button on empty space | tap the part, then one finger |
-| Zoom | Shift + wheel | two fingers (always) |
 | Move in any direction | drag with the right button (or Shift + left) | tap the part, then two fingers |
 | Fit the part to the window | **F** key or the first button of the view toolbar | first button of the view toolbar |
 | Standard views (Front, Top, Isometric…) | space bar | orientation button in the view toolbar |
@@ -144,7 +143,7 @@ The program is one file, `index.html` (about 5 MB), with HTML, CSS and JavaScrip
 npm install
 npx playwright install chromium   # first time only
 npm test                          # all tests
-npm run test:kernel               # calculations only (129 + 14 STEP/IGES + 11 DWG converter tests, a few seconds)
+npm run test:kernel               # calculations only (134 + 14 STEP/IGES + 11 DWG converter tests, a few seconds)
 npm run test:ui                   # interface only, in Chromium (52 tests)
 ```
 
