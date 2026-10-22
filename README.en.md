@@ -26,9 +26,16 @@ Designed for technical secondary schools (mechanical and mechatronic engineering
 
 ## Getting started
 
-1. Download [`index.html`](index.html): on the file's page press the download button (the arrow at the top right).
-2. Double-click it: it opens in your browser.
-3. Press **Guida** (Guide) at the top right and start with «Il primo pezzo in 6 passi» (your first part in 6 steps), or open the **Esercitazioni** (Exercises) tab.
+> [!IMPORTANT]
+> **How to use Banco CAD**
+>
+> **Banco CAD does not run on GitHub:** GitHub stores the file but does not run it. You must **download the file and open it in your browser**.
+>
+> 1. Open the file [`index.html`](index.html).
+> 2. GitHub says the file is too big to display ("Sorry about that, but we can't show files that are this big right now"): **this is normal**, the file is fine. Press the **Download raw file** button: the **down arrow** at the top right. Do **not** press "Raw" or "View raw": they would only show the program's text.
+> 3. The downloaded file is called `index.html`, **like the DWG → DXF converter**: rename it, for example `banco-cad.html`, so you don't mix them up.
+> 4. **Double-click** it: it opens in Chrome, Edge or Firefox. No internet needed.
+> 5. Press **Guida** (Guide) at the top right and start with «Il primo pezzo in 6 passi» (your first part in 6 steps), or open the **Esercitazioni** (Exercises) tab.
 
 Your work is saved automatically in the browser. To move it to another computer use **Progetto › Esporta il progetto** (Project › Export) and then **Importa un progetto** (Import).
 

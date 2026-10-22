@@ -24,9 +24,16 @@ Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo
 
 ## Per iniziare
 
-1. Scarica [`index.html`](index.html): sulla pagina del file premi il pulsante di download (la freccia in alto a destra).
-2. Aprilo con un doppio clic: si apre nel browser.
-3. Premi **Guida** in alto a destra e comincia da «Il primo pezzo in 6 passi», oppure apri la scheda **Esercitazioni**.
+> [!IMPORTANT]
+> **Come si usa il Banco CAD**
+>
+> **Su GitHub il Banco CAD non funziona:** GitHub conserva il file ma non lo fa funzionare. Bisogna **scaricare il file e aprirlo nel browser**.
+>
+> 1. Apri il file [`index.html`](index.html).
+> 2. GitHub scrive che il file è troppo grande da mostrare («Sorry about that, but we can't show files that are this big right now»): **è normale**, il file è a posto. Premi il pulsante **Download raw file**: è la **freccia verso il basso**, in alto a destra. **Non** premere «Raw» né «View raw»: mostrerebbero solo il testo del programma.
+> 3. Il file scaricato si chiama `index.html`, **come il Convertitore DWG → DXF**: rinominalo, per esempio `banco-cad.html`, così non li confondi.
+> 4. Aprilo con un **doppio clic**: si apre in Chrome, Edge o Firefox. Non serve internet.
+> 5. Premi **Guida** in alto a destra e comincia da «Il primo pezzo in 6 passi», oppure apri la scheda **Esercitazioni**.
 
 Il lavoro si salva da solo nel browser. Per portarlo su un altro computer usa **Progetto › Esporta il progetto** e poi **Importa un progetto**.
 
