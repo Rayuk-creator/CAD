@@ -40,6 +40,20 @@ With **Progetto › Importa DXF (schizzo)** (Project › Import DXF), or **Inser
 
 AutoCAD **DWG** files are first turned into DXF with the **DWG → DXF converter** (*Convertitore DWG → DXF*), a separate page (folder `convertitore-dwg/`): it works in the browser with the free LibreDWG reader, from release R1.4 to 2018 (so files from AutoCAD 2019–2025 too). It is a separate program under the GNU GPL 3; Banco CAD links to it when a DWG is chosen and also opens the `.zip` in which the published page saves DXF files.
 
+> [!IMPORTANT]
+> **How to use the DWG → DXF converter**
+>
+> **The converter does not run on GitHub:** GitHub stores the file but does not run it. You must **download the file and open it in your browser**.
+>
+> 1. Open the file [`convertitore-dwg/index.html`](convertitore-dwg/index.html).
+> 2. GitHub says the file is too big to display ("Sorry about that, but we can't show files that are this big right now"): **this is normal**, the file is fine. Press the **Download raw file** button: the **down arrow** at the top right. Do **not** press "Raw" or "View raw": they would only show the program's text.
+> 3. The downloaded file is called `index.html`, **like Banco CAD**: rename it, for example `convertitore-dwg.html`, so you don't mix them up.
+> 4. **Double-click** it: it opens in Chrome, Edge or Firefox. No internet needed.
+> 5. Press **Scegli i file DWG** (*choose DWG files*, or drag the `.dwg` files onto the page), then **Salva DXF** (*save DXF*) next to each drawing.
+> 6. In Banco CAD: **Progetto › Importa DXF (schizzo)** and choose the `.dxf` file you just saved.
+>
+> Use it on a **computer**: the converter asks the browser for about 1 GB of memory and may not start on older phones or tablets.
+
 ## Your first part in 6 steps
 
 Every model follows the same path: **dimensioned sketch → feature**.
