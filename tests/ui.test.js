@@ -10,6 +10,8 @@ const OUT = path.join(__dirname, 'output'); require('fs').mkdirSync(OUT, { recur
 let PAGE = null, shot = 0;
 const rec = (name, ok, msg = '') => { if (!ok && PAGE) PAGE.screenshot({ path: path.join(OUT, 'fail-' + (++shot) + '.png') }).catch(() => {}); results.push({ name, ok, msg }); console.log((ok ? 'OK  ' : 'NO  ') + name + (msg ? '\n      ' + msg : '')); };
 const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
+// controllo indipendente dei PDF con pdfplumber (Python): null se non c'è
+const pdfCheck = file => { try { return JSON.parse(require('child_process').execFileSync('python3', [path.join(__dirname, 'pdfcheck.py'), file], { encoding: 'utf8', maxBuffer: 256e6, stdio: ['ignore', 'pipe', 'ignore'] })); } catch (e) { return null; } };
 
 (async () => {
   // CHROMIUM_PATH: percorso di un Chromium già installato (facoltativo); altrimenti quello di Playwright
@@ -934,6 +936,124 @@ const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
     const after = await page.evaluate(() => App.doc.features.length);
     rec('Ricarica immediata: modifica salvata, niente funzioni fantasma', name === 'Prova ricarica' && during === n0 + 1 && after === n0, `nome «${name}», funzioni ${n0} → con pannello ${during} → dopo ricarica ${after}`);
   } catch (e) { rec('Ricarica immediata: modifica salvata, niente funzioni fantasma', false, e.message.split('\n')[0]); }
+
+  // 6a. Salva PDF: tavola (vettoriale, foglio vero, 1:1), schizzo (vettoriale, scala normalizzata), vista 3D (immagine);
+  //     Esporta STEP. Ogni PDF è riletto con pdfplumber (un lettore che non ha niente del programma) e misurato in mm.
+  const lastPdf = async file => {
+    await page.waitForFunction(() => App.lastPdf && !App.pdfBusy, null, { timeout: 60000 });
+    const r = await page.evaluate(() => { const r = App.lastPdf; let s = ''; const u = r.bytes; for (let i = 0; i < u.length; i += 8192) s += String.fromCharCode(...u.subarray(i, i + 8192)); return { ...r, bytes: undefined, b64: btoa(s) }; });
+    const buf = Buffer.from(r.b64, 'base64'); require('fs').writeFileSync(path.join(OUT, file), buf);
+    r.head = buf.slice(0, 8).toString('latin1'); r.tail = buf.slice(-6).toString('latin1'); r.len = buf.length;
+    r.chk = pdfCheck(path.join(OUT, file));
+    return r;
+  };
+  const camOf = () => page.evaluate(() => JSON.stringify([App.r.cam.q, App.r.cam.target, App.r.cam.scale, App.r.bg || null]));
+  try {
+    await fresh();
+    await page.evaluate(() => { App.change(() => { App.doc = JSON.parse(JSON.stringify(Lessons.ref(Lessons.list[1]).doc)); App.sel = []; }); App.drawingState = null; App.setCmdTab('drawing'); });
+    await page.waitForTimeout(600);
+    await page.evaluate(() => Drawing.cmd('dAuto')); await page.waitForTimeout(300);
+    // testi della tavola (dalla SVG): quelli orizzontali con il loro punto d'appoggio
+    const sv = await page.evaluate(() => { const r = Drawing.render(); const d = new DOMParser().parseFromString(r.svg, 'image/svg+xml');
+      const tx = [...d.querySelectorAll('text')].map(t => { let a = t.getAttribute('text-anchor'); for (let p = t.parentElement; !a && p; p = p.parentElement) a = p.getAttribute && p.getAttribute('text-anchor');
+        return { s: t.textContent.replace(/\s+/g, ' ').trim(), x: +t.getAttribute('x'), y: +t.getAttribute('y'), a: a || 'start', rot: !!t.getAttribute('transform') }; }).filter(t => t.s);
+      return { W: r.L.W, H: r.L.H, tx, all: d.querySelectorAll('text').length }; });
+    await page.evaluate(() => { App.lastPdf = null; });
+    await page.click('#cmdBar [data-cmd="dPdf"]');
+    const r = await lastPdf('tavola.pdf');
+    let ind = 'controllo con pdfplumber saltato (manca python3 o pdfplumber)', okInd = true;
+    if (r.chk) {
+      const pg = r.chk[0], txt = pg.text.replace(/\s+/g, ' ');
+      const frame = pg.rects.some(q => Math.abs(q[0] - 20) < 0.01 && Math.abs(q[1] - 10) < 0.01 && Math.abs(q[2] - (sv.W - 10)) < 0.01 && Math.abs(q[3] - (sv.H - 10)) < 0.01);
+      const hor = sv.tx.filter(t => !t.rot);
+      const found = hor.filter(t => txt.includes(t.s)).length;
+      // quote orizzontali (testo centrato): il centro della parola nel PDF sul punto d'appoggio della SVG
+      let dmax = 0, nq = 0;
+      for (const t of hor.filter(t => t.a === 'middle' && /^[\dØR,.×\s]+$/.test(t.s))) {
+        const w = pg.words.filter(w => w.t === t.s).sort((a, b) => Math.hypot((a.x0 + a.x1) / 2 - t.x, a.bottom - t.y) - Math.hypot((b.x0 + b.x1) / 2 - t.x, b.bottom - t.y))[0];
+        if (w) { nq++; dmax = Math.max(dmax, Math.abs((w.x0 + w.x1) / 2 - t.x)); }
+      }
+      okInd = Math.abs(pg.w - sv.W) < 0.01 && Math.abs(pg.h - sv.H) < 0.01 && frame && found === hor.length && nq >= 3 && dmax < 0.05 && pg.lines.length > 100;
+      ind = `pdfplumber: foglio ${pg.w.toFixed(3)} × ${pg.h.toFixed(3)} mm, squadratura ${frame ? 'al suo posto' : 'NON trovata'}, ${pg.lines.length} linee, testi trovati ${found}/${hor.length}, ${nq} quote centrate entro ${dmax.toFixed(3)} mm`;
+    }
+    const ok = r.head.startsWith('%PDF-1.4') && r.tail.includes('%%EOF') && r.what === 'tavola' && r.stats.texts === sv.all && !Object.keys(r.stats.skipped).length && okInd;
+    rec('Salva PDF della tavola: foglio vero in scala 1:1, linee e testi al loro posto', ok, `${r.file}, ${r.len} byte, ${r.stats.lines} linee, ${r.stats.texts} testi (SVG ${sv.all}, di cui ${sv.all - sv.tx.length} vuoti); ${ind}`);
+    await page.evaluate(() => App.setCmdTab('features')); await page.waitForTimeout(200);
+  } catch (e) { rec('Salva PDF della tavola: foglio vero in scala 1:1, linee e testi al loro posto', false, e.message.split('\n')[0]); await page.evaluate(() => App.setCmdTab('features')).catch(() => {}); }
+  try {
+    await fresh();
+    await startSketchOn('Piano superiore');
+    await tool('rect'); await click(0, 0); await click(70, 40);
+    await dimLine([0, 0], [70, 0], [0, -12], 80);
+    await dimLine([80, 0], [80, 40], [12, 0], 50);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+    const st = await page.evaluate(() => Sketch.analyze(Sketcher.session().sk).status);
+    const c0 = await camOf(), sel0 = await page.evaluate(() => Sketcher.session().sel.size);
+    await page.evaluate(() => { App.lastPdf = null; });
+    await page.click('#btnFile');
+    const label = await page.locator('#menuFile [data-act="pdf"]').textContent();
+    await page.click('#menuFile [data-act="pdf"]');
+    const r = await lastPdf('schizzo.pdf');
+    const c1 = await camOf(), sel1 = await page.evaluate(() => Sketcher.session().sel.size);
+    let ind = 'controllo con pdfplumber saltato (manca python3 o pdfplumber)', okInd = true;
+    if (r.chk) {
+      const pg = r.chk[0];
+      // il rettangolo 80 × 50 a scala 2:1: lati di 160 e 100 mm sulla carta
+      const H = pg.lines.filter(l => Math.abs(l[1] - l[3]) < 1e-6 && Math.abs(Math.abs(l[2] - l[0]) - 160) < 0.02);
+      const V = pg.lines.filter(l => Math.abs(l[0] - l[2]) < 1e-6 && Math.abs(Math.abs(l[3] - l[1]) - 100) < 0.02);
+      // la coppia di lati opposti (le altre linee lunghe uguali sono le linee di quota)
+      const pairGap = (L, k, want) => { let best = null; for (const a of L) for (const b of L) { const g = Math.abs(a[k] - b[k]); if (g > 1 && (best === null || Math.abs(g - want) < Math.abs(best - want))) best = g; } return best || 0; };
+      const gapH = pairGap(H, 1, 100), gapV = pairGap(V, 0, 160);
+      const words = pg.words.map(w => w.t);
+      okInd = H.length >= 2 && V.length >= 2 && Math.abs(gapH - 100) < 0.02 && Math.abs(gapV - 160) < 0.02 && words.includes('80') && words.includes('50') && /Scala 2:1/.test(pg.text) && Math.abs(pg.w - 297) < 0.01;
+      ind = `pdfplumber: ${H.length} lati orizzontali da ${H[0] ? Math.abs(H[0][2] - H[0][0]).toFixed(3) : '?'} mm a ${gapH.toFixed(3)} mm di distanza, ${V.length} verticali da ${V[0] ? Math.abs(V[0][3] - V[0][1]).toFixed(3) : '?'} mm a ${gapV.toFixed(3)} mm; quote «80» ${words.includes('80') ? 'sì' : 'NO'} e «50» ${words.includes('50') ? 'sì' : 'NO'}`;
+    }
+    const ok = label === 'Salva PDF dello schizzo' && st === 'full' && r.what === 'schizzo' && r.scale === '2:1' && !r.missing.length && c0 === c1 && sel0 === sel1 && okInd;
+    rec('Salva PDF dello schizzo: rettangolo 80 × 50 a scala 2:1 (160 × 100 mm sulla carta), vista e selezione intatte', ok,
+      `voce «${label}», scala ${r.scale}, comandi mancanti: ${r.missing.join(', ') || 'nessuno'}, vista ${c0 === c1 ? 'uguale' : 'CAMBIATA'}; ${ind}`);
+    // vista 3D del pezzo estruso
+    await tool('exitSketch'); await page.evaluate(() => App.setCmdTab('features'));
+    await tool('extrude');
+    const dep = page.locator('.pm-body .row', { hasText: 'Profondità' }).first().locator('input');
+    await dep.fill('10'); await dep.press('Tab'); await page.click('.pm-ok'); await page.waitForTimeout(300);
+    await page.evaluate(() => { App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false); });
+    await page.waitForTimeout(400);
+    const v0 = await camOf();
+    await page.evaluate(() => { App.lastPdf = null; });
+    await page.click('#btnFile');
+    const label2 = await page.locator('#menuFile [data-act="pdf"]').textContent();
+    await page.click('#menuFile [data-act="pdf"]');
+    const rv = await lastPdf('vista.pdf');
+    const v1 = await camOf();
+    const cvs = await page.evaluate(() => [App.r.canvas.width, App.r.canvas.height]);
+    let ind2 = 'controllo con pdfplumber saltato (manca python3 o pdfplumber)', okInd2 = true;
+    if (rv.chk) {
+      const im = rv.chk[0].images[0] || {};
+      okInd2 = rv.chk[0].images.length === 1 && im.src[0] === cvs[0] && im.src[1] === cvs[1] && Math.abs(im.w / im.h - cvs[0] / cvs[1]) < 1e-3 * cvs[0] / cvs[1]
+        && im.x0 >= 10 - 1e-3 && im.top >= 10 - 1e-3 && im.x0 + im.w <= 287 + 1e-3 && im.top + im.h <= 188 + 1e-3 && Math.min(Math.abs(im.w - 277), Math.abs(im.h - 178)) < 1e-3
+        && Math.abs((im.x0 + im.w / 2) - 148.5) < 1e-3 && Math.abs((im.top + im.h / 2) - 99) < 1e-3;
+      ind2 = `pdfplumber: immagine ${im.src && im.src.join(' × ')} px in ${im.w && im.w.toFixed(2)} × ${im.h && im.h.toFixed(2)} mm da (${im.x0 && im.x0.toFixed(2)}, ${im.top && im.top.toFixed(2)})`;
+    }
+    const ok2 = label2 === 'Salva PDF della vista 3D' && rv.what === 'vista' && rv.px[0] === cvs[0] && rv.px[1] === cvs[1] && rv.ink > 0.02 && rv.ink < 0.9 && v0 === v1 && okInd2;
+    rec('Salva PDF della vista 3D: immagine intera della vista, non deformata, nel riquadro A4; vista intatta', ok2,
+      `voce «${label2}», ${rv.px.join(' × ')} px, disegnato il ${(rv.ink * 100).toFixed(1)} % dei pixel, vista ${v0 === v1 ? 'uguale' : 'CAMBIATA'}; ${ind2}`);
+    // STEP dal menu, riletto nel Banco CAD con il lettore STEP vero
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), (async () => { await page.click('#btnFile'); await page.click('#menuFile [data-act="step"]'); })()]);
+    const stepPath = path.join(OUT, 'pezzo.step'); await dl.saveAs(stepPath);
+    const stepTxt = require('fs').readFileSync(stepPath, 'latin1');
+    const stats = await page.evaluate(() => App.lastStep.stats);
+    await fresh();
+    await page.evaluate(async t => { await App.importCadData('pezzo.step', new TextEncoder().encode(t), {}); }, stepTxt);
+    await page.waitForTimeout(300);
+    const p = await props();
+    const ok3 = /\.step$/.test(dl.suggestedFilename()) && /^ISO-10303-21;/.test(stepTxt) && /MANIFOLD_SOLID_BREP/.test(stepTxt) && stats.faces === 6 && stats.edges === 12 && stats.badEdges === 0 && stats.solids === 1
+      && p && Math.abs(p.V - 40000) < 1e-6 && Math.abs(p.A - 10600) < 1e-6;
+    rec('Esporta STEP (menu Progetto): blocco 80 × 50 × 10 con 6 facce e 12 spigoli, riletto nel Banco CAD con volume e area esatti', ok3,
+      `${dl.suggestedFilename()}, ${stepTxt.length} byte, ${stats.faces} facce, ${stats.edges} spigoli, ${stats.solids} solido; riletto: V ${p && p.V.toFixed(6)}, A ${p && p.A.toFixed(6)}`);
+  } catch (e) {
+    rec('Salva PDF dello schizzo e della vista 3D, Esporta STEP', false, e.message.split('\n')[0]);
+    await page.evaluate(() => { document.querySelector('#menuFile').hidden = true; if (App.mode === 'sketch') Sketcher.exit(false); if (App.pm) App.closePM(false); }).catch(() => {});
+  }
 
   // 6. Convertitore DWG → DXF (pagina a parte): più file insieme, esempio, file sbagliato, salvataggio del DXF, e il DXF
   //    salvato importato nel Banco CAD (R14: 16 linee, di cui 8 doppie). Da disco il lettore deve lavorare in un Worker.

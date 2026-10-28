@@ -115,7 +115,7 @@ Mass properties (volume, area, mass, centre of mass, bounding box) computed on t
 
 ![Drawing of the flange: first-angle views, dimensions, title block](docs/img/messa-in-tavola.png)
 
-Orthographic views in **first-angle projection** (ISO 5456-2), hidden lines, centre lines, hatched section views, dimensions (also automatic), title block, A4 to A2 sheets with standard scales. The isometric view can be **shaded**, with the part's colours (including those of a STEP file). Print to scale or to PDF, export to **SVG** and **DXF** (for AutoCAD). The Project menu also exports **STL** for 3D printing.
+Orthographic views in **first-angle projection** (ISO 5456-2), hidden lines, centre lines, hatched section views, dimensions (also automatic), title block, A4 to A2 sheets with standard scales. The isometric view can be **shaded**, with the part's colours (including those of a STEP file). **Salva PDF** (*save PDF*: a vector PDF of the drawing on the real sheet size, at 1:1), print to scale, export to **SVG** and **DXF** (for AutoCAD). The Project menu also saves a PDF of the open sketch (vector, at the largest standard scale that fits an A4 sheet) or of the 3D view, exports the part as **STEP** to open it in SolidWorks, Inventor, Fusion or FreeCAD (a solid in millimetres; curved surfaces split into flat faces) and as **STL** for 3D printing.
 
 ## Guide, glossary and exercises
 
@@ -143,7 +143,7 @@ The program is one file, `index.html` (about 5 MB), with HTML, CSS and JavaScrip
 npm install
 npx playwright install chromium   # first time only
 npm test                          # all tests
-npm run test:kernel               # calculations only (134 + 14 STEP/IGES + 11 DWG converter tests, a few seconds)
+npm run test:kernel               # calculations only (142 + 19 STEP/IGES and exported STEP + 11 DWG converter tests, a few seconds)
 npm run test:ui                   # interface only, in Chromium (52 tests)
 ```
 
@@ -155,7 +155,8 @@ docs/img/             the images in this README
 tests/extract.js      extracts the calculation modules from the file to test them in Node
 tests/kernel.test.js  calculation tests (the same as the in-app Self-check)
 tests/ui.test.js      interface tests with Playwright
-tests/step.test.js    tests of the real STEP/IGES reader
+tests/pdfcheck.py     reads the saved PDFs back with pdfplumber (Python) and measures them in mm
+tests/step.test.js    tests of the real STEP/IGES reader and of exported STEP files (read back with OpenCascade)
 tests/stepgen.js      writes small STEP test files (igesgen.js: IGES)
 tests/dwg.test.js     tests of the DWG → DXF converter (DWG from R11 to 2018, compared with reference DXF files)
 tools/incorpora-occt.js  inserts or updates the STEP/IGES reader in the page

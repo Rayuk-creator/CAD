@@ -393,6 +393,8 @@ label.chk .gl-i { margin-left: 2px; }
           <button type="button" data-act="importCad">Importa STEP o IGES</button>
           <button type="button" data-act="importMesh">Importa STL o OBJ</button>
           <button type="button" data-act="importDxf">Importa DXF (schizzo)</button>
+          <button type="button" data-act="pdf">Salva PDF</button>
+          <button type="button" data-act="step">Esporta STEP (per altri CAD)</button>
           <button type="button" data-act="stl">Esporta STL (stampa 3D)</button>
           <button type="button" data-act="help">Guida (come si fa)</button>
         </div>
@@ -3607,6 +3609,653 @@ self.onmessage = async ev => {
   if (typeof module !== 'undefined') module.exports = api; else root.Import = api;
 })(this);
 
+/* Esportazioni: PDF (tavola vettoriale, schizzo vettoriale, vista 3D come immagine) e STEP (solido a facce piane).
+   Il modulo non usa la pagina: scrive i file a partire da dati semplici, così le prove girano anche in Node. */
+(function (root) {
+  'use strict';
+
+  /* ===================================== PDF ===================================== */
+  // larghezze dei caratteri di Helvetica e Helvetica-Bold (metriche Adobe, codifica WinAnsi, codici 32–255, millesimi del corpo)
+  const HELV = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584,761,556,0,222,556,333,1000,556,556,333,1000,667,333,1000,0,611,0,0,222,222,333,333,350,556,1000,333,1000,500,333,944,0,500,667,278,333,556,556,556,556,260,556,333,737,370,556,584,333,737,333,400,584,333,333,333,556,537,278,333,333,365,556,834,834,834,611,667,667,667,667,667,667,1000,722,667,667,667,667,278,278,278,278,722,722,778,778,778,778,778,584,778,722,722,722,722,667,667,611,556,556,556,556,556,556,889,500,556,556,556,556,278,278,278,278,556,556,556,556,556,556,556,584,611,556,556,556,556,500,556,500];
+  const HELVB = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584,761,556,0,278,556,500,1000,556,556,333,1000,667,333,1000,0,611,0,0,278,278,500,500,350,556,1000,333,1000,556,333,944,0,500,667,278,333,556,556,556,556,280,556,333,737,370,556,584,333,737,333,400,584,333,333,333,611,556,278,333,333,365,556,834,834,834,611,722,722,722,722,722,722,1000,722,667,667,667,667,278,278,278,278,722,722,778,778,778,778,778,584,778,722,722,722,722,667,667,611,556,556,556,556,556,556,889,556,556,556,556,556,278,278,278,278,611,611,611,611,611,611,611,584,611,611,611,611,611,556,611,556];
+  const PT = 72 / 25.4;                 // punti PDF per millimetro
+  // caratteri di Windows-1252 tra 0x80 e 0x9F
+  const CP1252 = { 0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02C6: 0x88, 0x2030: 0x89, 0x0160: 0x8A,
+    0x2039: 0x8B, 0x0152: 0x8C, 0x017D: 0x8E, 0x2018: 0x91, 0x2019: 0x92, 0x201C: 0x93, 0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x02DC: 0x98,
+    0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B, 0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F };
+  // simboli tecnici senza posto nella codifica: il più simile che c'è (⌀ → Ø, − → -, ⋅ → ·)
+  const SUBST = { 0x2300: 0xD8, 0x2205: 0xD8, 0x2212: 0x2D, 0x2010: 0x2D, 0x2011: 0x2D, 0x22C5: 0xB7, 0x2219: 0xB7, 0x2032: 0x27, 0x2033: 0x22, 0x2009: 0x20, 0x202F: 0x20, 0x2007: 0x20 };
+  function winAnsi(s) {
+    const out = [];
+    for (const ch of String(s)) {
+      const u = ch.codePointAt(0);
+      out.push(u >= 32 && u < 127 ? u : u >= 0xA0 && u <= 0xFF ? u : CP1252[u] || SUBST[u] || 63);
+    }
+    return out;
+  }
+  // larghezza di un testo in millesimi del corpo
+  function textWidth(s, bold) { const W = bold ? HELVB : HELV; let w = 0; for (const b of winAnsi(s)) w += W[b - 32] || 0; return w; }
+  function pdfStr(bytes) {
+    let o = '(';
+    for (const b of bytes) o += b === 40 || b === 41 || b === 92 ? '\\' + String.fromCharCode(b) : b < 32 || b > 126 ? '\\' + b.toString(8).padStart(3, '0') : String.fromCharCode(b);
+    return o + ')';
+  }
+  // numeri: millesimi di millimetro bastano (1 µm)
+  const N = x => { const v = Math.round(x * 1000) / 1000; return v === 0 ? '0' : String(v); };
+  const C3 = x => { const v = Math.round(Math.min(1, Math.max(0, x)) * 1000) / 1000; return String(v); };
+
+  // colori CSS/SVG → [r, g, b] tra 0 e 1 (null = nessuno). La trasparenza si mescola con il bianco della carta.
+  const NAMED = { black: [0, 0, 0], white: [1, 1, 1], red: [1, 0, 0], green: [0, 0.502, 0], blue: [0, 0, 1], gray: [0.502, 0.502, 0.502], grey: [0.502, 0.502, 0.502],
+    orange: [1, 0.647, 0], yellow: [1, 1, 0] };
+  function parseColor(s, alpha = 1) {
+    if (s === undefined || s === null) return null;
+    s = String(s).trim().toLowerCase();
+    if (!s || s === 'none' || s === 'transparent') return null;
+    let c = null, a = 1;
+    let m;
+    if ((m = /^#([0-9a-f]{3})$/.exec(s))) c = [...m[1]].map(h => parseInt(h + h, 16) / 255);
+    else if ((m = /^#([0-9a-f]{6})$/.exec(s))) c = [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16) / 255);
+    else if ((m = /^rgba?\(([^)]*)\)$/.exec(s))) {
+      const p = m[1].split(/[\s,\/]+/).filter(Boolean);
+      c = p.slice(0, 3).map(x => x.endsWith('%') ? parseFloat(x) / 100 : parseFloat(x) / 255);
+      if (p[3] !== undefined) a = p[3].endsWith('%') ? parseFloat(p[3]) / 100 : parseFloat(p[3]);
+    } else if (NAMED[s]) c = NAMED[s].slice();
+    if (!c || c.some(x => !isFinite(x))) return null;
+    a *= alpha;
+    if (a <= 0.001) return null;
+    if (a < 1) c = c.map(x => 1 - a * (1 - x));
+    return c;
+  }
+
+  // pagina: coordinate in millimetri, origine in alto a sinistra, y verso il basso (come la SVG e lo schermo)
+  function Page(doc, w, h) { this.doc = doc; this.w = w; this.h = h; this.ops = []; this.imgs = []; this.gs = {}; this.gstack = []; this.nText = 0; this.nPaths = 0; }
+  Page.prototype = {
+    op(s) { this.ops.push(s); return this; },
+    save() { this.gstack.push(Object.assign({}, this.gs)); return this.op('q'); },
+    restore() { this.gs = this.gstack.pop() || {}; return this.op('Q'); },
+    strokeColor(c) { const k = c.map(C3).join(' '); if (this.gs.RG !== k) { this.gs.RG = k; this.op(k + ' RG'); } return this; },
+    fillColor(c) { const k = c.map(C3).join(' '); if (this.gs.rg !== k) { this.gs.rg = k; this.op(k + ' rg'); } return this; },
+    lineWidth(w) { const k = N(w); if (this.gs.w !== k) { this.gs.w = k; this.op(k + ' w'); } return this; },
+    dash(arr, ph = 0) { const k = '[' + (arr || []).map(N).join(' ') + '] ' + N(ph); if (this.gs.d !== k) { this.gs.d = k; this.op(k + ' d'); } return this; },
+    cap(n) { if (this.gs.J !== n) { this.gs.J = n; this.op(n + ' J'); } return this; },
+    join(n) { if (this.gs.j !== n) { this.gs.j = n; this.op(n + ' j'); } return this; },
+    moveTo(x, y) { return this.op(N(x) + ' ' + N(y) + ' m'); },
+    lineTo(x, y) { return this.op(N(x) + ' ' + N(y) + ' l'); },
+    curveTo(a, b, c, d, e, f) { return this.op([a, b, c, d, e, f].map(N).join(' ') + ' c'); },
+    close() { return this.op('h'); },
+    rect(x, y, w, h) { return this.op([x, y, w, h].map(N).join(' ') + ' re'); },
+    // disegna il percorso: f = colore di riempimento, s = colore della linea (null = niente)
+    paint(f, s) { this.nPaths++; if (f) this.fillColor(f); if (s) this.strokeColor(s); return this.op(f && s ? 'B' : f ? 'f' : s ? 'S' : 'n'); },
+    clipRect(x, y, w, h) { return this.rect(x, y, w, h).op('W n'); },
+    // testo: (x, y) punto d'appoggio sulla linea di base; size in mm; angle in gradi (in senso orario, come rotate() della SVG);
+    // anchor start | middle | end; hscale = larghezza dei caratteri in % (82 ≈ Arial Narrow); baseline = spostamento verso il basso
+    text(s, x, y, size, o = {}) {
+      s = String(s); if (!s.length || !(size > 0)) return 0;
+      const bold = !!o.bold, hs = o.hscale || 100;
+      const bytes = winAnsi(s);
+      const W = bold ? HELVB : HELV;
+      let w = 0; for (const b of bytes) w += W[b - 32] || 0;
+      w = w / 1000 * size * hs / 100;
+      const a = (o.angle || 0) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+      const dx = o.anchor === 'middle' ? -w / 2 : o.anchor === 'end' ? -w : 0, dy = o.baseline || 0;
+      const ox = x + ca * dx - sa * dy, oy = y + sa * dx + ca * dy;
+      this.fillColor(o.color || [0, 0, 0]);
+      const f = bold ? '/F2' : '/F1';
+      this.doc.fonts.add(f);
+      this.nText++;
+      this.op(`BT ${f} 1 Tf ${N(hs)} Tz ${[size * ca, size * sa, size * sa, -size * ca, ox, oy].map(v => String(Math.round(v * 1e5) / 1e5)).join(' ')} Tm ${pdfStr(bytes)} Tj ET`);
+      return w;
+    },
+    // immagine RGB (w × h pixel, 3 byte per pixel, righe dall'alto) nel rettangolo x, y, larghezza, altezza in mm
+    image(img, x, y, w, h) {
+      const name = '/Im' + (this.doc.nImg = (this.doc.nImg || 0) + 1);
+      this.imgs.push({ name, img });
+      return this.op(`q ${N(w)} 0 0 ${N(-h)} ${N(x)} ${N(y + h)} cm ${name} Do Q`);
+    },
+  };
+
+  function Doc(o = {}) { this.pages = []; this.fonts = new Set(); this.title = o.title || ''; this.date = o.date || new Date(); }
+  Doc.prototype.addPage = function (w, h) { const p = new Page(this, w, h); this.pages.push(p); return p; };
+  // compressione «deflate» (zlib) del browser o di Node; senza, il PDF resta valido ma più grande
+  async function deflateDefault(u8) {
+    if (typeof CompressionStream === 'undefined' || typeof Response === 'undefined' || typeof Blob === 'undefined') return null;
+    return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
+  }
+  // PDF completo. Con «deflate» (funzione asincrona) i flussi sono compressi; buildSync() li lascia in chiaro (per le prove)
+  Doc.prototype.build = async function (o = {}) {
+    const deflate = o.deflate === undefined ? deflateDefault : o.deflate;
+    const z = new Map();
+    if (deflate) for (const [k, data] of this._streams()) { const c = await deflate(data); if (c) z.set(k, c); }
+    return this._assemble(z);
+  };
+  Doc.prototype.buildSync = function () { return this._assemble(new Map()); };
+  // contenuti dei flussi: pagine e immagini
+  Doc.prototype._content = function (pg) {
+    const Hpt = pg.h * PT;
+    // millimetri con la y verso il basso: scala mm → punti e ribaltamento
+    return new TextEncoder().encode(`${PT.toFixed(6)} 0 0 ${(-PT).toFixed(6)} 0 ${Hpt.toFixed(4)} cm\n` + pg.ops.join('\n') + '\n');
+  };
+  Doc.prototype._streams = function () {
+    const out = [];
+    this.pages.forEach((pg, i) => { out.push(['p' + i, this._content(pg)]); pg.imgs.forEach((im, j) => out.push(['i' + i + '_' + j, im.img.rgb])); });
+    return out;
+  };
+  Doc.prototype._assemble = function (z) {
+    const enc = new TextEncoder();
+    const parts = [], offs = [];
+    let pos = 0;
+    const put = x => { const u = typeof x === 'string' ? enc.encode(x) : x; parts.push(u); pos += u.length; };
+    const objs = [];
+    const ref = i => i + ' 0 R';
+    const reserve = () => { objs.push(null); return objs.length; };
+    const stream = (dict, key, data) => {
+      const c = z.get(key), body = c || data;
+      return [enc.encode(`<< ${dict}${dict ? ' ' : ''}${c ? '/Filter /FlateDecode ' : ''}/Length ${body.length} >>\nstream\n`), body, enc.encode('\nendstream')];
+    };
+    const catalog = reserve(), pagesObj = reserve(), f1 = reserve(), f2 = reserve(), info = reserve();
+    objs[f1 - 1] = ['<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'];
+    objs[f2 - 1] = ['<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'];
+    const d = this.date, p2 = n => String(n).padStart(2, '0');
+    const dstr = `D:${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+    objs[info - 1] = [`<< /Title ${pdfStr(winAnsi(this.title))} /Producer (Banco CAD) /Creator (Banco CAD) /CreationDate (${dstr}) >>`];
+    const kids = [];
+    this.pages.forEach((pg, i) => {
+      const po = reserve(), co = reserve();
+      kids.push(po);
+      const xo = pg.imgs.map((im, j) => {
+        const io = reserve();
+        objs[io - 1] = stream(`/Type /XObject /Subtype /Image /Width ${im.img.w} /Height ${im.img.h} /ColorSpace /DeviceRGB /BitsPerComponent 8`, 'i' + i + '_' + j, im.img.rgb);
+        return `${im.name} ${ref(io)}`;
+      });
+      objs[co - 1] = stream('', 'p' + i, this._content(pg));
+      objs[po - 1] = [`<< /Type /Page /Parent ${ref(pagesObj)} /MediaBox [0 0 ${(pg.w * PT).toFixed(4)} ${(pg.h * PT).toFixed(4)}] /Resources << /Font << /F1 ${ref(f1)} /F2 ${ref(f2)} >>${xo.length ? ' /XObject << ' + xo.join(' ') + ' >>' : ''} >> /Contents ${ref(co)} >>`];
+    });
+    objs[catalog - 1] = [`<< /Type /Catalog /Pages ${ref(pagesObj)} >>`];
+    objs[pagesObj - 1] = [`<< /Type /Pages /Kids [${kids.map(ref).join(' ')}] /Count ${kids.length} >>`];
+    put('%PDF-1.4\n'); put(new Uint8Array([37, 226, 227, 207, 211, 10]));
+    objs.forEach((o, i) => { offs.push(pos); put(`${i + 1} 0 obj\n`); for (const x of o) put(x); put('\nendobj\n'); });
+    const xref = pos;
+    put(`xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join(''));
+    put(`trailer\n<< /Size ${objs.length + 1} /Root ${ref(catalog)} /Info ${ref(info)} >>\nstartxref\n${xref}\n%%EOF\n`);
+    const out = new Uint8Array(pos); let k = 0; for (const u of parts) { out.set(u, k); k += u.length; }
+    return out;
+  };
+
+  /* ---------- curve: archi in curve di Bézier ---------- */
+  // arco di cerchio o ellisse (centro, raggi, rotazione phi, angoli t0 → t1) in Bézier cubiche, al massimo 90° ciascuna
+  function arcBeziers(cx, cy, rx, ry, phi, t0, t1) {
+    const out = [];
+    const n = Math.max(1, Math.ceil(Math.abs(t1 - t0) / (Math.PI / 2) - 1e-9));
+    const dt = (t1 - t0) / n, k = 4 / 3 * Math.tan(dt / 4);
+    const cp = Math.cos(phi), sp = Math.sin(phi);
+    const P = (x, y) => [cx + cp * x - sp * y, cy + sp * x + cp * y];
+    for (let i = 0; i < n; i++) {
+      const a = t0 + i * dt, b = a + dt;
+      const x0 = rx * Math.cos(a), y0 = ry * Math.sin(a), x3 = rx * Math.cos(b), y3 = ry * Math.sin(b);
+      out.push([...P(x0 - k * rx * Math.sin(a), y0 + k * ry * Math.cos(a)), ...P(x3 + k * rx * Math.sin(b), y3 - k * ry * Math.cos(b)), ...P(x3, y3)]);
+    }
+    return out;
+  }
+  // arco della SVG (A rx ry rot large sweep x y) dal punto (x1, y1): conversione nel centro (specifica SVG, appendice F.6)
+  function svgArc(x1, y1, rx, ry, rotDeg, large, sweep, x2, y2) {
+    if (x1 === x2 && y1 === y2) return [];
+    rx = Math.abs(rx); ry = Math.abs(ry);
+    if (!rx || !ry) return null;   // segmento
+    const phi = rotDeg * Math.PI / 180, cp = Math.cos(phi), sp = Math.sin(phi);
+    const dx = (x1 - x2) / 2, dy = (y1 - y2) / 2;
+    const xp = cp * dx + sp * dy, yp = -sp * dx + cp * dy;
+    const lam = xp * xp / (rx * rx) + yp * yp / (ry * ry);
+    if (lam > 1) { const s = Math.sqrt(lam); rx *= s; ry *= s; }
+    const num = rx * rx * ry * ry - rx * rx * yp * yp - ry * ry * xp * xp, den = rx * rx * yp * yp + ry * ry * xp * xp;
+    let co = Math.sqrt(Math.max(0, num / den)); if (!!large === !!sweep) co = -co;
+    const cxp = co * rx * yp / ry, cyp = -co * ry * xp / rx;
+    const cx = cp * cxp - sp * cyp + (x1 + x2) / 2, cy = sp * cxp + cp * cyp + (y1 + y2) / 2;
+    const ang = (ux, uy, vx, vy) => { const a = Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy); return a; };
+    const t0 = ang(1, 0, (xp - cxp) / rx, (yp - cyp) / ry);
+    let dt = ang((xp - cxp) / rx, (yp - cyp) / ry, (-xp - cxp) / rx, (-yp - cyp) / ry);
+    if (!sweep && dt > 0) dt -= 2 * Math.PI; else if (sweep && dt < 0) dt += 2 * Math.PI;
+    return arcBeziers(cx, cy, rx, ry, phi, t0, t0 + dt);
+  }
+
+  /* ---------- trasformazioni 2D [a b c d e f] ---------- */
+  const mulM = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
+  const apM = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+  const scaleOf = m => Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
+  function parseTransform(s) {
+    let M = [1, 0, 0, 1, 0, 0];
+    const re = /(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/g; let m;
+    while ((m = re.exec(s || ''))) {
+      const v = m[2].split(/[\s,]+/).filter(Boolean).map(Number);
+      let T;
+      if (m[1] === 'matrix') T = v.slice(0, 6);
+      else if (m[1] === 'translate') T = [1, 0, 0, 1, v[0] || 0, v[1] || 0];
+      else if (m[1] === 'scale') T = [v[0], 0, 0, v[1] === undefined ? v[0] : v[1], 0, 0];
+      else if (m[1] === 'rotate') {
+        const a = (v[0] || 0) * Math.PI / 180, c = Math.cos(a), s2 = Math.sin(a), cx = v[1] || 0, cy = v[2] || 0;
+        T = mulM(mulM([1, 0, 0, 1, cx, cy], [c, s2, -s2, c, 0, 0]), [1, 0, 0, 1, -cx, -cy]);
+      } else if (m[1] === 'skewX') T = [1, 0, Math.tan(v[0] * Math.PI / 180), 1, 0, 0];
+      else T = [1, Math.tan(v[0] * Math.PI / 180), 0, 1, 0, 0];
+      M = mulM(M, T);
+    }
+    return M;
+  }
+
+  /* ---------- SVG → pagina PDF (per la tavola) ---------- */
+  // el: elemento <svg> del DOM (DOMParser). Le unità della viewBox diventano millimetri se width e height sono in mm.
+  const INH = ['fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-linecap', 'stroke-linejoin', 'font-size', 'font-weight',
+    'text-anchor', 'dominant-baseline', 'fill-opacity', 'stroke-opacity', 'visibility', 'display'];
+  function styleOf(el, parent) {
+    const st = Object.assign({}, parent);
+    st.opacity = parent.opacity;
+    const take = (k, v) => { if (v === null || v === undefined || v === '' || v === 'inherit') return; if (k === 'opacity') st.opacity = (parent.opacity === undefined ? 1 : parent.opacity) * parseFloat(v); else st[k] = v; };
+    for (const k of INH) take(k, el.getAttribute(k));
+    take('opacity', el.getAttribute('opacity'));
+    const css = el.getAttribute('style');
+    if (css) for (const d of css.split(';')) { const i = d.indexOf(':'); if (i > 0) { const k = d.slice(0, i).trim(), v = d.slice(i + 1).trim(); if (INH.includes(k) || k === 'opacity') take(k, v); } }
+    return st;
+  }
+  function pathOps(d) {
+    // restituisce i sottopercorsi come comandi assoluti: ['M',x,y] ['L',x,y] ['C',x1,y1,x2,y2,x,y] ['Z']
+    const tok = String(d).match(/[MmLlHhVvCcSsQqTtAaZz]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g) || [];
+    const out = [];
+    let i = 0, cmd = '', x = 0, y = 0, sx = 0, sy = 0, lc = null, lq = null;
+    const num = () => +tok[i++];
+    const flag = () => { // i flag degli archi possono essere attaccati: «A5 5 0 0110 10»
+      const t = tok[i];
+      if (t.length > 1 && (t[0] === '0' || t[0] === '1')) { tok[i] = t.slice(1); return +t[0]; }
+      i++; return +t;
+    };
+    while (i < tok.length) {
+      if (/[A-Za-z]/.test(tok[i])) cmd = tok[i++];
+      else if (!cmd) { i++; continue; }
+      const rel = cmd === cmd.toLowerCase(), C = cmd.toUpperCase();
+      const ox = rel ? x : 0, oy = rel ? y : 0;
+      if (C === 'Z') { out.push(['Z']); x = sx; y = sy; lc = lq = null; cmd = ''; continue; }
+      if (i >= tok.length || /[A-Za-z]/.test(tok[i])) { cmd = ''; continue; }
+      if (C === 'M') { x = ox + num(); y = oy + num(); sx = x; sy = y; out.push(['M', x, y]); cmd = rel ? 'l' : 'L'; lc = lq = null; }
+      else if (C === 'L') { x = ox + num(); y = oy + num(); out.push(['L', x, y]); lc = lq = null; }
+      else if (C === 'H') { x = ox + num(); out.push(['L', x, y]); lc = lq = null; }
+      else if (C === 'V') { y = oy + num(); out.push(['L', x, y]); lc = lq = null; }
+      else if (C === 'C') { const a = [ox + num(), oy + num(), ox + num(), oy + num(), ox + num(), oy + num()]; out.push(['C', ...a]); lc = [a[2], a[3]]; lq = null; x = a[4]; y = a[5]; }
+      else if (C === 'S') { const r1 = lc ? [2 * x - lc[0], 2 * y - lc[1]] : [x, y]; const a = [ox + num(), oy + num(), ox + num(), oy + num()]; out.push(['C', r1[0], r1[1], ...a]); lc = [a[0], a[1]]; lq = null; x = a[2]; y = a[3]; }
+      else if (C === 'Q' || C === 'T') {
+        const q = C === 'Q' ? [ox + num(), oy + num()] : lq ? [2 * x - lq[0], 2 * y - lq[1]] : [x, y];
+        const e = [ox + num(), oy + num()];
+        out.push(['C', x + 2 / 3 * (q[0] - x), y + 2 / 3 * (q[1] - y), e[0] + 2 / 3 * (q[0] - e[0]), e[1] + 2 / 3 * (q[1] - e[1]), e[0], e[1]]);
+        lq = q; lc = null; x = e[0]; y = e[1];
+      } else if (C === 'A') {
+        const rx = num(), ry = num(), rot = num(), la = flag(), sw = flag(), ex = ox + num(), ey = oy + num();
+        const bz = svgArc(x, y, rx, ry, rot, la, sw, ex, ey);
+        if (bz === null) out.push(['L', ex, ey]); else for (const b of bz) out.push(['C', ...b]);
+        x = ex; y = ey; lc = lq = null;
+      } else i++;
+    }
+    return out;
+  }
+  function svgToPage(pg, svg, o = {}) {
+    const hs = o.hscale || 100;
+    let M = [1, 0, 0, 1, 0, 0];
+    const vb = (svg.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+    const mm = v => { const m = /^([\d.]+)\s*mm$/.exec(v || ''); return m ? +m[1] : null; };
+    const W = mm(svg.getAttribute('width')), H = mm(svg.getAttribute('height'));
+    if (vb.length === 4 && W && H) M = [W / vb[2], 0, 0, H / vb[3], -vb[0] * W / vb[2], -vb[1] * H / vb[3]];
+    const stats = { lines: 0, polys: 0, paths: 0, circles: 0, rects: 0, texts: 0, skipped: {} };
+    const BASE = { fill: '#000', stroke: 'none', 'stroke-width': '1', 'font-size': '16', 'text-anchor': 'start', opacity: 1 };
+    const paintShape = (st, Mx, build, closedFill = true) => {
+      const a = st.opacity === undefined ? 1 : st.opacity;
+      const f = closedFill ? parseColor(st.fill, a * (st['fill-opacity'] === undefined ? 1 : +st['fill-opacity'])) : null;
+      const s = parseColor(st.stroke, a * (st['stroke-opacity'] === undefined ? 1 : +st['stroke-opacity']));
+      if (!f && !s) return;
+      const k = scaleOf(Mx);
+      if (s) {
+        pg.lineWidth((parseFloat(st['stroke-width']) || 0) * k);
+        const da = st['stroke-dasharray'] && st['stroke-dasharray'] !== 'none' ? st['stroke-dasharray'].split(/[\s,]+/).filter(Boolean).map(x => parseFloat(x) * k) : [];
+        pg.dash(da.length % 2 ? da.concat(da) : da, (parseFloat(st['stroke-dashoffset']) || 0) * k);
+        pg.cap({ butt: 0, round: 1, square: 2 }[st['stroke-linecap']] || 0);
+        pg.join({ miter: 0, round: 1, bevel: 2 }[st['stroke-linejoin']] || 0);
+      }
+      build();
+      pg.paint(f, s);
+    };
+    const P = (Mx, x, y) => apM(Mx, x, y);
+    const poly = (Mx, pts, close) => () => { pts.forEach((p, i) => { const q = P(Mx, p[0], p[1]); if (i) pg.lineTo(q[0], q[1]); else pg.moveTo(q[0], q[1]); }); if (close) pg.close(); };
+    const ell = (Mx, cx, cy, rx, ry) => () => {
+      const bz = arcBeziers(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+      const s0 = P(Mx, cx + rx, cy); pg.moveTo(s0[0], s0[1]);
+      for (const b of bz) { const a1 = P(Mx, b[0], b[1]), a2 = P(Mx, b[2], b[3]), a3 = P(Mx, b[4], b[5]); pg.curveTo(a1[0], a1[1], a2[0], a2[1], a3[0], a3[1]); }
+      pg.close();
+    };
+    const num = (el, k, d = 0) => { const v = parseFloat(el.getAttribute(k)); return isFinite(v) ? v : d; };
+    function draw(el, st0, M0) {
+      const tag = String(el.tagName || '').replace(/^.*:/, '').toLowerCase();
+      if (['defs', 'title', 'desc', 'style', 'metadata', 'clippath', 'mask', 'symbol', 'marker', 'pattern', 'lineargradient', 'radialgradient'].includes(tag)) return;
+      const st = styleOf(el, st0);
+      if (st.display === 'none' || st.visibility === 'hidden') return;
+      const tr = el.getAttribute('transform');
+      const Mx = tr ? mulM(M0, parseTransform(tr)) : M0;
+      switch (tag) {
+        case 'svg': case 'g': case 'a': for (const ch of el.children) draw(ch, st, Mx); return;
+        case 'line': stats.lines++; paintShape(st, Mx, poly(Mx, [[num(el, 'x1'), num(el, 'y1')], [num(el, 'x2'), num(el, 'y2')]], false), false); return;
+        case 'rect': {
+          stats.rects++;
+          const x = num(el, 'x'), y = num(el, 'y'), w = num(el, 'width'), h = num(el, 'height');
+          if (w > 0 && h > 0) paintShape(st, Mx, poly(Mx, [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], true));
+          return;
+        }
+        case 'circle': stats.circles++; { const r = num(el, 'r'); if (r > 0) paintShape(st, Mx, ell(Mx, num(el, 'cx'), num(el, 'cy'), r, r)); } return;
+        case 'ellipse': stats.circles++; { const rx = num(el, 'rx'), ry = num(el, 'ry'); if (rx > 0 && ry > 0) paintShape(st, Mx, ell(Mx, num(el, 'cx'), num(el, 'cy'), rx, ry)); } return;
+        case 'polygon': case 'polyline': {
+          stats.polys++;
+          const v = (el.getAttribute('points') || '').split(/[\s,]+/).filter(Boolean).map(Number), pts = [];
+          for (let i = 0; i + 1 < v.length; i += 2) pts.push([v[i], v[i + 1]]);
+          if (pts.length > 1) paintShape(st, Mx, poly(Mx, pts, tag === 'polygon'));
+          return;
+        }
+        case 'path': {
+          stats.paths++;
+          const ops = pathOps(el.getAttribute('d') || '');
+          if (!ops.length) return;
+          paintShape(st, Mx, () => {
+            for (const c of ops) {
+              if (c[0] === 'M') { const q = P(Mx, c[1], c[2]); pg.moveTo(q[0], q[1]); }
+              else if (c[0] === 'L') { const q = P(Mx, c[1], c[2]); pg.lineTo(q[0], q[1]); }
+              else if (c[0] === 'C') { const a = P(Mx, c[1], c[2]), b = P(Mx, c[3], c[4]), d = P(Mx, c[5], c[6]); pg.curveTo(a[0], a[1], b[0], b[1], d[0], d[1]); }
+              else pg.close();
+            }
+          });
+          return;
+        }
+        case 'text': {
+          stats.texts++;
+          const s = (el.textContent || '').replace(/\s+/g, ' ').trim(); if (!s) return;
+          const a = st.opacity === undefined ? 1 : st.opacity;
+          const col = parseColor(st.fill, a); if (!col) return;
+          const x = num(el, 'x'), y = num(el, 'y');
+          const q = P(Mx, x, y);
+          const k = scaleOf(Mx), size = (parseFloat(st['font-size']) || 16) * k;
+          const ang = Math.atan2(Mx[1], Mx[0]) * 180 / Math.PI;
+          const fw = st['font-weight'] || '';
+          const db = st['dominant-baseline'];
+          pg.text(s, q[0], q[1], size, { bold: fw === 'bold' || fw === 'bolder' || +fw >= 600, anchor: st['text-anchor'], angle: Math.abs(ang) < 1e-9 ? 0 : ang, hscale: hs, color: col,
+            baseline: db === 'middle' || db === 'central' ? 0.35 * size : db === 'hanging' || db === 'text-before-edge' ? 0.75 * size : 0 });
+          return;
+        }
+        default: stats.skipped[tag] = (stats.skipped[tag] || 0) + 1;
+      }
+    }
+    draw(svg, BASE, M);
+    return stats;
+  }
+
+  /* ---------- registratore che imita il «contesto 2D» di una canvas e scrive nella pagina PDF ---------- */
+  // T: trasformazione pixel dello schermo → mm della pagina; k: mm di carta per pixel per spessori e testi
+  function CanvasRec(pg, T, o = {}) {
+    this.pg = pg; this.base = T.slice(); this.k = o.k || scaleOf(T); this.hs = o.hscale || 100;
+    this.M = T.slice(); this.stack = []; this.cur = []; this.isPDF = true; this.missing = new Set();
+    this.strokeStyle = '#000'; this.fillStyle = '#000'; this.lineWidth = 1; this.font = '10px sans-serif'; this.textAlign = 'start'; this.textBaseline = 'alphabetic';
+    this.globalAlpha = 1; this.lineCap = 'butt'; this.lineJoin = 'miter'; this.lineDashOffset = 0; this._dash = [];
+    const self = this;
+    return new Proxy(this, { get(t, p) { if (p in t) return t[p]; if (typeof p === 'string' && p !== 'then') { return function () { self.missing.add(p); }; } return undefined; } });
+  }
+  // percorso registrato (al posto di Path2D): coordinate grezze, trasformate quando si disegna
+  function RecPath() { this.ops = []; }
+  RecPath.prototype = {
+    moveTo(x, y) { this.ops.push(['M', x, y]); }, lineTo(x, y) { this.ops.push(['L', x, y]); }, closePath() { this.ops.push(['Z']); },
+    bezierCurveTo(a, b, c, d, e, f) { this.ops.push(['C', a, b, c, d, e, f]); },
+    quadraticCurveTo(a, b, e, f) { this.ops.push(['Q', a, b, e, f]); },
+    arc(x, y, r, a0, a1, ccw) { this.ops.push(['A', x, y, r, a0, a1, !!ccw]); },
+    rect(x, y, w, h) { this.ops.push(['M', x, y], ['L', x + w, y], ['L', x + w, y + h], ['L', x, y + h], ['Z']); },
+  };
+  // trasforma i comandi grezzi (con i loro archi) in segmenti assoluti con la matrice M
+  function flatten(ops, M, start) {
+    const out = []; let cur = start ? start.slice() : null, sub = null;
+    const P = (x, y) => apM(M, x, y);
+    for (const c of ops) {
+      if (c[0] === 'M') { cur = [c[1], c[2]]; sub = cur.slice(); out.push(['M', ...P(c[1], c[2])]); }
+      else if (c[0] === 'L') { if (!cur) { out.push(['M', ...P(c[1], c[2])]); sub = [c[1], c[2]]; } else out.push(['L', ...P(c[1], c[2])]); cur = [c[1], c[2]]; }
+      else if (c[0] === 'Z') { out.push(['Z']); if (sub) cur = sub.slice(); }
+      else if (c[0] === 'C') { if (!cur) out.push(['M', ...P(c[1], c[2])]); out.push(['C', ...P(c[1], c[2]), ...P(c[3], c[4]), ...P(c[5], c[6])]); cur = [c[5], c[6]]; }
+      else if (c[0] === 'Q') {
+        const s = cur || [c[1], c[2]]; if (!cur) out.push(['M', ...P(s[0], s[1])]);
+        out.push(['C', ...P(s[0] + 2 / 3 * (c[1] - s[0]), s[1] + 2 / 3 * (c[2] - s[1])), ...P(c[3] + 2 / 3 * (c[1] - c[3]), c[4] + 2 / 3 * (c[2] - c[4])), ...P(c[3], c[4])]);
+        cur = [c[3], c[4]];
+      } else if (c[0] === 'A') {
+        const [, x, y, r, a0, a1, ccw] = c;
+        // come la canvas: in senso orario (sullo schermo) da a0 ad a1; un giro intero se la differenza arriva a 2π
+        const TW = 2 * Math.PI;
+        let sw = a1 - a0;
+        if (!ccw) { if (sw >= TW) sw = TW; else { sw %= TW; if (sw < 0) sw += TW; } }
+        else { if (-sw >= TW) sw = -TW; else { sw %= TW; if (sw > 0) sw -= TW; } }
+        const s = [x + r * Math.cos(a0), y + r * Math.sin(a0)];
+        out.push([cur ? 'L' : 'M', ...P(s[0], s[1])]); if (!cur) sub = s.slice();
+        if (r > 0 && sw) for (const b of arcBeziers(x, y, r, r, 0, a0, a0 + sw)) out.push(['C', ...P(b[0], b[1]), ...P(b[2], b[3]), ...P(b[4], b[5])]);
+        cur = [x + r * Math.cos(a0 + sw), y + r * Math.sin(a0 + sw)];
+      }
+    }
+    return out;
+  }
+  CanvasRec.prototype = {
+    createPath() { return new RecPath(); },
+    save() { this.stack.push({ M: this.M.slice(), s: [this.strokeStyle, this.fillStyle, this.lineWidth, this.font, this.textAlign, this.textBaseline, this.globalAlpha, this.lineCap, this.lineJoin, this._dash.slice(), this.lineDashOffset] }); },
+    restore() { const t = this.stack.pop(); if (!t) return; this.M = t.M; [this.strokeStyle, this.fillStyle, this.lineWidth, this.font, this.textAlign, this.textBaseline, this.globalAlpha, this.lineCap, this.lineJoin, this._dash, this.lineDashOffset] = t.s; },
+    setTransform(a, b, c, d, e, f) { if (typeof a === 'object' && a) ({ a, b, c, d, e, f } = a); this.M = mulM(this.base, [a, b, c, d, e, f]); },
+    resetTransform() { this.M = this.base.slice(); },
+    transform(a, b, c, d, e, f) { this.M = mulM(this.M, [a, b, c, d, e, f]); },
+    translate(x, y) { this.M = mulM(this.M, [1, 0, 0, 1, x, y]); },
+    scale(x, y) { this.M = mulM(this.M, [x, 0, 0, y === undefined ? x : y, 0, 0]); },
+    rotate(a) { const c = Math.cos(a), s = Math.sin(a); this.M = mulM(this.M, [c, s, -s, c, 0, 0]); },
+    setLineDash(a) { this._dash = (a || []).slice(); }, getLineDash() { return this._dash.slice(); },
+    beginPath() { this.cur = []; this._last = null; },
+    _add(op) { const seg = flatten([op], this.M, this._last); this.cur.push(...seg); const L = op[0] === 'A' ? [op[1] + op[3] * Math.cos(op[5]), op[2] + op[3] * Math.sin(op[5])] : op[0] === 'Z' ? this._sub : op[0] === 'Q' ? [op[3], op[4]] : op[0] === 'C' ? [op[5], op[6]] : [op[1], op[2]]; if (op[0] === 'M') this._sub = [op[1], op[2]]; this._last = L; },
+    moveTo(x, y) { this._add(['M', x, y]); }, lineTo(x, y) { this._add(['L', x, y]); }, closePath() { this._add(['Z']); },
+    bezierCurveTo(a, b, c, d, e, f) { this._add(['C', a, b, c, d, e, f]); }, quadraticCurveTo(a, b, e, f) { this._add(['Q', a, b, e, f]); },
+    arc(x, y, r, a0, a1, ccw) { this._add(['A', x, y, r, a0, a1, !!ccw]); },
+    rect(x, y, w, h) { this._add(['M', x, y]); this._add(['L', x + w, y]); this._add(['L', x + w, y + h]); this._add(['L', x, y + h]); this._add(['Z']); },
+    _emit(segs) { const pg = this.pg; for (const s of segs) { if (s[0] === 'M') pg.moveTo(s[1], s[2]); else if (s[0] === 'L') pg.lineTo(s[1], s[2]); else if (s[0] === 'C') pg.curveTo(s[1], s[2], s[3], s[4], s[5], s[6]); else pg.close(); } },
+    _strokeSetup() {
+      const pg = this.pg, k = this.k * scaleOf(this.M) / scaleOf(this.base);
+      pg.lineWidth(this.lineWidth * k);
+      const d = this._dash.map(x => x * k); pg.dash(d.length % 2 ? d.concat(d) : d, this.lineDashOffset * k);
+      pg.cap({ butt: 0, round: 1, square: 2 }[this.lineCap] || 0); pg.join({ miter: 0, round: 1, bevel: 2 }[this.lineJoin] || 0);
+    },
+    stroke(path) { const s = parseColor(this.strokeStyle, this.globalAlpha); if (!s) return; const segs = path instanceof RecPath ? flatten(path.ops, this.M) : this.cur; if (!segs.length) return; this._strokeSetup(); this._emit(segs); this.pg.paint(null, s); },
+    fill(path) { const f = parseColor(this.fillStyle, this.globalAlpha); if (!f) return; const segs = path instanceof RecPath ? flatten(path.ops, this.M) : this.cur; if (!segs.length) return; this._emit(segs); this.pg.paint(f, null); },
+    fillRect(x, y, w, h) { const f = parseColor(this.fillStyle, this.globalAlpha); if (!f) return; this._emit(flatten([['M', x, y], ['L', x + w, y], ['L', x + w, y + h], ['L', x, y + h], ['Z']], this.M)); this.pg.paint(f, null); },
+    strokeRect(x, y, w, h) { const s = parseColor(this.strokeStyle, this.globalAlpha); if (!s) return; this._strokeSetup(); this._emit(flatten([['M', x, y], ['L', x + w, y], ['L', x + w, y + h], ['L', x, y + h], ['Z']], this.M)); this.pg.paint(null, s); },
+    clearRect() { /* sulla carta non c'è niente da cancellare */ },
+    _font() { const m = /(?:^|\s)(bold|bolder|[5-9]00)?[^\d]*?([\d.]+)px/.exec(this.font) || []; const w = /\b(bold|bolder|[6-9]00)\b/.test(this.font); return { px: parseFloat(m[2]) || 10, bold: w }; },
+    measureText(s) { const f = this._font(); return { width: textWidth(s, f.bold) / 1000 * f.px * this.hs / 100 }; },
+    fillText(s, x, y) {
+      const col = parseColor(this.fillStyle, this.globalAlpha); if (!col) return;
+      const f = this._font(), k = this.k * scaleOf(this.M) / scaleOf(this.base), size = f.px * k;
+      const q = apM(this.M, x, y), ang = Math.atan2(this.M[1], this.M[0]) * 180 / Math.PI;
+      const al = this.textAlign, bl = this.textBaseline;
+      this.pg.text(s, q[0], q[1], size, { bold: f.bold, color: col, hscale: this.hs, angle: Math.abs(ang) < 1e-9 ? 0 : ang,
+        anchor: al === 'center' ? 'middle' : al === 'right' || al === 'end' ? 'end' : 'start',
+        baseline: bl === 'middle' ? 0.35 * size : bl === 'top' || bl === 'hanging' ? 0.75 * size : bl === 'bottom' || bl === 'ideographic' ? -0.21 * size : 0 });
+    },
+    strokeText(s, x, y) { const f = this.fillStyle; this.fillStyle = this.strokeStyle; this.fillText(s, x, y); this.fillStyle = f; },
+    drawImage() { this.missing.add('drawImage'); },
+  };
+
+  // scale normalizzate (UNI EN ISO 5455)
+  const SCALES = [[10, 1], [5, 1], [2, 1], [1, 1], [1, 2], [1, 5], [1, 10], [1, 20], [1, 50], [1, 100], [1, 200], [1, 500], [1, 1000]];
+  // la scala più grande con cui un disegno w × h (mm) entra in W × H (mm)
+  function pickScale(w, h, W, H) {
+    for (const [a, b] of SCALES) { const s = a / b; if (w * s <= W + 1e-9 && h * s <= H + 1e-9) return { s, txt: a + ':' + b }; }
+    const [a, b] = SCALES[SCALES.length - 1]; return { s: a / b, txt: a + ':' + b };
+  }
+
+  /* ===================================== STEP ===================================== */
+  // polys: poligoni del corpo ({ v, p: { n, w }, t }); topo: Geom.topology(polys, tags) (vertici uniti e lati spezzati
+  // dove un vertice di un altro poligono cade sul lato). Le facce: poligoni vicini della stessa superficie e dello stesso
+  // piano, uniti; i contorni si ricavano dai lati che restano scoperti. Ogni pezzo staccato è un solido a sé.
+  function toSTEP(polys, topo, o = {}) {
+    const V = topo.verts;
+    const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const len3 = a => Math.sqrt(dot3(a, a));
+    const nrm3 = a => { const l = len3(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+    // 1) lati orientati di ogni poligono, già spezzati ai vertici a T
+    const dEdges = polys.map(() => []);
+    for (const e of topo.edges) for (const u of e.uses) dEdges[u.poly].push(u.fwd ? [e.a, e.b] : [e.b, e.a]);
+    // 2) gruppi: stessa superficie e stesso piano
+    const groups = new Map();
+    polys.forEach((p, i) => {
+      if (!dEdges[i].length) return;
+      const n = p.p.n, key = (topo.surfKeys[p.t] || p.t) + '|' + n.map(x => Math.round(x * 1e4)).join(',') + '|' + Math.round(p.p.w * 1e3);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(i);
+    });
+    const stats = { faces: 0, loops: 0, holes: 0, edges: 0, verts: 0, solids: 0, badEdges: 0, openLoops: 0, removed: 0 };
+    let faces = [];   // { n, loops: [outer, ...inner] } (indici dei vertici)
+    for (const ids of groups.values()) {
+      let nn = [0, 0, 0]; for (const i of ids) { const n = polys[i].p.n; let a = 0; for (let k = 2; k < polys[i].v.length; k++) a += len3(cross3(sub3(polys[i].v[k - 1], polys[i].v[0]), sub3(polys[i].v[k], polys[i].v[0]))); nn = [nn[0] + n[0] * a, nn[1] + n[1] * a, nn[2] + n[2] * a]; }
+      const n = nrm3(nn);
+      // lati scoperti: quelli percorsi una volta sola (i lati interni si annullano a coppie)
+      const cnt = new Map();
+      for (const i of ids) for (const [a, b] of dEdges[i]) {
+        const rk = b + ',' + a;
+        if (cnt.get(rk) > 0) cnt.set(rk, cnt.get(rk) - 1); else cnt.set(a + ',' + b, (cnt.get(a + ',' + b) || 0) + 1);
+      }
+      const next = new Map();
+      for (const [k, c] of cnt) { if (c <= 0) continue; const [a, b] = k.split(',').map(Number); for (let r = 0; r < c; r++) { if (!next.has(a)) next.set(a, []); next.get(a).push(b); } }
+      // anelli
+      const ex = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+      const bu = nrm3(cross3(n, ex)), bv = cross3(n, bu);
+      const uv = i => [dot3(V[i], bu), dot3(V[i], bv)];
+      const loops = [];
+      for (const [start, l] of next) {
+        while (l.length) {
+          const loop = [start]; let cur = l.pop(), guard = 0, ok = false;
+          while (guard++ < 1e6) {
+            if (cur === start) { ok = true; break; }
+            loop.push(cur);
+            const nx = next.get(cur);
+            if (!nx || !nx.length) break;
+            // più uscite dallo stesso vertice (due anelli che si toccano): si gira il meno possibile a sinistra
+            let pick = nx.length - 1;
+            if (nx.length > 1) {
+              const p0 = uv(loop[loop.length - 2]), p1 = uv(cur); const din = [p1[0] - p0[0], p1[1] - p0[1]];
+              let best = Infinity;
+              nx.forEach((c, j) => { const p2 = uv(c); const d = [p2[0] - p1[0], p2[1] - p1[1]]; const a = Math.atan2(din[0] * d[1] - din[1] * d[0], din[0] * d[0] + din[1] * d[1]); if (a < best) { best = a; pick = j; } });
+            }
+            cur = nx.splice(pick, 1)[0];
+          }
+          if (ok && loop.length >= 3) loops.push(loop); else stats.openLoops++;
+        }
+      }
+      const area2 = lp => { let a = 0; for (let k = 0; k < lp.length; k++) { const p = uv(lp[k]), q = uv(lp[(k + 1) % lp.length]); a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
+      const inside = (pt, lp) => { let c = false; for (let k = 0, j = lp.length - 1; k < lp.length; j = k++) { const a = uv(lp[k]), b = uv(lp[j]); if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
+      const outer = [], inner = [];
+      for (const lp of loops) { const a = area2(lp); if (a > 0) outer.push({ lp, a, holes: [] }); else if (a < 0) inner.push({ lp, a }); }
+      for (const h of inner) {
+        // punto di prova: metà del primo lato (i vertici possono stare sul contorno esterno)
+        const p = uv(h.lp[0]), q = uv(h.lp[1]); const pt = [(p[0] + q[0]) / 2 + (q[1] - p[1]) * 1e-7, (p[1] + q[1]) / 2 - (q[0] - p[0]) * 1e-7];
+        let host = null; for (const ot of outer) if (inside(pt, ot.lp) && (!host || ot.a < host.a)) host = ot;
+        if (host) host.holes.push(h.lp); else stats.openLoops++;
+      }
+      for (const ot of outer) faces.push({ n, loops: [ot.lp, ...ot.holes] });
+    }
+    // 3) vertici intermedi su un lato dritto (due soli vicini, allineati): si tolgono, così ogni spigolo è un pezzo solo
+    const nb = new Map();
+    const link = (a, b) => { if (!nb.has(a)) nb.set(a, new Set()); nb.get(a).add(b); };
+    for (const f of faces) for (const lp of f.loops) for (let k = 0; k < lp.length; k++) { const a = lp[k], b = lp[(k + 1) % lp.length]; link(a, b); link(b, a); }
+    const rem = new Set();
+    for (const [v, s] of nb) {
+      if (s.size !== 2) continue;
+      const [a, b] = [...s]; const u = sub3(V[a], V[v]), w = sub3(V[b], V[v]);
+      const lu = len3(u), lw = len3(w);
+      if (lu > 0 && lw > 0 && len3(cross3(u, w)) <= 1e-9 * lu * lw && dot3(u, w) < 0) rem.add(v);
+    }
+    stats.removed = rem.size;
+    for (const f of faces) f.loops = f.loops.map(lp => lp.filter(v => !rem.has(v)));
+    faces = faces.filter(f => f.loops[0].length >= 3);
+    // 4) spigoli: ogni coppia di vertici una volta; in un solido chiuso ogni spigolo è percorso due volte, nei due sensi
+    const edges = new Map();
+    faces.forEach((f, fi) => { for (const lp of f.loops) for (let k = 0; k < lp.length; k++) {
+      const a = lp[k], b = lp[(k + 1) % lp.length], key = a < b ? a + ',' + b : b + ',' + a;
+      if (!edges.has(key)) edges.set(key, { a: Math.min(a, b), b: Math.max(a, b), fwd: 0, back: 0, faces: [] });
+      const e = edges.get(key); if (a < b) e.fwd++; else e.back++; e.faces.push(fi);
+    } });
+    for (const e of edges.values()) if (e.fwd !== 1 || e.back !== 1) stats.badEdges++;
+    // 5) pezzi staccati: facce collegate dagli spigoli
+    const par = faces.map((_, i) => i); const find = i => { while (par[i] !== i) i = par[i] = par[par[i]]; return i; };
+    for (const e of edges.values()) for (let k = 1; k < e.faces.length; k++) { const a = find(e.faces[0]), b = find(e.faces[k]); if (a !== b) par[a] = b; }
+    const comps = new Map(); faces.forEach((f, i) => { const r = find(i); if (!comps.has(r)) comps.set(r, []); comps.get(r).push(i); });
+
+    // 6) scrittura (ISO 10303-21, AP214)
+    const R = x => { if (!isFinite(x) || Math.abs(x) < 1e-12) return '0.'; let s = String(+x.toPrecision(15)); if (/e/i.test(s)) { const [m, ex2] = s.split(/e/i); s = (m.includes('.') ? m : m + '.') + 'E' + ex2; } else if (!s.includes('.')) s += '.'; return s; };
+    const S = s => "'" + [...String(s)].map(ch => { const c = ch.codePointAt(0); if (ch === "'") return "''"; if (ch === '\\') return '\\\\'; if (c >= 32 && c < 127) return ch; return '\\X2\\' + c.toString(16).toUpperCase().padStart(4, '0') + '\\X0\\'; }).join('') + "'";
+    const L = []; let id = 0;
+    const E = s => { L.push(`#${++id}=${s};`); return '#' + id; };
+    const name = o.name || 'Parte';
+    const ctx = E("APPLICATION_CONTEXT('automotive design')");
+    E(`APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,${ctx})`);
+    const pctx = E(`PRODUCT_CONTEXT('',${ctx},'mechanical')`);
+    const prod = E(`PRODUCT(${S(name)},${S(name)},'',(${pctx}))`);
+    E(`PRODUCT_RELATED_PRODUCT_CATEGORY('part',$,(${prod}))`);
+    const pdf = E(`PRODUCT_DEFINITION_FORMATION('','',${prod})`);
+    const pdc = E(`PRODUCT_DEFINITION_CONTEXT('part definition',${ctx},'design')`);
+    const pd = E(`PRODUCT_DEFINITION('design','',${pdf},${pdc})`);
+    const pds = E(`PRODUCT_DEFINITION_SHAPE('','',${pd})`);
+    const lu = E('( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) )');
+    const au = E('( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) )');
+    const su = E('( NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT() )');
+    const unc = E(`UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-05),${lu},'distance_accuracy_value','confusion accuracy')`);
+    const gctx = E(`( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((${unc})) GLOBAL_UNIT_ASSIGNED_CONTEXT((${lu},${au},${su})) REPRESENTATION_CONTEXT('Context3D','3D') )`);
+    const origin = E(`AXIS2_PLACEMENT_3D('',${E("CARTESIAN_POINT('',(0.,0.,0.))")},${E("DIRECTION('',(0.,0.,1.))")},${E("DIRECTION('',(1.,0.,0.))")})`);
+    const vref = new Map(), cpref = new Map();
+    const cp = i => { if (!cpref.has(i)) cpref.set(i, E(`CARTESIAN_POINT('',(${R(V[i][0])},${R(V[i][1])},${R(V[i][2])}))`)); return cpref.get(i); };
+    const vx = i => { if (!vref.has(i)) vref.set(i, E(`VERTEX_POINT('',${cp(i)})`)); return vref.get(i); };
+    const eref = new Map();
+    for (const [k, e] of edges) {
+      const d = sub3(V[e.b], V[e.a]), l = len3(d), u = nrm3(d);
+      const line = E(`LINE('',${cp(e.a)},${E(`VECTOR('',${E(`DIRECTION('',(${R(u[0])},${R(u[1])},${R(u[2])}))`)},${R(l)})`)})`);
+      eref.set(k, E(`EDGE_CURVE('',${vx(e.a)},${vx(e.b)},${line},.T.)`));
+    }
+    const fref = faces.map(f => {
+      const bounds = f.loops.map((lp, li) => {
+        const oes = lp.map((a, k) => { const b = lp[(k + 1) % lp.length]; return E(`ORIENTED_EDGE('',*,*,${eref.get(a < b ? a + ',' + b : b + ',' + a)},${a < b ? '.T.' : '.F.'})`); });
+        const loop = E(`EDGE_LOOP('',(${oes.join(',')}))`);
+        return E(`${li ? 'FACE_BOUND' : 'FACE_OUTER_BOUND'}('',${loop},.T.)`);
+      });
+      const n = f.n, ex = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], xd = nrm3(cross3(cross3(n, ex), n));
+      const ax = E(`AXIS2_PLACEMENT_3D('',${cp(f.loops[0][0])},${E(`DIRECTION('',(${R(n[0])},${R(n[1])},${R(n[2])}))`)},${E(`DIRECTION('',(${R(xd[0])},${R(xd[1])},${R(xd[2])}))`)})`);
+      return E(`ADVANCED_FACE('',(${bounds.join(',')}),${E(`PLANE('',${ax})`)},.T.)`);
+    });
+    const solids = [];
+    let si = 0;
+    for (const list of comps.values()) {
+      const shell = E(`CLOSED_SHELL('',(${list.map(i => fref[i]).join(',')}))`);
+      solids.push(E(`MANIFOLD_SOLID_BREP(${S(comps.size > 1 ? name + ' ' + (++si) : name)},${shell})`));
+    }
+    const rep = E(`ADVANCED_BREP_SHAPE_REPRESENTATION(${S(name)},(${[origin, ...solids].join(',')}),${gctx})`);
+    E(`SHAPE_DEFINITION_REPRESENTATION(${pds},${rep})`);
+    // colore grigio del pezzo (come nel Banco CAD), letto da SolidWorks, FreeCAD e OpenCascade
+    if (o.color) {
+      const c = o.color;
+      const col = E(`COLOUR_RGB('',${R(c[0])},${R(c[1])},${R(c[2])})`);
+      const fsa = E(`FILL_AREA_STYLE_COLOUR('',${col})`), fas = E(`FILL_AREA_STYLE('',(${fsa}))`), ssa = E(`SURFACE_STYLE_FILL_AREA(${fas})`);
+      const sss = E(`SURFACE_SIDE_STYLE('',(${ssa}))`), ssu = E(`SURFACE_STYLE_USAGE(.BOTH.,${sss})`), psa = E(`PRESENTATION_STYLE_ASSIGNMENT((${ssu}))`);
+      const items = solids.map(s => E(`STYLED_ITEM('',(${psa}),${s})`));
+      E(`MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION('',(${items.join(',')}),${gctx})`);
+    }
+    const usedV = new Set(); for (const e of edges.values()) { usedV.add(e.a); usedV.add(e.b); }
+    stats.faces = faces.length; stats.loops = faces.reduce((s, f) => s + f.loops.length, 0); stats.holes = stats.loops - stats.faces;
+    stats.edges = edges.size; stats.verts = usedV.size; stats.solids = comps.size;
+    const d = o.date || new Date(), p2 = n => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+    const head = ['ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION(('Banco CAD'),'2;1');", `FILE_NAME(${S(o.file || name + '.step')},'${stamp}',(''),(''),'Banco CAD','Banco CAD','');`,
+      "FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));", 'ENDSEC;', 'DATA;'];
+    return { text: head.concat(L, ['ENDSEC;', 'END-ISO-10303-21;', '']).join('\n'), stats };
+  }
+
+  const api = { Doc, Page, winAnsi, textWidth, parseColor, svgToPage, pathOps, svgArc, arcBeziers, parseTransform, CanvasRec, RecPath, SCALES, pickScale, toSTEP, PT };
+  if (typeof module !== 'undefined' && typeof window === 'undefined') module.exports = api; else root.Export = api;
+})(this);
+
 /* Modello della parte: albero delle funzioni e rigenerazione parametrica. */
 (function (root) {
   'use strict';
@@ -5600,6 +6249,8 @@ self.onmessage = async ev => {
 
   /* ================= vista 3D ================= */
   App.redraw = function () { App.dirty = true; };
+  // disegna subito la vista (senza aspettare il prossimo fotogramma): serve per catturarla
+  App.renderNow = function () { const r = App.r; if (r.anim) r.endAnim(); r.draw(extraGeometry()); drawOverlay(); App.dirty = false; };
   function frame(now) {
     // il ciclo si riprogramma per primo: un errore nel disegno non deve fermare la vista
     requestAnimationFrame(frame);
@@ -6594,6 +7245,96 @@ self.onmessage = async ev => {
     App.offerFile((App.doc.name || 'parte') + '.stl', 'model/stl', new Blob([buf], { type: 'model/stl' }), 'Esporta STL');
     toast('File STL pronto: ' + ntri + ' triangoli, unità in millimetri.');
   }
+  /* ---------- PDF: tavola (vettoriale, 1:1), schizzo (vettoriale, scala normalizzata), vista 3D (immagine) ---------- */
+  const today = () => { const d = new Date(), p2 = n => String(n).padStart(2, '0'); return `${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${d.getFullYear()}`; };
+  // foglio A4 orizzontale con cornice e riga del titolo (per lo schizzo e la vista 3D); restituisce il riquadro del disegno
+  function pdfSheet(doc) {
+    const pg = doc.addPage(297, 210);
+    const box = { x: 10, y: 10, w: 277, h: 178 };
+    return { pg, box, frame(left, mid) {
+      pg.lineWidth(0.35).dash([]).cap(0).join(0);
+      pg.rect(10, 10, 277, 190).paint(null, [0, 0, 0]);
+      pg.moveTo(10, 188).lineTo(287, 188).paint(null, [0, 0, 0]);
+      pg.text(left, 13, 195.6, 3.5, { bold: true });
+      if (mid) pg.text(mid, 148.5, 195.6, 3.5, { anchor: 'middle' });
+      pg.text('Banco CAD · ' + today(), 284, 195.6, 3, { anchor: 'end', color: [0.3, 0.3, 0.3] });
+    } };
+  }
+  async function sketchPdf() {
+    const name = App.doc.name || 'parte';
+    const doc = new Export.Doc({ title: name });
+    const sh = pdfSheet(doc);
+    const r = Sketcher.toPDF(sh.pg, sh.box);
+    if (!r) return null;
+    doc.title = name + ' – ' + r.name;
+    sh.frame(name + ' · ' + r.name, 'Scala ' + r.scale);
+    return { bytes: await doc.build(), file: name + '-' + r.name + '.pdf', what: 'schizzo', scale: r.scale, missing: r.missing, size: [297, 210],
+      msg: `PDF dello schizzo pronto: A4 orizzontale, scala ${r.scale}.` };
+  }
+  async function viewPdf() {
+    const r = App.r, name = App.doc.name || 'parte';
+    // vista come sullo schermo, ma su fondo bianco e senza evidenziazioni del mouse
+    const keep = { hover: App.hover, bg: r.bg };
+    let cv;
+    try {
+      App.hover = null; App.recolor(); r.bg = [1, 1, 1];
+      App.renderNow();
+      cv = document.createElement('canvas'); cv.width = r.canvas.width; cv.height = r.canvas.height;
+      const c = cv.getContext('2d');
+      c.fillStyle = '#fff'; c.fillRect(0, 0, cv.width, cv.height);
+      c.drawImage(r.canvas, 0, 0); c.drawImage($('#ov'), 0, 0, cv.width, cv.height);
+    } finally {
+      App.hover = keep.hover; r.bg = keep.bg; App.recolor(); App.renderNow();
+    }
+    const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    const rgb = new Uint8Array(cv.width * cv.height * 3);
+    let ink = 0;
+    for (let i = 0, j = 0; i < px.length; i += 4, j += 3) { rgb[j] = px[i]; rgb[j + 1] = px[i + 1]; rgb[j + 2] = px[i + 2]; if (px[i] + px[i + 1] + px[i + 2] < 750) ink++; }
+    const doc = new Export.Doc({ title: name + ' – vista 3D' });
+    const sh = pdfSheet(doc);
+    // immagine più grande possibile nel riquadro, senza deformarla
+    const b = sh.box, k = Math.min(b.w / cv.width, b.h / cv.height), w = cv.width * k, h = cv.height * k;
+    sh.pg.image({ w: cv.width, h: cv.height, rgb }, b.x + (b.w - w) / 2, b.y + (b.h - h) / 2, w, h);
+    sh.frame(name + ' · vista 3D');
+    return { bytes: await doc.build(), file: name + '-vista.pdf', what: 'vista', px: [cv.width, cv.height], ink: ink / (cv.width * cv.height), img: [b.x + (b.w - w) / 2, b.y + (b.h - h) / 2, w, h], size: [297, 210],
+      msg: 'PDF della vista 3D pronto: A4 orizzontale, la vista com\'è sullo schermo.' };
+  }
+  App.savePdf = async function () {
+    if (App.pdfBusy) return null;
+    App.pdfBusy = true;
+    try {
+      let r;
+      if (App.mode === 'drawing') r = await Drawing.toPDF();
+      else if (App.mode === 'sketch') r = await sketchPdf();
+      else {
+        if (!App.st || !App.st.body.length) { toast('Non c\'è ancora niente da salvare: crea il pezzo, oppure apri uno schizzo o la messa in tavola.'); return null; }
+        r = await viewPdf();
+      }
+      if (!r) return null;
+      App.lastPdf = r;   // (per le prove)
+      toast(r.msg, 6000);
+      App.offerFile(r.file, 'application/pdf', new Blob([r.bytes], { type: 'application/pdf' }), 'Salva PDF');
+      return r;
+    } catch (e) { console.error(e); toast('Non sono riuscito a creare il PDF: ' + e.message); return null; }
+    finally { App.pdfBusy = false; }
+  };
+  /* ---------- STEP: il pezzo come solido a facce piane, per SolidWorks, Inventor, Fusion, FreeCAD… ---------- */
+  App.stepText = function () {
+    const st = App.st;
+    if (!st || !st.body.length) return null;
+    const name = App.doc.name || 'parte';
+    const topo = Geom.topology(st.body, st.tags);
+    return Export.toSTEP(st.body, topo, { name, file: name + '.step', color: [0.66, 0.7, 0.74] });
+  };
+  function exportSTEP() {
+    const r = App.stepText();
+    if (!r) { toast('Non c\'è nessun solido da esportare.'); return; }
+    App.lastStep = r;   // (per le prove)
+    const s = r.stats;
+    App.offerFile((App.doc.name || 'parte') + '.step', 'model/step', new Blob([r.text], { type: 'model/step' }), 'Esporta STEP');
+    toast(s.badEdges || s.openLoops ? `File STEP pronto, ma il solido non è chiuso del tutto (${s.badEdges + s.openLoops} punti): l'altro programma potrebbe aprirlo come superfici.`
+      : `File STEP pronto: ${s.solids === 1 ? 'un solido' : s.solids + ' solidi'} con ${s.faces} facce, in millimetri.`, 6000);
+  }
   /* ---------- importazione di file STL e OBJ (corpo a faccette, come «Importato» di SolidWorks) ---------- */
   const MESH_MAX = 100000;
   function importMeshDialog() {
@@ -7028,10 +7769,13 @@ self.onmessage = async ev => {
     document.querySelectorAll('.cmd-tabs [data-ct]').forEach(b => b.addEventListener('click', () => App.setCmdTab(b.dataset.ct)));
     $('#btnUndo').addEventListener('click', () => App.undo());
     $('#btnRedo').addEventListener('click', () => App.redo());
-    $('#btnFile').addEventListener('click', e => { e.stopPropagation(); const m = $('#menuFile'); const open = m.hidden; hideMenus(); m.hidden = !open; });
+    $('#btnFile').addEventListener('click', e => {
+      e.stopPropagation(); const m = $('#menuFile'); const open = m.hidden; hideMenus(); m.hidden = !open;
+      m.querySelector('[data-act="pdf"]').textContent = App.mode === 'drawing' ? 'Salva PDF della tavola' : App.mode === 'sketch' ? 'Salva PDF dello schizzo' : 'Salva PDF della vista 3D';
+    });
     $('#menuFile').addEventListener('click', e => {
       const b = e.target.closest('[data-act]'); if (!b) return; hideMenus();
-      ({ new: newPart, export: exportProject, import: importProject, importMesh: importMeshDialog, importCad: importCadDialog, importDxf: importDxfDialog, stl: exportSTL, help: () => (window.Guide ? window.Guide.open(null) : help()) })[b.dataset.act]();
+      ({ new: newPart, export: exportProject, import: importProject, importMesh: importMeshDialog, importCad: importCadDialog, importDxf: importDxfDialog, stl: exportSTL, pdf: () => App.savePdf(), step: exportSTEP, help: () => (window.Guide ? window.Guide.open(null) : help()) })[b.dataset.act]();
     });
     $('#btnViews').addEventListener('click', e => { e.stopPropagation(); const m = $('#viewsMenu'); const o = m.hidden; hideMenus(); m.hidden = !o; });
     $('#btnStyle').addEventListener('click', e => { e.stopPropagation(); const m = $('#styleMenu'); const o = m.hidden; hideMenus(); m.hidden = !o; document.querySelectorAll('#styleMenu [data-s]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.s === App.r.mode))); });
@@ -8642,7 +9386,7 @@ self.onmessage = async ev => {
     const pathOf = (col, w, dash) => {
       const k = col + '|' + w + '|' + dash;
       let g = groups.get(k);
-      if (!g) { g = { col, w, dash, path: new Path2D() }; groups.set(k, g); }
+      if (!g) { g = { col, w, dash, path: c.createPath ? c.createPath() : new Path2D() }; groups.set(k, g); }
       return g.path;
     };
     for (const e of ss.sk.ents) {
@@ -8679,7 +9423,7 @@ self.onmessage = async ev => {
       if (e.virtual) { c.strokeStyle = colorOf(e); c.lineWidth = 1; c.beginPath(); c.moveTo(q[0] - 4, q[1] - 4); c.lineTo(q[0] + 4, q[1] + 4); c.moveTo(q[0] + 4, q[1] - 4); c.lineTo(q[0] - 4, q[1] + 4); c.stroke(); continue; }
       const r = ss.sel.has(e.id) || (ss.hover && ss.hover.id === e.id) ? 4 : (used.has(e.id) ? 2.4 : 3.2);
       const col = colorOf(e), k = col + '|' + r;
-      if (!dots.has(k)) dots.set(k, { col, path: new Path2D() });
+      if (!dots.has(k)) dots.set(k, { col, path: c.createPath ? c.createPath() : new Path2D() });
       const P = dots.get(k).path; P.moveTo(q[0] + r, q[1]); P.arc(q[0], q[1], r, 0, TAU);
     }
     for (const g of [...dots.values()].sort((p, q) => rank(p.col) - rank(q.col))) { c.fillStyle = g.col; c.fill(g.path); }
@@ -8687,10 +9431,10 @@ self.onmessage = async ev => {
     if (ss.showRel !== false) drawRelations(c, m, font);
     // quote
     for (const k of ss.sk.cons) if (S.DIM_TYPES.has(k.t)) drawDim(c, k, m, font);
-    // anteprima dello strumento
-    drawPreview(c, m, font);
-    // angolo delle linee selezionate o sotto il mouse (strumento di selezione)
-    if (ss.tool === 'select' || ss.tool === 'relation') {
+    // anteprima dello strumento (non nel PDF)
+    if (!c.isPDF) drawPreview(c, m, font);
+    // angolo delle linee selezionate o sotto il mouse (strumento di selezione; non nel PDF)
+    if (!c.isPDF && (ss.tool === 'select' || ss.tool === 'relation')) {
       const ids = new Set([...ss.sel]); if (ss.hover && ss.hover.kind === 'ent') ids.add(ss.hover.id);
       let k = 0;
       for (const id of ids) {
@@ -8700,6 +9444,54 @@ self.onmessage = async ev => {
       }
     }
     c.restore();
+  };
+  // schizzo nel PDF (vettoriale): vista normale allo schizzo, scala normalizzata (UNI EN ISO 5455) che fa entrare tutto
+  // nel riquadro box (mm della pagina), colori dello schermo chiaro, senza selezione, anteprime e righelli. Le linee e i
+  // testi hanno lo spessore e la grandezza che hanno sullo schermo (1 pixel = 25,4/96 mm).
+  SK.toPDF = function (pg, box) {
+    if (!ss) return null;
+    const App = A(), r = App.r, m = E();
+    let mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
+    const grow = (x, y) => { if (!isFinite(x) || !isFinite(y)) return; mn = [Math.min(mn[0], x), Math.min(mn[1], y)]; mx = [Math.max(mx[0], x), Math.max(mx[1], y)]; };
+    for (const e of ss.sk.ents) {
+      if (e.t === 'pt') { if (!e.hc) grow(e.x, e.y); }
+      else if (e.t === 'ci') { const c = m.get(e.c); grow(c.x - e.r, c.y - e.r); grow(c.x + e.r, c.y + e.r); }
+      else if (e.t === 'ar') {
+        const c = m.get(e.c), a = m.get(e.a), b = m.get(e.b), rr = Math.hypot(a.x - c.x, a.y - c.y);
+        let a0 = Math.atan2(a.y - c.y, a.x - c.x), a1 = Math.atan2(b.y - c.y, b.x - c.x); if (a1 <= a0) a1 += TAU;
+        for (let i = 0; i <= 64; i++) { const t = a0 + (a1 - a0) * i / 64; grow(c.x + rr * Math.cos(t), c.y + rr * Math.sin(t)); }
+      }
+    }
+    for (const k of ss.sk.cons) if (S.DIM_TYPES.has(k.t) && Array.isArray(k.pos)) grow(k.pos[0], k.pos[1]);
+    if (!isFinite(mn[0])) { mn = [-50, -50]; mx = [50, 50]; }
+    // un po' di posto intorno per le frecce e i numeri delle quote
+    const sc = Export.pickScale(Math.max(mx[0] - mn[0], 1e-6), Math.max(mx[1] - mn[1], 1e-6), box.w - 24, box.h - 20);
+    const f = 25.4 / 96;
+    const html = document.documentElement;
+    const keep = { q: r.cam.q.slice(), t: r.cam.target.slice(), s: r.cam.scale, targetQ: r.targetQ, sel: ss.sel, hover: ss.hover, theme: html.dataset.theme };
+    let rec = null;
+    try {
+      if (r.endAnim) r.endAnim();
+      keep.q = r.cam.q.slice(); keep.t = r.cam.target.slice(); keep.s = r.cam.scale; keep.targetQ = r.targetQ;
+      r.cam.q = GLView.Renderer.normalQ(ss.F); r.targetQ = null;
+      r.cam.target = Geom.to3(ss.F, [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2]);
+      r.cam.scale = f / sc.s * r.cssH;
+      r.mats = r.matrices();
+      ss.sel = new Set(); ss.hover = null;
+      html.dataset.theme = 'light';
+      // pixel dello schermo → mm della pagina: il centro della vista va al centro del riquadro
+      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      pg.save(); pg.clipRect(box.x, box.y, box.w, box.h);
+      rec = new Export.CanvasRec(pg, [f, 0, 0, f, cx - f * r.cssW / 2, cy - f * r.cssH / 2], { k: f });
+      SK.drawOverlay(rec);
+      pg.restore();
+    } finally {
+      r.cam.q = keep.q; r.cam.target = keep.t; r.cam.scale = keep.s; r.targetQ = keep.targetQ; r.mats = r.matrices();
+      ss.sel = keep.sel; ss.hover = keep.hover;
+      if (keep.theme === undefined) delete html.dataset.theme; else html.dataset.theme = keep.theme;
+      App.redraw();
+    }
+    return { scale: sc.txt, s: sc.s, name: ss.f.name, missing: rec ? [...rec.missing] : [], bbox: [mn, mx] };
   };
   function dark() { return document.documentElement.dataset.theme === 'dark' || (!document.documentElement.dataset.theme && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); }
   function polyArc(c, cx, cy, r, a0, a1) {
@@ -10985,7 +11777,7 @@ self.onmessage = async ev => {
     App.renderTree();
     App.redraw();
   };
-  D.handles = id => ['dDim', 'dSection', 'dSvg', 'dDxf', 'dPrint', 'dFit', 'dAuto'].includes(id);
+  D.handles = id => ['dDim', 'dSection', 'dSvg', 'dDxf', 'dPdf', 'dPrint', 'dFit', 'dAuto'].includes(id);
   D.toolbar = function () {
     return [
       ['dDim', 'Quota', 'Quote ISO: clic su uno spigolo, un cerchio o due punti, poi clic per posizionare', { icon: 'dim', pressed: tool === 'dim' }],
@@ -10993,6 +11785,7 @@ self.onmessage = async ev => {
       ['dSection', 'Vista in sezione', 'Sostituisce una vista con la sua sezione (piano di taglio e tratteggio)', { icon: 'sectionView' }],
       '-',
       ['dFit', 'Adatta il foglio', 'Il foglio intero nella finestra', { icon: 'drawing' }],
+      ['dPdf', 'Salva PDF', 'File PDF della tavola, vettoriale e in scala (foglio vero, A4–A2): si apre e si stampa ovunque', { icon: 'print' }],
       ['dSvg', 'Esporta SVG', 'Disegno vettoriale in scala 1:1 su carta', { icon: 'export' }],
       ['dDxf', 'Esporta DXF', 'Per AutoCAD e altri CAD 2D (livelli e tipi di linea ISO)', { icon: 'export' }],
       ['dPrint', 'Stampa / PDF', 'Stampa la tavola in scala (o salva in PDF dal browser)', { icon: 'print' }],
@@ -11007,8 +11800,20 @@ self.onmessage = async ev => {
       case 'dFit': fitZoom(); return;
       case 'dSvg': { const { svg } = D.render(); App.offerFile((App.doc.name || 'tavola') + '.svg', 'image/svg+xml', '<?xml version="1.0" encoding="UTF-8"?>\n' + svg, 'Esporta SVG'); return; }
       case 'dDxf': App.offerFile((App.doc.name || 'tavola') + '.dxf', 'application/dxf', D.toDXF(), 'Esporta DXF'); return;
+      case 'dPdf': App.savePdf(); return;
       case 'dPrint': printSheet(); return;
     }
+  };
+  // tavola in PDF: la SVG della tavola (in mm) diventa una pagina vettoriale del formato del foglio, in scala 1:1.
+  // I testi della tavola sono in Arial Narrow: nel PDF Helvetica stretta all'82 %.
+  D.toPDF = async function () {
+    const r = D.render();
+    const svg = new DOMParser().parseFromString(r.svg, 'image/svg+xml').documentElement;
+    const name = (A().doc && A().doc.name) || 'tavola';
+    const doc = new Export.Doc({ title: name + ' – tavola' });
+    const pg = doc.addPage(r.L.W, r.L.H);
+    const stats = Export.svgToPage(pg, svg, { hscale: 82 });
+    return { bytes: await doc.build(), stats, file: name + '-tavola.pdf', what: 'tavola', size: [r.L.W, r.L.H], msg: `PDF della tavola pronto: foglio ${r.L.W} × ${r.L.H} mm, in scala 1:1 (in stampa scegli «Dimensioni effettive» o «100 %»).` };
   };
   D.key = function (e) {
     if (e.key === 'Escape') { if (tool) { tool = null; picks = []; previewDim = null; A().hint(null); A().updateCommands(); draw(); return true; } if (selDim) { selDim = null; draw(); return true; } }
@@ -11904,6 +12709,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Messa in tavola', 'Esporta DXF', ['dxf'], 'Formato di scambio per AutoCAD e gli altri CAD 2D, con livelli e tipi di linea ISO.'],
     ['Messa in tavola', 'Esporta SVG', ['svg'], 'Disegno vettoriale in scala 1:1 su carta: si apre nel browser e nei programmi di grafica.'],
     ['Messa in tavola', 'Esporta STL', ['stl', 'stampa 3d'], 'Il formato per la stampa 3D: il solido descritto da tanti triangoli.'],
+    ['Messa in tavola', 'Salva PDF', ['pdf', 'salva pdf della tavola', 'salva pdf dello schizzo', 'salva pdf della vista 3d', 'file pdf'], 'Crea subito un file PDF, che si apre e si stampa su qualunque computer, tablet o telefono. Nella Messa in tavola salva la tavola vettoriale sul foglio vero (A4–A2) in scala 1:1; in uno schizzo salva lo schizzo vettoriale su un A4 orizzontale con una scala unificata (2:1, 1:1, 1:2…) scritta in basso; altrimenti salva la vista 3D com\'è sullo schermo (un\'immagine) su un A4 orizzontale. Si trova nel menu Progetto e, nella Messa in tavola, anche tra i comandi.'],
+    ['Importazione', 'Esporta STEP', ['esporta step (per altri cad)', 'salvare in step', 'step esportato'], 'Progetto › Esporta STEP salva il pezzo in un file .step che si apre come solido in SolidWorks, Inventor, Fusion, FreeCAD e negli altri CAD 3D, in millimetri. Le facce piane restano facce piane; le superfici curve (cilindri, raccordi) arrivano divise in tante facce piane strette, come il pezzo del Banco CAD. Arrivano solo la forma e il colore: le quote e la storia delle funzioni non passano (nessun CAD le scambia).'],
 
     // ---------- importazione ----------
     ['Importazione', 'Importa STL o OBJ', ['importato', 'corpo importato', 'file importato', 'importare'], 'Porta nel Banco CAD un pezzo fatto con un altro programma (Progetto › Importa STL o OBJ). Nell\'albero compare la funzione «Importato»: il pezzo si vede, si misura, si mette in tavola e se ne calcolano volume e massa. Le quote originali non si possono modificare, ma sopra si possono disegnare schizzi e aggiungere funzioni (tagli, fori, estrusioni).'],
@@ -12076,6 +12883,7 @@ const dir = isNode ? path.resolve(process.argv[2] || path.join(__dirname, 'core'
 const Model = isNode ? require(path.join(dir, 'model.js')) : root.Model;
 const Sketch = isNode ? require(path.join(dir, 'sketch.js')) : root.Sketch;
 const Geom = isNode ? require(path.join(dir, 'geom.js')) : root.Geom;
+const Export = isNode ? require(path.join(dir, 'export.js')) : root.Export;
 const TOL = isNode ? +(process.env.TOL || 0.01) : 0.01;
 const PI = Math.PI;
 
@@ -12861,6 +13669,72 @@ SK.push(['STEP e IGES: riconoscimento del tipo e messaggi per i file sbagliati',
   return { ok: true, got: [code('ISO-10303-21;\nHEADER;'), code(igs), code('<?xml version="1.0"?>'), code('solid prova'), wrong], exp: [1, 2, 3, 0, 2] };
 }]);
 
+/* ---------- esportazioni: STEP (solido a facce piane) e PDF ---------- */
+// STEP del pezzo: conti di vertici V, spigoli E, facce F e anelli interni H fatti a mano. Per un solido chiuso vale la
+// formula di Eulero–Poincaré V − E + F − H = 2·(solidi − fori passanti); ogni spigolo è percorso da due facce, nei due sensi.
+const stepOf = doc => { const st = Model.regen(doc); if (st.errors.size || !st.body.length) throw new Error('pezzo non costruito'); return Export.toSTEP(st.body, Geom.topology(st.body, st.tags), { name: doc.name, date: new Date(2026, 9, 28) }); };
+const stepCounts = r => { const s = r.stats; return [s.verts, s.edges, s.faces, s.holes, s.solids, s.verts - s.edges + s.faces - s.holes, s.badEdges + s.openLoops]; };
+SK.push(['STEP: blocco 80×50×10 → 8 vertici, 12 spigoli, 6 facce, Eulero 2, ogni spigolo usato due volte nei due sensi', () => {
+  const r = stepOf(box()); const g = stepCounts(r);
+  return { ok: g.join() === [8, 12, 6, 0, 1, 2, 0].join() && /^ISO-10303-21;/.test(r.text) && /MANIFOLD_SOLID_BREP\('blocco'/.test(r.text) && /SI_UNIT\(\.MILLI\.,\.METRE\.\)/.test(r.text), got: g, exp: [8, 12, 6, 0, 1, 2, 0] };
+}]);
+SK.push(['STEP: piastra 100×60×8 con 4 fori R5 (cerchi di 48 lati) → Eulero 2 − 2·4 = −6; 8 anelli interni (i fori sulle due facce)', () => {
+  const d = D0('piastra'); const b = SB(); b.rect(0, 0, 100, 60); for (const [x, y] of [[20, 15], [80, 15], [20, 45], [80, 45]]) b.circle(x, y, 5);
+  feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 8 });
+  const r = stepOf(d), s = r.stats, n = (s.faces - 6) / 4;   // facce di ogni foro
+  // ogni foro: n facce laterali, 2n vertici, 3n spigoli; la piastra: 8 vertici, 12 spigoli, 6 facce
+  const g = stepCounts(r);
+  return { ok: g.join() === [8 + 8 * n, 12 + 12 * n, 6 + 4 * n, 8, 1, -6, 0].join(), got: [...g, n], exp: [8 + 8 * n, 12 + 12 * n, 6 + 4 * n, 8, 1, -6, 0, n] };
+}]);
+SK.push(['STEP: blocco 60×40×10 con un dado 20×20×15 sopra → 11 facce, la faccia di sopra del blocco ha un anello interno; i vertici a T sui lati dritti tolti', () => {
+  const d = D0('gradino'); const b = SB(); b.rect(0, 0, 60, 40); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 10 });
+  const b2 = SB(); b2.rect(10, 10, 30, 30); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b2), end: 'blind', depth: 25 });
+  const g = stepCounts(stepOf(d));
+  return { ok: g.join() === [16, 24, 11, 1, 1, 2, 0].join(), got: g, exp: [16, 24, 11, 1, 1, 2, 0] };
+}]);
+SK.push(['STEP: due blocchi 10×10×10 staccati → due solidi (Eulero 2 + 2 = 4)', () => {
+  const d = D0('due'); const b = SB(); b.rect(0, 0, 10, 10); b.rect(20, 0, 30, 10); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 10 });
+  const r = stepOf(d), g = stepCounts(r);
+  return { ok: g.join() === [16, 24, 12, 0, 2, 4, 0].join() && (r.text.match(/MANIFOLD_SOLID_BREP/g) || []).length === 2, got: g, exp: [16, 24, 12, 0, 2, 4, 0] };
+}]);
+SK.push(['STEP: nome con lettere accentate e apostrofo scritto come vuole la norma (\\X2\\…\\X0\\ e \'\')', () => {
+  const d = box(); d.name = "Flangia d'uscita è"; const t = stepOf(d).text;
+  const ok = t.includes("PRODUCT('Flangia d''uscita \\X2\\00E8\\X0\\'") && !/[^\x09\x0a\x0d\x20-\x7e]/.test(t);
+  return { ok, got: [ok ? 1 : 0], exp: [1] };
+}]);
+// PDF: un quarto di cerchio con una curva di Bézier (punti di controllo a 4/3·tan(22,5°) = 0,55228 del raggio) si scosta
+// dal cerchio al massimo di 2,7253·10⁻⁴ del raggio (valore noto)
+SK.push(['PDF: cerchio R10 con 4 curve di Bézier → scostamento massimo 2,7253·10⁻⁴ R = 0,0027 mm', () => {
+  const bz = Export.arcBeziers(0, 0, 10, 10, 0, 0, 2 * PI);
+  let p0 = [10, 0], dmax = 0, dmin = 0;
+  for (const b of bz) {
+    for (let i = 0; i <= 200; i++) {
+      const t = i / 200, u = 1 - t;
+      const x = u * u * u * p0[0] + 3 * u * u * t * b[0] + 3 * u * t * t * b[2] + t * t * t * b[4], y = u * u * u * p0[1] + 3 * u * u * t * b[1] + 3 * u * t * t * b[3] + t * t * t * b[5];
+      const dr = Math.hypot(x, y) - 10; dmax = Math.max(dmax, dr); dmin = Math.min(dmin, dr);
+    }
+    p0 = [b[4], b[5]];
+  }
+  return { ok: bz.length === 4 && Math.abs(p0[0] - 10) < 1e-12 && Math.abs(p0[1]) < 1e-12, got: [bz.length, dmax * 1e4 / 10, dmin], exp: [4, 2.7253, 0] };
+}]);
+SK.push(['PDF: arco della SVG «M0 0 A10 10 0 0 1 20 0» (y verso il basso) → mezzo cerchio di centro (10, 0) che passa per (10, −10)', () => {
+  const ops = Export.pathOps('M0 0A10 10 0 0 1 20 0'), c = ops[1], e = ops[2];
+  return { ok: ops.length === 3 && ops[0][0] === 'M' && c[0] === 'C' && e[0] === 'C', got: [c[5], c[6], e[5], e[6]], exp: [10, -10, 20, 0] };
+}]);
+SK.push(['PDF: foglio A3 = 1190,55 × 841,89 punti; «Ø20» centrato su x = 100 (Helvetica: 778 + 2·556 = 1890 millesimi → 9,45 mm a corpo 5); tabella dei riferimenti esatta', () => {
+  const d = new Export.Doc({ title: 'prova', date: new Date(2026, 9, 28) }), pg = d.addPage(420, 297);
+  const w = pg.text('Ø20', 100, 50, 5, { anchor: 'middle' });
+  pg.moveTo(20, 10).lineTo(410, 10).paint(null, [0, 0, 0]);
+  const u8 = d.buildSync(), t = new TextDecoder('latin1').decode(u8);
+  const mb = (t.match(/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/) || []).slice(1).map(Number);
+  const tx = +(t.match(/5 0 0 -5 ([\d.]+) 50 Tm \(\\33020\) Tj/) || [])[1];
+  // ogni oggetto «n 0 obj» deve stare esattamente al byte scritto nella tabella xref
+  const xi = t.lastIndexOf('\nxref\n') + 1;
+  const xref = t.slice(xi).split('\n').slice(3).filter(l => / n $/.test(l)).map(l => +l.slice(0, 10));
+  const okRef = xref.length === 7 && xref.every((o, i) => t.startsWith((i + 1) + ' 0 obj', o)) && +t.match(/startxref\n(\d+)/)[1] === xi;
+  return { ok: okRef, got: [mb[0], mb[1], w, tx], exp: [420 * 72 / 25.4, 297 * 72 / 25.4, 9.45, 95.275] };
+}]);
+
 /* ---------- esecuzione ---------- */
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
@@ -12963,10 +13837,12 @@ if (isNode) {
       'Per spostarlo: **Progetto › Esporta il progetto** e salva il file (o copia il testo).',
       'Su un altro computer: **Progetto › Importa un progetto** e scegli il file (o incolla il testo).',
       '**Progetto › Nuova parte** svuota il banco: esporta prima se vuoi tenere la parte attuale.',
+      '**Progetto › Esporta STEP** salva il pezzo per aprirlo in un altro CAD (SolidWorks, Inventor, Fusion, FreeCAD…).',
       '**Progetto › Esporta STL** crea il file per la stampa 3D.',
+      '**Progetto › Salva PDF** crea un PDF di quello che stai guardando: la tavola, lo schizzo aperto o la vista 3D.',
     ],
-    tips: ['Il salvataggio automatico vale per questo browser e questo dispositivo: per consegnare un lavoro usa l\'esportazione.'],
-    terms: ['Esporta STL'],
+    tips: ['Il salvataggio automatico vale per questo browser e questo dispositivo: per consegnare un lavoro usa l\'esportazione.', 'Il file del progetto (Esporta il progetto) lo riapre solo il Banco CAD; per gli altri programmi usa STEP (pezzo 3D), DXF (tavola o schizzo 2D) o PDF (da leggere e stampare).'],
+    terms: ['Esporta STL', 'Esporta STEP', 'Salva PDF'],
   });
 
   add('Per iniziare', 'importa', 'Importare un pezzo da un file STL o OBJ', {
@@ -13375,8 +14251,30 @@ if (isNode) {
   add('Messa in tavola', 'stampa', 'Stampare ed esportare la tavola', {
     why: 'Consegnare il disegno su carta o in file.',
     cmd: { tab: 'drawing', id: 'dPrint' },
-    steps: ['**Stampa / PDF:** nella finestra di stampa scegli «Dimensioni effettive» o «100 %» per avere la scala giusta, oppure «Salva come PDF».', '**Esporta SVG:** disegno vettoriale in scala 1:1.', '**Esporta DXF:** per AutoCAD e gli altri CAD 2D, con livelli e tipi di linea.'],
-    terms: ['Esporta SVG', 'Esporta DXF', 'Scala'],
+    steps: ['**Salva PDF:** il modo più semplice: un file PDF della tavola, in scala, che si apre e si stampa ovunque (vedi «Salvare in PDF»).', '**Stampa / PDF:** nella finestra di stampa scegli «Dimensioni effettive» o «100 %» per avere la scala giusta, oppure «Salva come PDF».', '**Esporta SVG:** disegno vettoriale in scala 1:1.', '**Esporta DXF:** per AutoCAD e gli altri CAD 2D, con livelli e tipi di linea.'],
+    terms: ['Salva PDF', 'Esporta SVG', 'Esporta DXF', 'Scala'],
+  });
+  add('Messa in tavola', 'pdf', 'Salvare in PDF la tavola, lo schizzo o la vista 3D', {
+    why: 'Avere un file da consegnare, mandare o stampare, che si apre su qualunque computer, tablet o telefono.',
+    cmd: { tab: 'drawing', id: 'dPdf' },
+    steps: [
+      '**Tavola:** nella scheda Messa in tavola premi **Salva PDF**. Il PDF ha il formato vero del foglio (A4, A3, A2) e la tavola in scala 1:1: linee, quote e cartiglio restano nitidi a qualunque ingrandimento.',
+      '**Schizzo:** con lo schizzo aperto scegli **Progetto › Salva PDF dello schizzo**. Lo schizzo va su un A4 orizzontale, con la [[Scala|scala unificata]] più grande che lo fa entrare (per esempio 2:1), scritta in basso. Le quote e i colori sono quelli dello schermo.',
+      '**Vista 3D:** fuori dallo schizzo e dalla tavola scegli **Progetto › Salva PDF della vista 3D**. La vista entra com\'è sullo schermo (orientamento, stile, ingrandimento) su un A4 orizzontale, su fondo bianco.',
+      'Nella pagina condivisa il file passa dalla finestra di salvataggio di claude.ai; nel file aperto dal computer va nei Download.',
+    ],
+    tips: ['Per stampare in scala apri il PDF e, nella stampa, scegli «Dimensioni effettive» o «100 %» (non «Adatta alla pagina»).', 'La vista 3D nel PDF è un\'immagine: per un disegno nitido in scala usa la tavola.'],
+    terms: ['Salva PDF', 'Scala', 'Foglio'],
+  });
+  add('Messa in tavola', 'step', 'Aprire il pezzo in un altro CAD (Esporta STEP)', {
+    why: 'Continuare il pezzo in SolidWorks, Inventor, Fusion o FreeCAD, o mandarlo a chi lo deve produrre.',
+    steps: [
+      'Scegli **Progetto › Esporta STEP (per altri CAD)**: il file .step contiene il pezzo come solido, in millimetri.',
+      'Nell\'altro programma aprilo con **File › Apri** (in SolidWorks: tipo di file STEP).',
+      'Le facce piane restano facce piane; cilindri, fori e raccordi arrivano divisi in tante facce piane strette, come nel Banco CAD.',
+    ],
+    tips: ['Le quote e la storia delle funzioni non passano: nessun CAD le scambia con gli altri. Si possono aggiungere funzioni nuove sopra al pezzo importato.', 'Il Banco CAD rilegge i suoi STEP con Progetto › Importa STEP o IGES.'],
+    terms: ['Esporta STEP', 'STEP'],
   });
 
   /* ================= 7. Esercitazioni ================= */

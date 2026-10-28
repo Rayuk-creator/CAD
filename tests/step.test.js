@@ -6,6 +6,7 @@ const page = process.argv[2] || path.join(__dirname, '..', 'index.html');
 const dir = path.resolve(process.argv[3] || path.join(__dirname, 'core'));
 const Model = require(path.join(dir, 'model.js'));
 const IM = Model.Import;
+const Sketch = require(path.join(dir, 'sketch.js')), Geom = require(path.join(dir, 'geom.js')), Export = require(path.join(dir, 'export.js'));
 const { stepBox, stepCylinder, stepPlateHole, stepTwoBoxes, stepTwoBoxesColored } = require('./stepgen.js');
 const { igesBox } = require('./igesgen.js');
 const TOL = +(process.env.TOL || 0.01), PI = Math.PI;
@@ -119,6 +120,54 @@ const CASES = [
     try { fn(); } catch (e) { got = e.message; ok = re.test(e.message); }
     if (!ok) fail++;
     console.log((ok ? 'OK  ' : 'NO  ') + name + (ok ? '' : '\n      messaggio: ' + got));
+  }
+
+  // esportazione STEP del Banco CAD riletta con OpenCascade (come farebbero SolidWorks, FreeCAD…): stesse facce, stessi solidi,
+  // e il volume e l'area dei triangoli riletti uguali a quelli del corpo a faccette del Banco CAD (entro 10⁻⁷)
+  const SB = () => { const s2 = Sketch.newSketch(); const pt = (x, y, ex = {}) => { const id = 'p' + (s2.next++); s2.ents.push({ id, t: 'pt', x, y, ...ex }); return id; };
+    const api = { s: s2, pt, line(a, b, ex = {}) { const id = 'l' + (s2.next++); s2.ents.push({ id, t: 'ln', a, b, ...ex }); return id; },
+      rect(x0, y0, x1, y1) { const ids = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => pt(x, y)); for (let i = 0; i < 4; i++) api.line(ids[i], ids[(i + 1) % 4]); },
+      circle(x, y, r) { const c = pt(x, y); s2.ents.push({ id: 'c' + (s2.next++), t: 'ci', c, r }); },
+      center(x0, y0, x1, y1) { return api.line(pt(x0, y0), pt(x1, y1), { cons: true, center: true }); } };
+    return api; };
+  const feat = (d, f) => { f.id = f.id || Model.uid(d, 'F'); f.name = f.name || Model.defaultName(d, f.type); d.features.push(f); return f.id; };
+  const skf = (d, plane, b) => feat(d, { type: 'sketch', plane: { kind: 'std', id: plane }, sk: b.s });
+  const D0 = n => { const d = Model.newDoc(); d.name = n; return d; };
+  const facet = body => { let V = 0, A = 0; for (const p of body) for (let i = 1; i < p.v.length - 1; i++) { const a = p.v[0], b = p.v[i], c = p.v[i + 1];
+    const cr = [b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2], b[0] * c[1] - b[1] * c[0]]; V += (a[0] * cr[0] + a[1] * cr[1] + a[2] * cr[2]) / 6;
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]; A += Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]) / 2; } return { V, A }; };
+  const exportCases = [
+    ['blocco 80 × 50 × 10', () => { const d = D0('blocco'); const b = SB(); b.rect(0, 0, 80, 50); feat(d, { type: 'extrude', sketch: skf(d, 'top', b), end: 'blind', depth: 10 }); return d; }, 40000],
+    ['piastra 100 × 60 × 8 con 4 fori R5', () => { const d = D0('piastra'); const b = SB(); b.rect(0, 0, 100, 60); for (const [x, y] of [[20, 15], [80, 15], [20, 45], [80, 45]]) b.circle(x, y, 5); feat(d, { type: 'extrude', sketch: skf(d, 'top', b), end: 'blind', depth: 8 }); return d; }, 48000 - 4 * 25 * PI * 8],
+    ['blocco 60 × 40 × 10 con un dado 20 × 20 × 15 sopra', () => { const d = D0('gradino'); const b = SB(); b.rect(0, 0, 60, 40); feat(d, { type: 'extrude', sketch: skf(d, 'top', b), end: 'blind', depth: 10 });
+      const b2 = SB(); b2.rect(10, 10, 30, 30); feat(d, { type: 'extrude', sketch: skf(d, 'top', b2), end: 'blind', depth: 25 }); return d; }, 24000 + 6000],
+    ['tubo di rivoluzione R 20/12, alto 30 (superfici curve divise in facce)', () => { const d = D0('tubo'); const b = SB(); b.center(0, -100, 0, 100); b.rect(12, 0, 20, 30);
+      feat(d, { type: 'revolve', sketch: skf(d, 'front', b), angle: 360 }); return d; }, PI * (400 - 144) * 30],
+    ['due blocchi 10 × 10 × 10 staccati (due solidi)', () => { const d = D0('due'); const b = SB(); b.rect(0, 0, 10, 10); b.rect(20, 0, 30, 10); feat(d, { type: 'extrude', sketch: skf(d, 'top', b), end: 'blind', depth: 10 }); return d; }, 2000],
+  ];
+  for (const [name, build, Vexact] of exportCases) {
+    n++;
+    let ok = true; const msg = [];
+    try {
+      const d = build(), st = Model.regen(d);
+      if (st.errors.size || !st.body.length) throw new Error('pezzo non costruito: ' + [...st.errors.values()].join('; '));
+      const ex = Export.toSTEP(st.body, Geom.topology(st.body, st.tags), { name: d.name, color: [0.66, 0.7, 0.74] });
+      const f0 = facet(st.body);
+      const r = IM.readCAD(occt, enc(ex.text), 'step');
+      const m = IM.weld(r.pos); m.f = new Uint32Array([...m.src].map(t => r.face[t]));
+      const d2 = Model.newDoc(); d2.features.push({ id: 'F1', name: 'Importato1', type: 'import', fmt: 'step', file: 'x.step', unit: 'mm', mesh: IM.pack(m) });
+      const st2 = Model.regen(d2), mp2 = Model.massProperties(st2, d2), info = st2.info.get('F1');
+      const eq = (lab, g, e) => { if (g !== e) { ok = false; msg.push(`${lab}: ${g} invece di ${e}`); } };
+      eq('Facce rilette', r.faces, ex.stats.faces); eq('Solidi riletti', r.bodies.length, ex.stats.solids); eq('Spigoli aperti nel file', ex.stats.badEdges + ex.stats.openLoops, 0);
+      eq('Corpo chiuso dopo la rilettura', !!(st2.warn.get('F1')), false);
+      const rv = Math.abs(mp2.volume - f0.V) / f0.V, ra = Math.abs(mp2.area - f0.A) / f0.A, re = Math.abs(mp2.volume - Vexact) / Vexact;
+      if (rv > 1e-7) { ok = false; msg.push(`volume riletto ${mp2.volume} invece di ${f0.V}`); }
+      if (ra > 1e-7) { ok = false; msg.push(`area riletta ${mp2.area} invece di ${f0.A}`); }
+      if (re > TOL) { ok = false; msg.push(`volume ${mp2.volume.toFixed(3)} lontano dal valore esatto ${Vexact.toFixed(3)}`); }
+      msg.unshift(`${ex.stats.faces} facce, ${ex.stats.edges} spigoli, ${ex.stats.solids} solid${ex.stats.solids === 1 ? 'o' : 'i'}; volume riletto ${mp2.volume.toFixed(4)} (corpo a faccette ${f0.V.toFixed(4)}, scarto ${(rv * 100).toExponential(1)} %; dal valore esatto ${(re * 100).toFixed(3)} %); area scarto ${(ra * 100).toExponential(1)} %`);
+    } catch (e) { ok = false; msg.push('ERRORE ' + e.message); }
+    if (!ok) fail++;
+    console.log((ok ? 'OK  ' : 'NO  ') + 'Esporta STEP e rileggi con OpenCascade: ' + name + '\n      ' + msg.join('\n      '));
   }
   console.log(`\n${n - fail}/${n} superati (tolleranza ${(TOL * 100).toFixed(1)}%)`);
   process.exit(fail ? 1 : 0);

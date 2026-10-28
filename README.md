@@ -113,7 +113,7 @@ Proprietà di massa (volume, area, massa, baricentro, ingombro) calcolate sulle 
 
 ![Tavola della flangia: viste in metodo E, quote, cartiglio](docs/img/messa-in-tavola.png)
 
-Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nascoste, assi, viste in sezione tratteggiate, quote (anche automatiche), cartiglio, fogli da A4 ad A2 con scale unificate. L'assonometria si può avere **ombreggiata**, con i colori del pezzo (anche quelli di un file STEP). Stampa in scala o PDF, esportazione **SVG** e **DXF** (per AutoCAD). Dal menu Progetto anche l'esportazione **STL** per la stampa 3D.
+Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nascoste, assi, viste in sezione tratteggiate, quote (anche automatiche), cartiglio, fogli da A4 ad A2 con scale unificate. L'assonometria si può avere **ombreggiata**, con i colori del pezzo (anche quelli di un file STEP). **Salva PDF** (un file PDF vettoriale della tavola sul foglio vero, in scala 1:1), stampa in scala, esportazione **SVG** e **DXF** (per AutoCAD). Dal menu Progetto anche **Salva PDF** dello schizzo (vettoriale, con la scala unificata più grande che lo fa entrare in un A4) o della vista 3D, l'esportazione **STEP** del pezzo per aprirlo in SolidWorks, Inventor, Fusion o FreeCAD (solido in millimetri; le superfici curve divise in facce piane) e l'esportazione **STL** per la stampa 3D.
 
 ## Guida, glossario ed esercitazioni
 
@@ -141,7 +141,7 @@ Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScr
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (134 + 14 prove STEP/IGES + 11 del convertitore DWG, pochi secondi)
+npm run test:kernel               # solo i calcoli (142 + 19 prove STEP/IGES e STEP esportati + 11 del convertitore DWG, pochi secondi)
 npm run test:ui                   # solo l'interfaccia in Chromium (52 prove)
 ```
 
@@ -153,7 +153,8 @@ docs/img/             le immagini di questo README
 tests/extract.js      estrae dal file i moduli di calcolo per provarli in Node
 tests/kernel.test.js  prove dei calcoli (le stesse dell'Autoverifica)
 tests/ui.test.js      prove dell'interfaccia con Playwright
-tests/step.test.js    prove del lettore STEP/IGES vero
+tests/pdfcheck.py     rilegge i PDF salvati con pdfplumber (Python) e ne dà le misure in mm
+tests/step.test.js    prove del lettore STEP/IGES vero e degli STEP esportati (riletti con OpenCascade)
 tests/stepgen.js      scrive piccoli file STEP di prova (igesgen.js: IGES)
 tests/dwg.test.js     prove del Convertitore DWG → DXF (DWG da R11 a 2018, confronto con DXF di riferimento)
 tools/incorpora-occt.js  inserisce o aggiorna il lettore STEP/IGES nella pagina

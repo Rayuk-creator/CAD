@@ -8,6 +8,7 @@ const dir = isNode ? path.resolve(process.argv[2] || path.join(__dirname, 'core'
 const Model = isNode ? require(path.join(dir, 'model.js')) : root.Model;
 const Sketch = isNode ? require(path.join(dir, 'sketch.js')) : root.Sketch;
 const Geom = isNode ? require(path.join(dir, 'geom.js')) : root.Geom;
+const Export = isNode ? require(path.join(dir, 'export.js')) : root.Export;
 const TOL = isNode ? +(process.env.TOL || 0.01) : 0.01;
 const PI = Math.PI;
 
@@ -791,6 +792,72 @@ SK.push(['STEP e IGES: riconoscimento del tipo e messaggi per i file sbagliati',
   try { MI.readCAD(fakeOCCT(() => []), enc(igs), 'step'); } catch (e) { if (/Sembra un IGES/.test(e.message)) wrong++; }
   try { MI.readCAD(fakeOCCT(() => []), STEP_HEAD, 'step'); } catch (e) { if (/non ci sono solidi/.test(e.message)) wrong++; }
   return { ok: true, got: [code('ISO-10303-21;\nHEADER;'), code(igs), code('<?xml version="1.0"?>'), code('solid prova'), wrong], exp: [1, 2, 3, 0, 2] };
+}]);
+
+/* ---------- esportazioni: STEP (solido a facce piane) e PDF ---------- */
+// STEP del pezzo: conti di vertici V, spigoli E, facce F e anelli interni H fatti a mano. Per un solido chiuso vale la
+// formula di Eulero–Poincaré V − E + F − H = 2·(solidi − fori passanti); ogni spigolo è percorso da due facce, nei due sensi.
+const stepOf = doc => { const st = Model.regen(doc); if (st.errors.size || !st.body.length) throw new Error('pezzo non costruito'); return Export.toSTEP(st.body, Geom.topology(st.body, st.tags), { name: doc.name, date: new Date(2026, 9, 28) }); };
+const stepCounts = r => { const s = r.stats; return [s.verts, s.edges, s.faces, s.holes, s.solids, s.verts - s.edges + s.faces - s.holes, s.badEdges + s.openLoops]; };
+SK.push(['STEP: blocco 80×50×10 → 8 vertici, 12 spigoli, 6 facce, Eulero 2, ogni spigolo usato due volte nei due sensi', () => {
+  const r = stepOf(box()); const g = stepCounts(r);
+  return { ok: g.join() === [8, 12, 6, 0, 1, 2, 0].join() && /^ISO-10303-21;/.test(r.text) && /MANIFOLD_SOLID_BREP\('blocco'/.test(r.text) && /SI_UNIT\(\.MILLI\.,\.METRE\.\)/.test(r.text), got: g, exp: [8, 12, 6, 0, 1, 2, 0] };
+}]);
+SK.push(['STEP: piastra 100×60×8 con 4 fori R5 (cerchi di 48 lati) → Eulero 2 − 2·4 = −6; 8 anelli interni (i fori sulle due facce)', () => {
+  const d = D0('piastra'); const b = SB(); b.rect(0, 0, 100, 60); for (const [x, y] of [[20, 15], [80, 15], [20, 45], [80, 45]]) b.circle(x, y, 5);
+  feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 8 });
+  const r = stepOf(d), s = r.stats, n = (s.faces - 6) / 4;   // facce di ogni foro
+  // ogni foro: n facce laterali, 2n vertici, 3n spigoli; la piastra: 8 vertici, 12 spigoli, 6 facce
+  const g = stepCounts(r);
+  return { ok: g.join() === [8 + 8 * n, 12 + 12 * n, 6 + 4 * n, 8, 1, -6, 0].join(), got: [...g, n], exp: [8 + 8 * n, 12 + 12 * n, 6 + 4 * n, 8, 1, -6, 0, n] };
+}]);
+SK.push(['STEP: blocco 60×40×10 con un dado 20×20×15 sopra → 11 facce, la faccia di sopra del blocco ha un anello interno; i vertici a T sui lati dritti tolti', () => {
+  const d = D0('gradino'); const b = SB(); b.rect(0, 0, 60, 40); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 10 });
+  const b2 = SB(); b2.rect(10, 10, 30, 30); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b2), end: 'blind', depth: 25 });
+  const g = stepCounts(stepOf(d));
+  return { ok: g.join() === [16, 24, 11, 1, 1, 2, 0].join(), got: g, exp: [16, 24, 11, 1, 1, 2, 0] };
+}]);
+SK.push(['STEP: due blocchi 10×10×10 staccati → due solidi (Eulero 2 + 2 = 4)', () => {
+  const d = D0('due'); const b = SB(); b.rect(0, 0, 10, 10); b.rect(20, 0, 30, 10); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 10 });
+  const r = stepOf(d), g = stepCounts(r);
+  return { ok: g.join() === [16, 24, 12, 0, 2, 4, 0].join() && (r.text.match(/MANIFOLD_SOLID_BREP/g) || []).length === 2, got: g, exp: [16, 24, 12, 0, 2, 4, 0] };
+}]);
+SK.push(['STEP: nome con lettere accentate e apostrofo scritto come vuole la norma (\\X2\\…\\X0\\ e \'\')', () => {
+  const d = box(); d.name = "Flangia d'uscita è"; const t = stepOf(d).text;
+  const ok = t.includes("PRODUCT('Flangia d''uscita \\X2\\00E8\\X0\\'") && !/[^\x09\x0a\x0d\x20-\x7e]/.test(t);
+  return { ok, got: [ok ? 1 : 0], exp: [1] };
+}]);
+// PDF: un quarto di cerchio con una curva di Bézier (punti di controllo a 4/3·tan(22,5°) = 0,55228 del raggio) si scosta
+// dal cerchio al massimo di 2,7253·10⁻⁴ del raggio (valore noto)
+SK.push(['PDF: cerchio R10 con 4 curve di Bézier → scostamento massimo 2,7253·10⁻⁴ R = 0,0027 mm', () => {
+  const bz = Export.arcBeziers(0, 0, 10, 10, 0, 0, 2 * PI);
+  let p0 = [10, 0], dmax = 0, dmin = 0;
+  for (const b of bz) {
+    for (let i = 0; i <= 200; i++) {
+      const t = i / 200, u = 1 - t;
+      const x = u * u * u * p0[0] + 3 * u * u * t * b[0] + 3 * u * t * t * b[2] + t * t * t * b[4], y = u * u * u * p0[1] + 3 * u * u * t * b[1] + 3 * u * t * t * b[3] + t * t * t * b[5];
+      const dr = Math.hypot(x, y) - 10; dmax = Math.max(dmax, dr); dmin = Math.min(dmin, dr);
+    }
+    p0 = [b[4], b[5]];
+  }
+  return { ok: bz.length === 4 && Math.abs(p0[0] - 10) < 1e-12 && Math.abs(p0[1]) < 1e-12, got: [bz.length, dmax * 1e4 / 10, dmin], exp: [4, 2.7253, 0] };
+}]);
+SK.push(['PDF: arco della SVG «M0 0 A10 10 0 0 1 20 0» (y verso il basso) → mezzo cerchio di centro (10, 0) che passa per (10, −10)', () => {
+  const ops = Export.pathOps('M0 0A10 10 0 0 1 20 0'), c = ops[1], e = ops[2];
+  return { ok: ops.length === 3 && ops[0][0] === 'M' && c[0] === 'C' && e[0] === 'C', got: [c[5], c[6], e[5], e[6]], exp: [10, -10, 20, 0] };
+}]);
+SK.push(['PDF: foglio A3 = 1190,55 × 841,89 punti; «Ø20» centrato su x = 100 (Helvetica: 778 + 2·556 = 1890 millesimi → 9,45 mm a corpo 5); tabella dei riferimenti esatta', () => {
+  const d = new Export.Doc({ title: 'prova', date: new Date(2026, 9, 28) }), pg = d.addPage(420, 297);
+  const w = pg.text('Ø20', 100, 50, 5, { anchor: 'middle' });
+  pg.moveTo(20, 10).lineTo(410, 10).paint(null, [0, 0, 0]);
+  const u8 = d.buildSync(), t = new TextDecoder('latin1').decode(u8);
+  const mb = (t.match(/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/) || []).slice(1).map(Number);
+  const tx = +(t.match(/5 0 0 -5 ([\d.]+) 50 Tm \(\\33020\) Tj/) || [])[1];
+  // ogni oggetto «n 0 obj» deve stare esattamente al byte scritto nella tabella xref
+  const xi = t.lastIndexOf('\nxref\n') + 1;
+  const xref = t.slice(xi).split('\n').slice(3).filter(l => / n $/.test(l)).map(l => +l.slice(0, 10));
+  const okRef = xref.length === 7 && xref.every((o, i) => t.startsWith((i + 1) + ' 0 obj', o)) && +t.match(/startxref\n(\d+)/)[1] === xi;
+  return { ok: okRef, got: [mb[0], mb[1], w, tx], exp: [420 * 72 / 25.4, 297 * 72 / 25.4, 9.45, 95.275] };
 }]);
 
 /* ---------- esecuzione ---------- */
