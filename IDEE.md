@@ -60,4 +60,4 @@ Chiesto dall'utente il 28 ottobre 2026 («l'opzione per montare gli assiemi con 
 
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
 - STEP esportato, se servirà: bordi B-spline per le intersezioni tra cilindri diversi (oggi quelle superfici restano a facce piane).
-- Le pagine pubblicate su claude.ai («Banco CAD» e «Convertitore DWG → DXF») sono aggiornate al 29 ottobre. Il Convertitore resta privato finché l'utente non lo condivide. La versione di riferimento resta `index.html` in questo repository.
+- Le pagine pubblicate su claude.ai («Banco CAD» e «Convertitore DWG → DXF») sono aggiornate al 29 ottobre. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
