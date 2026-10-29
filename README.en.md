@@ -39,6 +39,8 @@ Designed for technical secondary schools (mechanical and mechatronic engineering
 
 Your work is saved automatically in the browser. To move it to another computer use **Progetto › Esporta il progetto** (Project › Export) and then **Importa un progetto** (Import).
 
+With **Progetto › Esporta STEP** (Project › Export STEP) the part opens in another CAD program (SolidWorks, Inventor, Fusion, FreeCAD…): cylinders, cones, spheres and tori arrive as **true surfaces**, with circular or elliptical edges, as SolidWorks would write them; only surfaces that cannot be written exactly (for example two crossing cylinders) arrive as flat facets. **Salva PDF** (Save PDF) saves the drawing, the sketch or the 3D view.
+
 With **Progetto › Importa STEP o IGES** (Project › Import STEP or IGES) you can open a part (or a small assembly) made with another CAD program (SolidWorks, Inventor, Fusion, FreeCAD… saved as STEP or IGES): it arrives with its real faces and the file's units; you can measure it, put it on a drawing, get volume and mass with an error well below 1 %, and add sketches and features on it. If the file holds several bodies you choose which ones to import, and each arrives as its own «Importato» feature (or all together in one); face colours written in the file show on the part. The reader is OpenCascade, compressed inside the page: it works offline too, and reads the file in the background so the page never freezes (reading can be cancelled).
 
 With **Progetto › Importa STL o OBJ** (Project › Import STL or OBJ) you can also open a part made with another program (SolidWorks, Inventor, Tinkercad… saved as STL or OBJ): it arrives as a faceted body that you can measure, put on a drawing and weigh, and you can add sketches and features on its flat faces.
@@ -56,10 +58,10 @@ AutoCAD **DWG** files are first turned into DXF with the **DWG → DXF converter
 > 2. GitHub says the file is too big to display ("Sorry about that, but we can't show files that are this big right now"): **this is normal**, the file is fine. Press the **Download raw file** button: the **down arrow** at the top right. Do **not** press "Raw" or "View raw": they would only show the program's text.
 > 3. The downloaded file is called `index.html`, **like Banco CAD**: rename it, for example `convertitore-dwg.html`, so you don't mix them up.
 > 4. **Double-click** it: it opens in Chrome, Edge or Firefox. No internet needed.
-> 5. Press **Scegli i file DWG** (*choose DWG files*, or drag the `.dwg` files onto the page), then **Salva DXF** (*save DXF*) next to each drawing.
+> 5. Press **Scegli i file DWG** (*choose DWG files*, or drag the `.dwg` files onto the page), check the **preview**, then press **Salva DXF** (*save DXF*) next to each drawing, or **Salva tutti i DXF (.zip)** (*save all DXF*) to get them in one file.
 > 6. In Banco CAD: **Progetto › Importa DXF (schizzo)** and choose the `.dxf` file you just saved.
 >
-> Use it on a **computer**: the converter asks the browser for about 1 GB of memory and may not start on older phones or tablets.
+> It also works on **tablets and phones**: the converter starts with 16 MB of memory and takes more only for large drawings.
 
 ## Your first part in 6 steps
 
@@ -129,7 +131,7 @@ Orthographic views in **first-angle projection** (ISO 5456-2), hidden lines, cen
 
 ## Verified calculations
 
-Every calculation is checked by automatic tests: 110 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, arcs, the edges of ellipses and splines and tangent propagation, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL, OBJ, STEP and IGES, sketches imported from DXF including ellipses and splines, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero. Another 14 tests run the real reader on STEP and IGES files written for the purpose (blocks, cylinder, plate with a hole, different units, assemblies with colours, damaged files).
+Every calculation is checked by automatic tests: 110 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, arcs, the edges of ellipses and splines and tangent propagation, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL, OBJ, STEP and IGES, sketches imported from DXF including ellipses and splines, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero. Another 14 tests run the real reader on STEP and IGES files written for the purpose (blocks, cylinder, plate with a hole, different units, assemblies with colours, damaged files), and 14 read back the STEP files exported by Banco CAD: with true surfaces the volume read back is the exact one (sphere, cone, tube, plate with holes).
 
 The same tests can be run inside the program: **Valuta › Autoverifica** (Evaluate › Self-check).
 
@@ -143,7 +145,7 @@ The program is one file, `index.html` (about 5 MB), with HTML, CSS and JavaScrip
 npm install
 npx playwright install chromium   # first time only
 npm test                          # all tests
-npm run test:kernel               # calculations only (142 + 19 STEP/IGES and exported STEP + 11 DWG converter tests, a few seconds)
+npm run test:kernel               # calculations only (152 + 28 STEP/IGES and exported STEP + 14 DWG converter tests, about a minute)
 npm run test:ui                   # interface only, in Chromium (52 tests)
 ```
 

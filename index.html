@@ -2992,24 +2992,35 @@ self.onmessage = async ev => {
     const aP = Math.atan2(P[1] - c[1], P[0] - c[0]), aE = Math.atan2(E[1] - c[1], E[0] - c[0]);
     return s > 0 ? { t: 'arc', c, r, a0: aP, a1: unwrapAfter(aP, aE) } : { t: 'arc', c, r, a0: aE, a1: unwrapAfter(aE, aP) };
   }
-  // biarco: due archi tangenti tra loro, il primo tangente a T0 in P0, il secondo tangente a T1 in P1 (bracci uguali)
-  function biarc(P0, T0, P1, T1, lineTol) {
+  // biarco: due archi tangenti tra loro, il primo tangente a T0 in P0, il secondo tangente a T1 in P1. I bracci d1 (da P0
+  // lungo T0) e d2 (da P1 lungo −T1) soddisfano |v − d1·T0 − d2·T1| = d1 + d2; alpha = d1/d2 sceglie il punto di
+  // giunzione J (alpha = 1: bracci uguali)
+  function biarc(P0, T0, P1, T1, lineTol, alpha = 1) {
     const v = v2sub(P1, P0), vv = v2dot(v, v);
     if (!(vv > 0)) return null;
-    const vt = v2dot(v, [T0[0] + T1[0], T0[1] + T1[1]]), k = 1 - v2dot(T0, T1);
-    // |v − d(T0+T1)| = 2d  →  d = vv / (√(vt² + 2k·vv) + vt)
-    const den = Math.sqrt(vt * vt + 2 * k * vv) + vt;
-    if (!(den > 1e-12 * Math.sqrt(vv))) return null;
-    const d = vv / den;
-    const J = [(P0[0] + d * T0[0] + P1[0] - d * T1[0]) / 2, (P0[1] + d * T0[1] + P1[1] - d * T1[1]) / 2];
+    const v0 = v2dot(v, T0), v1 = v2dot(v, T1), k = 1 - v2dot(T0, T1);
+    // con d1 = alpha·d2: 2·alpha·k·d2² + 2(alpha·v0 + v1)·d2 − vv = 0
+    const A = 2 * alpha * k, B = 2 * (alpha * v0 + v1);
+    let d2;
+    if (Math.abs(A) < 1e-14 * vv) { if (!(B > 1e-12 * Math.sqrt(vv))) return null; d2 = vv / B; }
+    else { const disc = B * B + 4 * A * vv; if (!(disc >= 0)) return null; d2 = 2 * vv / (Math.sqrt(disc) + B); }
+    const d1 = alpha * d2;
+    if (!(d2 > 0) || !(d1 > 0) || !isFinite(d1)) return null;
+    const Q1 = [P0[0] + d1 * T0[0], P0[1] + d1 * T0[1]], Q2 = [P1[0] - d2 * T1[0], P1[1] - d2 * T1[1]];
+    const J = [(d2 * Q1[0] + d1 * Q2[0]) / (d1 + d2), (d2 * Q1[1] + d1 * Q2[1]) / (d1 + d2)];
     const out = [];
     const a = arcFrom(P0, T0, J, lineTol); if (a) out.push(a);
     const b = arcFrom(P1, [-T1[0], -T1[1]], J, lineTol); if (b) out.push(b);
     return out.length ? out : null;
   }
   /* Curva P(t) → [x, y] sull'intervallo dei parametri, spezzata nei punti breaks (spigoli possibili, tratti della spline).
-     Restituisce {segs: tratti {t:'line'|'arc'}, err: scostamento massimo misurato} con err ≤ tol. */
-  function curveToArcs(P, breaks, tol) {
+     Restituisce {segs: tratti {t:'line'|'arc'}, err: scostamento massimo misurato} con err ≤ tol.
+     Dove la curva non ha uno spigolo (tangente uguale dai due lati di un punto di divisione) i tratti si uniscono, tranne
+     con keep (i punti di passaggio di una spline: la curva ci passa esattamente); poi ogni
+     biarco va il più lontano possibile lungo la curva (ricerca sul parametro) e il punto di giunzione dei due archi si
+     sceglie tra più posizioni, quella con lo scostamento minore. Lo scostamento si misura sempre nei due sensi. */
+  const BIARC_ALPHAS = [1, 0.75, 1.33, 0.55, 1.8];
+  function curveToArcs(P, breaks, tol, keep) {
     const segs = []; let err = 0, over = false;
     const lineTol = tol * 0.05;
     // tangente unitaria all'inizio (dir = +1) o alla fine (dir = −1) del tratto [ta, tb], presa dall'interno
@@ -3023,14 +3034,12 @@ self.onmessage = async ev => {
       return null;
     };
     const N = 16;
-    // passo ricorsivo: biarco sul tratto [ta, tb], diviso a metà finché lo scostamento supera tol
-    const step = (ta, tb, depth) => {
+    // prova di un tratto [ta, tb]: il biarco migliore e il suo scostamento (nei due sensi), oppure null
+    const fit = (ta, tb, full) => {
       const ts = [], ps = [];
       for (let i = 0; i <= N; i++) { const t = i === N ? tb : ta + (tb - ta) * i / N; ts.push(t); ps.push(P(t)); }
-      const split = () => { const tm = (ta + tb) / 2; step(ta, tm, depth + 1); step(tm, tb, depth + 1); };
-      const canSplit = depth < CURVE_MAXDEPTH && segs.length < CURVE_MAXSEGS;
       const P0 = ps[0], P1 = ps[N], chord = v2sub(P1, P0), cl = v2len(chord);
-      // giro della tangente lungo il tratto (dalle corde dei campioni): oltre 90° si divide prima di provare
+      // giro della tangente lungo il tratto (dalle corde dei campioni): oltre 90° il tratto è troppo lungo
       let turn = 0, prev = null, maxOff = 0;
       for (let i = 0; i < N; i++) {
         const d = v2sub(ps[i + 1], ps[i]), L = v2len(d); if (!(L > 0)) continue;
@@ -3039,40 +3048,109 @@ self.onmessage = async ev => {
         prev = u;
         if (cl > 0) maxOff = Math.max(maxOff, Math.abs(chord[0] * (ps[i][1] - P0[1]) - chord[1] * (ps[i][0] - P0[0])) / cl);
       }
-      if ((turn > Math.PI / 2 || !(cl > 0)) && canSplit) return split();
-      // tratto dritto: una linea sola
-      if (cl > 0 && maxOff <= lineTol * 0.01) { segs.push({ t: 'line', a: P0, b: P1 }); err = Math.max(err, maxOff); return; }
+      if (turn > Math.PI / 2 || !(cl > 0)) return null;
       const T0 = tang(ta, tb, true), T1 = tang(ta, tb, false);
-      const ba = T0 && T1 ? biarc(P0, T0, P1, T1, lineTol) : null;
-      if (!ba) { if (canSplit) return split(); segs.push({ t: 'line', a: P0, b: P1 }); err = Math.max(err, maxOff); over = true; return; }
-      // scostamento nei due sensi: campioni della curva → archi, punti degli archi → curva (minimo locale)
-      let e = 0;
-      for (let i = 1; i < N; i++) e = Math.max(e, Math.min(...ba.map(s => primDist(ps[i], s))));
-      // punti fitti della curva per cercare il punto più vicino a ogni punto degli archi
+      // tratto dritto (anche nella direzione agli estremi): una linea sola
+      const cu = [chord[0] / cl, chord[1] / cl], skew = T => T ? Math.abs(T[0] * cu[1] - T[1] * cu[0]) : 0;
+      if (maxOff <= lineTol * 0.01 && skew(T0) < 1e-9 && skew(T1) < 1e-9) return { segs: [{ t: 'line', a: P0, b: P1 }], e: maxOff, straight: true };
+      if (!T0 || !T1) return null;
+      // punto di giunzione: scostamento dei campioni della curva dagli archi, il minore
+      let ba = null, e1 = Infinity;
+      for (const al of BIARC_ALPHAS) {
+        const b = biarc(P0, T0, P1, T1, lineTol, al); if (!b) continue;
+        let e = 0;
+        for (let i = 1; i < N && e < e1; i++) e = Math.max(e, Math.min(...b.map(s => primDist(ps[i], s))));
+        if (e < e1) { e1 = e; ba = b; }
+      }
+      if (!ba || e1 > tol || !full) return ba ? { segs: ba, e: e1, quick: !full } : null;
+      const gold = (lo, hi, f, sgn) => {   // minimo (sgn = 1) o massimo (sgn = −1) di f in [lo, hi]
+        const g = (Math.sqrt(5) - 1) / 2; let x1 = hi - g * (hi - lo), x2 = lo + g * (hi - lo), f1 = sgn * f(x1), f2 = sgn * f(x2);
+        for (let it = 0; it < 40; it++) {
+          if (f1 < f2) { hi = x2; x2 = x1; f2 = f1; x1 = hi - g * (hi - lo); f1 = sgn * f(x1); }
+          else { lo = x1; x1 = x2; f1 = f2; x2 = lo + g * (hi - lo); f2 = sgn * f(x2); }
+        }
+        return sgn * Math.min(f1, f2);
+      };
+      // curva → archi: il massimo vero vicino al campione peggiore (e ai due vicini)
+      const dCA = t => { const q = P(t); return Math.min(...ba.map(s => primDist(q, s))); };
+      let e = e1;
+      { const ds = ps.map(q => Math.min(...ba.map(s => primDist(q, s))));
+        const order = [...ds.keys()].slice(1, N).sort((x, y) => ds[y] - ds[x]).slice(0, 3);
+        for (const i of order) e = Math.max(e, gold(ts[i - 1], ts[i + 1], dCA, -1)); }
+      if (e > tol) return { segs: ba, e };
+      // nell'altro senso: punti degli archi → curva (minimo locale con la sezione aurea)
       const M = 4 * N, tt = [], pp = [];
       for (let i = 0; i <= M; i++) { const t = i === M ? tb : ta + (tb - ta) * i / M; tt.push(t); pp.push(P(t)); }
-      for (const s of ba) for (let j = 1; j < 8; j++) {
-        const u = j / 8;
-        const q = s.t === 'line' ? [s.a[0] + (s.b[0] - s.a[0]) * u, s.a[1] + (s.b[1] - s.a[1]) * u]
-          : [s.c[0] + s.r * Math.cos(s.a0 + (s.a1 - s.a0) * u), s.c[1] + s.r * Math.sin(s.a0 + (s.a1 - s.a0) * u)];
-        let bi = 0, bd = Infinity;
-        for (let i = 0; i <= M; i++) { const dd = Math.hypot(pp[i][0] - q[0], pp[i][1] - q[1]); if (dd < bd) { bd = dd; bi = i; } }
-        // sezione aurea sul parametro tra i due campioni vicini
-        let lo = tt[Math.max(0, bi - 1)], hi = tt[Math.min(M, bi + 1)];
-        const g = (Math.sqrt(5) - 1) / 2, f = t => { const p = P(t); return Math.hypot(p[0] - q[0], p[1] - q[1]); };
-        let x1 = hi - g * (hi - lo), x2 = lo + g * (hi - lo), f1 = f(x1), f2 = f(x2);
-        for (let it = 0; it < 40; it++) {
-          if (f1 < f2) { hi = x2; x2 = x1; f2 = f1; x1 = hi - g * (hi - lo); f1 = f(x1); }
-          else { lo = x1; x1 = x2; f1 = f2; x2 = lo + g * (hi - lo); f2 = f(x2); }
-        }
-        e = Math.max(e, Math.min(bd, f1, f2));
+      // distanza dalla curva del punto u (0…1) del tratto s
+      const ptOf = (s, u) => s.t === 'line' ? [s.a[0] + (s.b[0] - s.a[0]) * u, s.a[1] + (s.b[1] - s.a[1]) * u]
+        : [s.c[0] + s.r * Math.cos(s.a0 + (s.a1 - s.a0) * u), s.c[1] + s.r * Math.sin(s.a0 + (s.a1 - s.a0) * u)];
+      // punto della curva più vicino a q: campione più vicino (tra i campioni lo..hi), poi la sezione aurea; restituisce
+      // la distanza e il campione, che serve da punto di partenza per i punti vicini
+      const near = (q, lo = 0, hi = M) => {
+        let bi = lo, bd = Infinity;
+        for (let i = Math.max(0, lo); i <= Math.min(M, hi); i++) { const dd = Math.hypot(pp[i][0] - q[0], pp[i][1] - q[1]); if (dd < bd) { bd = dd; bi = i; } }
+        return [Math.min(bd, gold(tt[Math.max(0, bi - 1)], tt[Math.min(M, bi + 1)], t => { const p = P(t); return Math.hypot(p[0] - q[0], p[1] - q[1]); }, 1)), bi];
+      };
+      for (const s of ba) {
+        const K = 8, du = [0], bis = [0];
+        for (let j = 1; j < K; j++) { const [d, bi] = near(ptOf(s, j / K)); du.push(d); bis.push(bi); }
+        du.push(0);
+        let w = 1; for (let j = 2; j < K; j++) if (du[j] > du[w]) w = j;
+        const b0 = bis[w];
+        e = Math.max(e, du[w], gold((w - 1) / K, (w + 1) / K, u => near(ptOf(s, u), b0 - 6, b0 + 6)[0], -1));
       }
-      if (e > tol && canSplit) return split();
-      if (e > tol) over = true;
-      err = Math.max(err, e);
-      for (const s of ba) segs.push(s);
+      return { segs: ba, e };
     };
-    for (let k = 0; k + 1 < breaks.length; k++) if (breaks[k + 1] > breaks[k]) step(breaks[k], breaks[k + 1], 0);
+    const good = r => r && r.e <= tol;
+    // tratti senza spigoli: punti di divisione dove la tangente è la stessa dai due lati
+    const runs = [];
+    const bk = breaks.filter((t, k) => k === 0 || t > breaks[k - 1]);
+    for (let k = 0; k + 1 < bk.length; k++) {
+      if (!keep && runs.length && k > 0) {
+        const tl = tang(bk[k - 1], bk[k], false), tr = tang(bk[k], bk[k + 1], true);
+        if (tl && tr && v2dot(tl, tr) > 0 && Math.abs(tl[0] * tr[1] - tl[1] * tr[0]) < 1e-9) { runs[runs.length - 1][1] = bk[k + 1]; continue; }
+      }
+      runs.push([bk[k], bk[k + 1]]);
+    }
+    const MINF = Math.pow(2, -CURVE_MAXDEPTH);
+    for (const [ra, rb] of runs) {
+      const span = rb - ra, hmin = span * MINF;
+      let cur = ra, guess = span;
+      while (rb - cur > hmin * 1e-6) {
+        const rest = rb - cur, at = x => x >= rest ? rb : cur + x;
+        // ricerca con la misura rapida (campioni della curva): il passo più lungo che va bene
+        let h = rest, r = fit(cur, rb, false);
+        if (!good(r)) {
+          let hb = Math.min(rest, guess), rr = null;
+          while (hb > hmin && !good(rr = fit(cur, at(hb), false))) hb /= 2;
+          if (good(rr)) {
+            let lo = hb, hi = Math.min(rest, 2 * hb);
+            while (lo < rest) { const r2 = fit(cur, at(hi), false); if (!good(r2)) break; lo = hi; hi = Math.min(rest, 2 * hi); }
+            for (let it = 0; it < 7 && lo < rest && hi - lo > span * 1e-6; it++) { const mid = (lo + hi) / 2; if (good(fit(cur, at(mid), false))) lo = mid; else hi = mid; }
+            h = lo;
+          } else h = 0;
+        }
+        // misura precisa (massimo vero nei due sensi) sul passo scelto; se supera la tolleranza si accorcia
+        r = null;
+        while (h > hmin) { r = fit(cur, at(h), true); if (good(r)) break; r = null; h *= 0.85; }
+        // non lasciare un pezzetto alla fine: se resta meno di metà passo, due passi uguali
+        if (r && h < rest && rest - h < 0.5 * h) { const r2 = fit(cur, at(rest / 2), true); if (good(r2)) { r = r2; h = rest / 2; } }
+        if (!r) {
+          // non si riesce: il tratto più piccolo, anche se fuori tolleranza
+          h = Math.min(rest, hmin);
+          r = fit(cur, at(h), true) || (() => { const a = P(cur), b = P(at(h)), m = P(cur + h / 2); return { segs: [{ t: 'line', a, b }], e: Math.hypot(m[0] - (a[0] + b[0]) / 2, m[1] - (a[1] + b[1]) / 2) }; })();
+          over = true;
+        }
+        if (segs.length >= CURVE_MAXSEGS) {
+          // troppi tratti: il resto con una linea sola
+          const a = P(cur), b = P(rb); segs.push({ t: 'line', a, b }); over = true;
+          err = Math.max(err, tol * 2); break;
+        }
+        for (const s of r.segs) segs.push(s);
+        err = Math.max(err, r.e);
+        guess = h; cur = at(h);
+      }
+    }
     return { segs, err, over };
   }
   // valutazione di una NURBS (algoritmo di de Boor in coordinate omogenee); dominio [knots[deg], knots[n]]
@@ -3256,9 +3334,9 @@ self.onmessage = async ev => {
     };
     // ellissi e spline: archi tangenti; approx raccoglie i conteggi e lo scostamento massimo (unità del file)
     const approx = { ellipses: 0, splines: 0, arcs: 0, lines: 0, err: 0, over: false, groups: 0 };
-    const curveOut = (m, P, breaks, size) => {
+    const curveOut = (m, P, breaks, size, keep) => {
       const tol = Math.max(1e-9, DXF_CURVE_TOL * size);
-      const r = curveToArcs(P, breaks, tol);
+      const r = curveToArcs(P, breaks, tol, keep);
       const sc = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
       // gruppo (cg): tratti consecutivi della stessa curva uniti in modo tangente; dove la curva ha uno spigolo vero
       // (spline con un nodo ad angolo) comincia un gruppo nuovo. Tra facce dello stesso gruppo lo spigolo non si disegna.
@@ -3336,7 +3414,7 @@ self.onmessage = async ev => {
         const unit = t => { if (!t) return null; const L = v2len(t); return L > 0 ? [t[0] / L, t[1] / L] : null; };
         const s = fitSpline(fit.map(p => [p[0], p[1]]), (fl & 1) === 1, unit(t0), unit(t1));
         if (!s) return null;
-        return { P: s.P, breaks: s.breaks, size, flat3d };
+        return { P: s.P, breaks: s.breaks, size, flat3d, keep: true };
       }
       return null;
     };
@@ -3433,7 +3511,7 @@ self.onmessage = async ev => {
             if (!sp) { skip('SPLINE'); break; }
             approx.splines++;
             if (sp.flat3d) curves3d++;
-            curveOut(m, sp.P, sp.breaks, sp.size);
+            curveOut(m, sp.P, sp.breaks, sp.size, sp.keep);
             break;
           }
           case 'INSERT': {
@@ -3571,10 +3649,11 @@ self.onmessage = async ev => {
     return { count, dup, tiny, points: pts.length, box: { mn: T(bb.mn), mx: T(bb.mx) }, ids: out.map(e => e.id) };
   }
 
-  // Archivio .zip con un disegno DXF dentro (per esempio quello salvato dal Convertitore DWG → DXF, o dalla pagina
-  // pubblicata, che salva i .dxf dentro uno .zip): restituisce il primo file .dxf. Legge l'elenco centrale dell'archivio;
-  // file senza compressione (metodo 0) o compressi (metodo 8, «deflate», con DecompressionStream). Asincrona.
-  async function unzipDxf(u8) {
+  // Archivio .zip con uno o più disegni DXF dentro (per esempio quelli salvati dal Convertitore DWG → DXF, anche tutti
+  // insieme, o dalla pagina pubblicata, che salva i .dxf dentro uno .zip): restituisce il file .dxf che si chiama want
+  // (il primo se want non c'è) e in dxfs l'elenco di tutti i .dxf (percorso nell'archivio). Legge l'elenco centrale
+  // dell'archivio; file senza compressione (metodo 0) o compressi (metodo 8, «deflate», con DecompressionStream). Asincrona.
+  async function unzipDxf(u8, want) {
     const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
     if (u8.length < 22 || dv.getUint32(0, true) !== 0x04034b50) throw new Error('Il file .zip è danneggiato o non è un archivio zip.');
     let e = -1;
@@ -3582,7 +3661,8 @@ self.onmessage = async ev => {
     if (e < 0) throw new Error('Il file .zip è danneggiato (manca l\'elenco dei file).');
     const n = dv.getUint16(e + 10, true);
     let p = dv.getUint32(e + 16, true);
-    const names = [];
+    const names = [], dxfs = [];
+    let pick = null;
     for (let k = 0; k < n; k++) {
       if (p + 46 > u8.length || dv.getUint32(p, true) !== 0x02014b50) throw new Error('Il file .zip è danneggiato.');
       const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), usize = dv.getUint32(p + 24, true);
@@ -3591,6 +3671,12 @@ self.onmessage = async ev => {
       p += 46 + nl + xl + cl;
       names.push(name);
       if (!/\.dxf$/i.test(name) || /(^|\/)__MACOSX\//.test(name)) continue;
+      dxfs.push(name);
+      if (pick || (want && name !== want)) continue;
+      pick = { method, csize, usize, off, name };
+    }
+    if (pick) {
+      const { method, csize, usize, off, name } = pick;
       const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
       const raw = u8.subarray(start, start + csize);
       let data;
@@ -3600,7 +3686,7 @@ self.onmessage = async ev => {
         data = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
       } else throw new Error('Il DXF nello zip è compresso in un modo che il Banco CAD non conosce: estrailo e scegli il file .dxf.');
       if (data.length !== usize) throw new Error('Il DXF nello zip è danneggiato.');
-      return { name: name.split('/').pop(), data, files: n };
+      return { name: name.split('/').pop(), path: name, data, files: n, dxfs };
     }
     throw new Error(names.some(x => /\.dwg$/i.test(x)) ? 'Nello zip c\'è un DWG, non un DXF: convertilo prima con il Convertitore DWG → DXF.' : 'Nello zip non c\'è nessun file .dxf.');
   }
@@ -3609,7 +3695,7 @@ self.onmessage = async ev => {
   if (typeof module !== 'undefined') module.exports = api; else root.Import = api;
 })(this);
 
-/* Esportazioni: PDF (tavola vettoriale, schizzo vettoriale, vista 3D come immagine) e STEP (solido a facce piane).
+/* Esportazioni: PDF (tavola vettoriale, schizzo vettoriale, vista 3D come immagine) e STEP (superfici vere e facce piane).
    Il modulo non usa la pagina: scrive i file a partire da dati semplici, così le prove girano anche in Node. */
 (function (root) {
   'use strict';
@@ -4088,32 +4174,101 @@ self.onmessage = async ev => {
 
   /* ===================================== STEP ===================================== */
   // polys: poligoni del corpo ({ v, p: { n, w }, t }); topo: Geom.topology(polys, tags) (vertici uniti e lati spezzati
-  // dove un vertice di un altro poligono cade sul lato). Le facce: poligoni vicini della stessa superficie e dello stesso
-  // piano, uniti; i contorni si ricavano dai lati che restano scoperti. Ogni pezzo staccato è un solido a sé.
+  // dove un vertice di un altro poligono cade sul lato). Le facce: poligoni vicini della stessa superficie (e, per i piani,
+  // dello stesso piano), uniti; i contorni si ricavano dai lati che restano scoperti. Ogni pezzo staccato è un solido a sé.
+  // Superfici vere (o.tags = st.tags, senza o.facets): le facce di rivoluzione dei tag (cilindro, cono, sfera, toro)
+  // diventano CYLINDRICAL_SURFACE, CONICAL_SURFACE, SPHERICAL_SURFACE, TOROIDAL_SURFACE, e i loro bordi cerchi veri
+  // (CIRCLE). Una superficie che non si può scrivere esatta (un vertice non sta sulla superficie vera, un bordo che non è
+  // né retta né cerchio, per esempio due fori che si incrociano) resta a facce piane, come le sue vicine che lo richiedono:
+  // il solido è sempre chiuso.
   function toSTEP(polys, topo, o = {}) {
-    const V = topo.verts;
+    const V = topo.verts.slice();   // copia: le sfere e i tori interi aggiungono i vertici dei cerchi di divisione
     const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    const mul3 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
     const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
     const len3 = a => Math.sqrt(dot3(a, a));
     const nrm3 = a => { const l = len3(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
-    // 1) lati orientati di ogni poligono, già spezzati ai vertici a T
+    const perp = n => nrm3(cross3(cross3(n, Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]), n));
+    // grandezza del pezzo e tolleranze (i vertici del Banco CAD sono esatti a meno di 10⁻⁹; le corde delle faccette si
+    // scostano dalla superficie vera di almeno 3·10⁻⁴ del raggio, quindi 2·10⁻⁵ del raggio le distingue sempre)
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const v of V) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], v[k]); mx[k] = Math.max(mx[k], v[k]); }
+    const SZ = V.length ? Math.max(1, mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]) : 1;
+    const TOLP = 1e-6 * SZ;
+    const tagList = o.tags && !o.facets ? (o.tags.list || o.tags) : null;
+    const polyN = p => p.p.n;
+    const polyArea = p => { let a = 0; for (let k = 2; k < p.v.length; k++) a += len3(cross3(sub3(p.v[k - 1], p.v[0]), sub3(p.v[k], p.v[0]))); return a / 2; };
+
+    // superficie vera di un tag di rivoluzione: { type, o, d, …, dist(p), normal(p), tol }
+    function surfOfTag(tg) {
+      if (!tg || tg.kind !== 'rev' || !tg.prof || !tg.d || !tg.o) return null;
+      const d = nrm3(tg.d), O = tg.o, pr = tg.prof;
+      const rz = p => { const v = sub3(p, O), z = dot3(v, d), rv = sub3(v, mul3(d, z)), r = len3(rv); return { z, r, rh: r > 1e-12 ? mul3(rv, 1 / r) : perp(d) }; };
+      if (pr.pt === 'line') {
+        const { r0, z0, r1, z1 } = pr;
+        if (Math.abs(z1 - z0) < 1e-9) return null;
+        if (Math.abs(r1 - r0) < 1e-9 * Math.max(1, Math.abs(r0))) {
+          const R = Math.abs(r0); if (R < 1e-9) return null;
+          return { type: 'cyl', o: O, d, R, tol: Math.min(TOLP, 2e-5 * R), loose: 0.01 * R, dist: p => Math.abs(rz(p).r - R), normal: p => rz(p).rh };
+        }
+        const hyp = Math.hypot(r1 - r0, z1 - z0), sz = Math.sign(z1 - z0);
+        const nr = (z1 - z0) * sz / hyp, nz = -(r1 - r0) * sz / hyp;   // normale nel piano r-z, verso fuori dall'asse
+        const k = (r1 - r0) / (z1 - z0), semi = Math.atan(Math.abs(k));
+        if (semi < 1e-6 || semi > Math.PI / 2 - 1e-6) return null;
+        const [ra, za] = Math.abs(r0) >= Math.abs(r1) ? [r0, z0] : [r1, z1];
+        const rmax = Math.max(Math.abs(r0), Math.abs(r1));
+        return { type: 'cone', o: O, d, loc: add3(O, mul3(d, za)), dir: mul3(d, Math.sign(k)), R: Math.abs(ra), semi, tol: Math.min(TOLP, 2e-5 * rmax), loose: 0.01 * rmax,
+          dist: p => { const q = rz(p); return Math.abs((q.r - r0) * (z1 - z0) - (q.z - z0) * (r1 - r0)) / hyp; },
+          normal: p => { const q = rz(p); return nrm3(add3(mul3(q.rh, nr), mul3(d, nz))); } };
+      }
+      if (pr.pt === 'arc') {
+        const a = Math.abs(pr.a), rc = Math.abs(pr.rc), C = add3(O, mul3(d, pr.zc));
+        if (!(a > 1e-9)) return null;
+        if (rc < 1e-9 * Math.max(1, a)) return { type: 'sph', o: O, d, c: C, R: a, tol: Math.min(TOLP, 2e-5 * a), loose: 0.01 * a, dist: p => Math.abs(len3(sub3(p, C)) - a), normal: p => nrm3(sub3(p, C)) };
+        if (a >= rc) return null;   // toro che si interseca da solo: resta a facce piane
+        return { type: 'tor', o: O, d, c: C, R: rc, r: a, tol: Math.min(TOLP, 2e-5 * a), loose: 0.01 * (rc + a),
+          dist: p => { const q = rz(p); return Math.abs(Math.hypot(q.r - rc, q.z - pr.zc) - a); },
+          normal: p => { const q = rz(p); return nrm3(sub3(p, add3(C, mul3(q.rh, rc)))); } };
+      }
+      return null;
+    }
+    const surfs = new Map();   // chiave della superficie → superficie vera
+    if (tagList) polys.forEach(p => { const k = topo.surfKeys[p.t]; if (k && !surfs.has(k)) surfs.set(k, surfOfTag(tagList[p.t])); });
+    const fallback = new Set();   // superfici che restano a facce piane
+    // tutti i vertici della superficie sulla superficie vera? (un taglio che attraversa le faccette lascia vertici sulle
+    // corde: quella superficie resta a facce piane)
+    const why = { off: 0, closed: 0, edge: 0 };   // perché una superficie è rimasta a facce piane
+    // I vertici dentro la faccia possono stare sulle faccette e non sulla superficie (i tagli prolungano i piani delle
+    // faccette e spezzano le altre facce): qui si controlla solo che il tag descriva davvero quella superficie (distanza
+    // entro l'1 % del raggio, più della freccia delle faccette). L'esattezza la decide il bordo (punto 4: cerchi e rette
+    // che stanno sulla superficie vera).
+    const segDist = (p, a, b) => { const ab = sub3(b, a), L2 = dot3(ab, ab); const t = L2 > 0 ? Math.max(0, Math.min(1, dot3(sub3(p, a), ab) / L2)) : 0; return len3(sub3(p, add3(a, mul3(ab, t)))); };
+    const offOk = (vs, on, tol) => {
+      const n = vs.length; if (!on.some(Boolean)) return false;
+      for (let k = 0; k < n; k++) {
+        if (on[k]) continue;
+        let a = k, b = k; do a = (a - 1 + n) % n; while (!on[a]); do b = (b + 1) % n; while (!on[b]);
+        if (segDist(vs[k], vs[a], vs[b]) > tol) return false;
+      }
+      return true;
+    };
+    polys.forEach(p => {
+      const k = topo.surfKeys[p.t], sf = surfs.get(k); if (!sf || fallback.has(k)) return;
+      if (p.v.every(v => sf.dist(v) <= sf.loose)) return;
+      fallback.add(k); why.off++; if (o.debug) o.debug.push(['off', k, Math.max(...p.v.map(v => sf.dist(v))) / sf.tol]);
+    });
+
+    // 1) lati orientati di ogni poligono, già spezzati ai vertici a T; lati interni (stessa superficie dai due lati)
     const dEdges = polys.map(() => []);
     for (const e of topo.edges) for (const u of e.uses) dEdges[u.poly].push(u.fwd ? [e.a, e.b] : [e.b, e.a]);
-    // 2) gruppi: stessa superficie e stesso piano
-    const groups = new Map();
-    polys.forEach((p, i) => {
-      if (!dEdges[i].length) return;
-      const n = p.p.n, key = (topo.surfKeys[p.t] || p.t) + '|' + n.map(x => Math.round(x * 1e4)).join(',') + '|' + Math.round(p.p.w * 1e3);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(i);
-    });
-    const stats = { faces: 0, loops: 0, holes: 0, edges: 0, verts: 0, solids: 0, badEdges: 0, openLoops: 0, removed: 0 };
-    let faces = [];   // { n, loops: [outer, ...inner] } (indici dei vertici)
-    for (const ids of groups.values()) {
-      let nn = [0, 0, 0]; for (const i of ids) { const n = polys[i].p.n; let a = 0; for (let k = 2; k < polys[i].v.length; k++) a += len3(cross3(sub3(polys[i].v[k - 1], polys[i].v[0]), sub3(polys[i].v[k], polys[i].v[0]))); nn = [nn[0] + n[0] * a, nn[1] + n[1] * a, nn[2] + n[2] * a]; }
-      const n = nrm3(nn);
-      // lati scoperti: quelli percorsi una volta sola (i lati interni si annullano a coppie)
+    const polyNb = polys.map(() => []);
+    for (const e of topo.edges) if (e.uses.length === 2) { const [x, y] = e.uses; polyNb[x.poly].push(y.poly); polyNb[y.poly].push(x.poly); }
+
+    // anelli dei lati scoperti di un gruppo di poligoni; vproj(i) = [u, v] nel piano tangente (per scegliere la strada
+    // quando da un vertice escono più lati: si gira il meno possibile a sinistra)
+    function loopsOf(ids, nAt, stats) {
       const cnt = new Map();
       for (const i of ids) for (const [a, b] of dEdges[i]) {
         const rk = b + ',' + a;
@@ -4121,10 +4276,6 @@ self.onmessage = async ev => {
       }
       const next = new Map();
       for (const [k, c] of cnt) { if (c <= 0) continue; const [a, b] = k.split(',').map(Number); for (let r = 0; r < c; r++) { if (!next.has(a)) next.set(a, []); next.get(a).push(b); } }
-      // anelli
-      const ex = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
-      const bu = nrm3(cross3(n, ex)), bv = cross3(n, bu);
-      const uv = i => [dot3(V[i], bu), dot3(V[i], bv)];
       const loops = [];
       for (const [start, l] of next) {
         while (l.length) {
@@ -4134,55 +4285,288 @@ self.onmessage = async ev => {
             loop.push(cur);
             const nx = next.get(cur);
             if (!nx || !nx.length) break;
-            // più uscite dallo stesso vertice (due anelli che si toccano): si gira il meno possibile a sinistra
             let pick = nx.length - 1;
             if (nx.length > 1) {
+              const n = nAt(cur), bu = perp(n), bv = cross3(n, bu), uv = i => [dot3(V[i], bu), dot3(V[i], bv)];
               const p0 = uv(loop[loop.length - 2]), p1 = uv(cur); const din = [p1[0] - p0[0], p1[1] - p0[1]];
               let best = Infinity;
-              nx.forEach((c, j) => { const p2 = uv(c); const d = [p2[0] - p1[0], p2[1] - p1[1]]; const a = Math.atan2(din[0] * d[1] - din[1] * d[0], din[0] * d[0] + din[1] * d[1]); if (a < best) { best = a; pick = j; } });
+              nx.forEach((c, j) => { const p2 = uv(c); const dd = [p2[0] - p1[0], p2[1] - p1[1]]; const an = Math.atan2(din[0] * dd[1] - din[1] * dd[0], din[0] * dd[0] + din[1] * dd[1]); if (an < best) { best = an; pick = j; } });
             }
             cur = nx.splice(pick, 1)[0];
           }
           if (ok && loop.length >= 3) loops.push(loop); else stats.openLoops++;
         }
       }
-      const area2 = lp => { let a = 0; for (let k = 0; k < lp.length; k++) { const p = uv(lp[k]), q = uv(lp[(k + 1) % lp.length]); a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
-      const inside = (pt, lp) => { let c = false; for (let k = 0, j = lp.length - 1; k < lp.length; j = k++) { const a = uv(lp[k]), b = uv(lp[j]); if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
-      const outer = [], inner = [];
-      for (const lp of loops) { const a = area2(lp); if (a > 0) outer.push({ lp, a, holes: [] }); else if (a < 0) inner.push({ lp, a }); }
-      for (const h of inner) {
-        // punto di prova: metà del primo lato (i vertici possono stare sul contorno esterno)
-        const p = uv(h.lp[0]), q = uv(h.lp[1]); const pt = [(p[0] + q[0]) / 2 + (q[1] - p[1]) * 1e-7, (p[1] + q[1]) / 2 - (q[0] - p[0]) * 1e-7];
-        let host = null; for (const ot of outer) if (inside(pt, ot.lp) && (!host || ot.a < host.a)) host = ot;
-        if (host) host.holes.push(h.lp); else stats.openLoops++;
+      return loops;
+    }
+
+    let stats, faces, chains, segChain, closedSurfs;
+    for (let pass = 0; pass < 1000; pass++) {
+      closedSurfs = [];
+      stats = { faces: 0, loops: 0, holes: 0, edges: 0, verts: 0, solids: 0, badEdges: 0, openLoops: 0, removed: 0, exact: 0, fallback: 0, surfaces: {} };
+      faces = [];
+      // 2) gruppi: superficie vera (tutti i poligoni della superficie) oppure stessa superficie e stesso piano
+      const groups = new Map();
+      polys.forEach((p, i) => {
+        if (!dEdges[i].length) return;
+        const sk = topo.surfKeys[p.t] || String(p.t), sf = surfs.get(sk);
+        let key;
+        if (sf && !fallback.has(sk)) key = 'S|' + sk;
+        else { const n = p.p.n; key = sk + '|' + n.map(x => Math.round(x * 1e4)).join(',') + '|' + Math.round(p.p.w * 1e3); }
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(i);
+      });
+      let redo = false;
+      for (const [key, ids] of groups) {
+        if (key.startsWith('S|')) {
+          const sk = key.slice(2), sf = surfs.get(sk);
+          // pezzi staccati della stessa superficie: facce diverse
+          const inG = new Set(ids), seen = new Set();
+          for (const s of ids) {
+            if (seen.has(s)) continue;
+            const comp = [], stack = [s]; seen.add(s);
+            while (stack.length) { const x = stack.pop(); comp.push(x); for (const y of polyNb[x]) if (inG.has(y) && !seen.has(y)) { seen.add(y); stack.push(y); } }
+            const vn = new Map();
+            for (const i of comp) { const n = polyN(polys[i]); for (const v of topo.polyVerts[i]) { const s2 = vn.get(v) || [0, 0, 0]; vn.set(v, add3(s2, n)); } }
+            const loops = loopsOf(comp, v => nrm3(vn.get(v) || [0, 0, 1]), stats);
+            // poligoni degeneri (area nulla, lasciati dai tagli): i loro lati si annullano a coppie, si ignorano
+            if (!loops.length && comp.every(i => polyArea(polys[i]) <= 1e-12 * SZ * SZ)) continue;
+            const compArea = () => comp.reduce((a, i) => a + polyArea(polys[i]), 0);
+            const fullArea = sf.type === 'sph' ? 4 * Math.PI * sf.R * sf.R : sf.type === 'tor' ? 4 * Math.PI * Math.PI * sf.R * sf.r : 0;
+            if (!loops.length && fullArea && compArea() < 1e-6 * fullArea) continue;   // scheggia chiusa minuscola: si ignora
+            if (!loops.length && fullArea && Math.abs(compArea() - fullArea) < 0.01 * fullArea) {
+              // sfera o toro intero (superficie chiusa, senza bordi): due metà divise dall'equatore (e, nel toro, anche dal
+              // cerchio interno); i cerchi si aggiungono dopo, al punto 4
+              let s3 = 0; for (const i of comp) { const p = polys[i], c = p.v.reduce((a, v) => add3(a, v), [0, 0, 0]).map(x => x / p.v.length); s3 += dot3(polyN(p), sf.normal(c)) * polyArea(p); }
+              closedSurfs.push({ surf: sf, sk, sense: s3 > 0 });
+              continue;
+            }
+            if (!loops.length) { fallback.add(sk); why.closed++; if (o.debug) o.debug.push(['closed' + pass, sk, comp.length, ids.length]); redo = true; continue; }   // superficie chiusa senza bordi (sfera intera): a facce piane
+            // verso: la normale del solido (dai poligoni) rispetto a quella della superficie
+            let s3 = 0; for (const i of comp) { const p = polys[i], c = p.v.reduce((a, v) => add3(a, v), [0, 0, 0]).map(x => x / p.v.length); s3 += dot3(polyN(p), sf.normal(c)) * polyArea(p); }
+            faces.push({ surf: sf, sk, sense: s3 > 0, loops, curved: true });
+          }
+          continue;
+        }
+        let nn = [0, 0, 0]; for (const i of ids) nn = add3(nn, mul3(polys[i].p.n, polyArea(polys[i])));
+        const n = nrm3(nn);
+        const bu = perp(n), bv = cross3(n, bu), uv = i => [dot3(V[i], bu), dot3(V[i], bv)];
+        const loops = loopsOf(ids, () => n, stats);
+        const area2 = lp => { let a = 0; for (let k = 0; k < lp.length; k++) { const p = uv(lp[k]), q = uv(lp[(k + 1) % lp.length]); a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
+        const inside = (pt, lp) => { let c = false; for (let k = 0, j = lp.length - 1; k < lp.length; j = k++) { const a = uv(lp[k]), b = uv(lp[j]); if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
+        const outer = [], inner = [];
+        for (const lp of loops) { const a = area2(lp); if (a > 0) outer.push({ lp, a, holes: [] }); else if (a < 0) inner.push({ lp, a }); }
+        for (const h of inner) {
+          const p = uv(h.lp[0]), q = uv(h.lp[1]); const pt = [(p[0] + q[0]) / 2 + (q[1] - p[1]) * 1e-7, (p[1] + q[1]) / 2 - (q[0] - p[0]) * 1e-7];
+          let host = null; for (const ot of outer) if (inside(pt, ot.lp) && (!host || ot.a < host.a)) host = ot;
+          if (host) host.holes.push(h.lp); else stats.openLoops++;
+        }
+        const w = dot3(n, V[ids.length ? topo.polyVerts[ids[0]][0] : 0]);
+        const sk = key.split('|')[0];
+        for (const ot of outer) faces.push({ n, w, loops: [ot.lp, ...ot.holes], curved: false, sk, facet: surfs.get(sk) ? true : false });
       }
-      for (const ot of outer) faces.push({ n, loops: [ot.lp, ...ot.holes] });
+      if (redo) continue;
+
+      // 3) segmenti dei contorni e spigoli: ogni coppia di vertici una volta; in un solido chiuso ogni segmento è
+      //    percorso due volte, nei due sensi
+      const segs = new Map();
+      faces.forEach((f, fi) => { for (const lp of f.loops) for (let k = 0; k < lp.length; k++) {
+        const a = lp[k], b = lp[(k + 1) % lp.length], key = a < b ? a + ',' + b : b + ',' + a;
+        if (!segs.has(key)) segs.set(key, { a: Math.min(a, b), b: Math.max(a, b), fwd: 0, back: 0, faces: [] });
+        const e = segs.get(key); if (a < b) e.fwd++; else e.back++; e.faces.push(fi);
+      } });
+      for (const e of segs.values()) if (e.fwd !== 1 || e.back !== 1) stats.badEdges++;
+      // catene: segmenti di fila tra le stesse due facce, spezzate dove si incontrano più spigoli
+      const at = new Map(); // vertice → chiavi dei segmenti
+      for (const [k, e] of segs) { for (const v of [e.a, e.b]) { if (!at.has(v)) at.set(v, []); at.get(v).push(k); } }
+      const pairOf = e => e.faces.slice().sort((x, y) => x - y).join(',');
+      const isBreak = v => { const l = at.get(v); return l.length !== 2 || pairOf(segs.get(l[0])) !== pairOf(segs.get(l[1])); };
+      const used = new Set();
+      chains = [];
+      const walk = (v0, k0) => {
+        const pts = [v0]; let v = v0, k = k0;
+        while (true) {
+          used.add(k); const e = segs.get(k); const w = e.a === v ? e.b : e.a; pts.push(w); v = w;
+          if (w === v0 || isBreak(w)) break;
+          const nk = at.get(w).find(x => x !== k && !used.has(x)); if (!nk) break; k = nk;
+        }
+        return { pts, faces: segs.get(k0).faces.slice(), closed: pts[0] === pts[pts.length - 1] };
+      };
+      const vs = [...at.keys()].sort((x, y) => x - y);
+      for (const v of vs) if (isBreak(v)) for (const k of at.get(v)) if (!used.has(k)) chains.push(walk(v, k));
+      for (const v of vs) for (const k of at.get(v)) if (!used.has(k)) chains.push(walk(v, k));
+      // 4) curva di ogni catena: retta o cerchio, sulla superficie vera delle due facce; altrimenti segmenti dritti
+      //    (solo tra facce piane: una faccia curva vicina torna a facce piane)
+      const onFace = (f, p) => f.curved ? f.surf.dist(p) <= f.surf.tol : Math.abs(dot3(f.n, p) - f.w) <= TOLP;
+      const out = [];
+      for (const ch of chains) {
+        let P = ch.pts.map(i => V[i]), P0 = P; const fs = ch.faces.map(i => faces[i]);
+        const tol = Math.min(...fs.map(f => f.curved ? f.surf.tol : TOLP));
+        const fits = pts => pts.every(p => fs.every(f => onFace(f, p)));
+        let curve = null;
+        if (!ch.closed) {
+          const A = P[0], B = P[P.length - 1], u = nrm3(sub3(B, A)), L = len3(sub3(B, A));
+          const offLine = p => { const w = sub3(p, A); return len3(sub3(w, mul3(u, dot3(w, u)))); };
+          if (L > tol && P.every(p => offLine(p) <= tol)) {
+            const mids = []; for (let k = 0; k < P.length - 1; k++) mids.push(mul3(add3(P[k], P[k + 1]), 0.5));
+            if (fits(mids.concat(P))) curve = { kind: 'line', pts: ch.pts, u, L };
+          }
+        }
+        if (!curve && P.length >= (ch.closed ? 4 : 3)) {
+          // cerchio: assi delle superfici vere vicine, poi i tre punti
+          const cands = [];
+          const circ3 = (a, b, c) => { const ab = sub3(b, a), ac = sub3(c, a), n = cross3(ab, ac), nn = dot3(n, n);
+            if (nn > 1e-30 * dot3(ab, ab) * dot3(ac, ac)) cands.push({ c: add3(a, mul3(add3(mul3(cross3(n, ab), dot3(ac, ac)), mul3(cross3(ac, n), dot3(ab, ab))), 1 / (2 * nn))), n: nrm3(n) }); };
+          for (const f of fs) if (f.curved) {
+            const s = f.surf;
+            if (s.type !== 'sph') cands.push({ o: s.o, d: s.d, R: s.type === 'cyl' ? s.R : null });   // cerchio attorno all'asse
+            if (s.type === 'tor') {   // cerchio di sezione del toro per il primo punto
+              const w = sub3(P[0], s.c), rv = sub3(w, mul3(s.d, dot3(w, s.d))), rl = len3(rv);
+              if (rl > 1e-12) { const ru = mul3(rv, 1 / rl); cands.push({ c: add3(s.c, mul3(ru, s.R)), n: cross3(s.d, ru), R: s.r }); }
+            }
+            if (s.type === 'sph') for (const g of fs) {   // sfera tagliata da un piano o da una superficie con l'asse per il centro
+              if (g === f) continue;
+              const n = g.curved ? (g.surf.d || null) : g.n; if (!n) continue;
+              cands.push({ c: add3(s.c, mul3(n, dot3(sub3(P[0], s.c), n))), n });
+            }
+          }
+          // cerchio per tre punti: gli estremi (vertici veri) e il punto più lontano dalla loro corda (sta sul cerchio:
+          // i vertici a T sono su corde, più vicini); per una catena chiusa il punto più lontano dal primo
+          { const A = P[0]; let B = P[P.length - 1];
+            if (ch.closed) { let bd = -1; for (const p of P) { const d2 = len3(sub3(p, A)); if (d2 > bd) { bd = d2; B = p; } } }
+            const u = nrm3(sub3(B, A)); let M = null, md = -1;
+            for (const p of P) { const w = sub3(p, A), d2 = len3(sub3(w, mul3(u, dot3(w, u)))); if (d2 > md) { md = d2; M = p; } }
+            if (M) circ3(A, M, B); }
+          for (const cd of cands) {
+            let c, n, P = P0;
+            const med = a => { const b = a.slice().sort((x, y) => x - y); return b[b.length >> 1]; };
+            if (cd.d) { n = cd.d; c = add3(cd.o, mul3(n, med(P.map(p => dot3(sub3(p, cd.o), n))))); }
+            else { c = cd.c; n = cd.n; }
+            // raggio: il più grande (un vertice a T sta su una corda, quindi sempre dentro il cerchio)
+            let R = Math.max(...P.map(p => { const w = sub3(p, c); return len3(sub3(w, mul3(n, dot3(w, n)))); }));
+            if (cd.R && Math.abs(R - cd.R) <= tol) R = cd.R;   // il raggio esatto della superficie
+            if (!(R > tol)) continue;
+            // punti sul cerchio; gli altri (vertici a T) sulla corda tra i due vicini che ci stanno
+            const onC = p => Math.abs(dot3(sub3(p, c), n)) <= tol && Math.abs(len3(sub3(p, c)) - R) <= tol;
+            let on = P.map(onC);
+            if (ch.closed && !on[0]) {
+              // catena chiusa: comincia da un vertice sul cerchio
+              const k0 = on.indexOf(true); if (k0 < 0) continue;
+              const base = ch.pts.slice(0, -1), rot = base.slice(k0).concat(base.slice(0, k0)); rot.push(rot[0]);
+              ch.pts = rot; P = P0 = ch.pts.map(i => V[i]); on = P.map(onC);
+            }
+            if (!on[0] || !on[P.length - 1]) continue;
+            let okc = true;
+            for (let k = 1, last = 0; k < P.length && okc; k++) if (on[k]) { for (let j = last + 1; j < k; j++) if (segDist(P[j], P[last], P[k]) > TOLP) okc = false; last = k; }
+            const Pc = P.filter((p, k) => on[k]);
+            if (!okc || Pc.length < 3) continue;
+            // verso: la catena gira in senso antiorario attorno a n
+            if (dot3(cross3(sub3(Pc[0], c), sub3(Pc[1], c)), n) < 0) n = mul3(n, -1);
+            const xd = nrm3(sub3(Pc[0], c)), yd = cross3(n, xd);
+            // punti a metà di ogni arco, sulla circonferenza vera: devono stare sulle superfici delle due facce
+            const ang = p => { const w = sub3(p, c); return Math.atan2(dot3(w, yd), dot3(w, xd)); };
+            const mids = []; let prev = 0, ok = true, tot = 0;
+            for (let k = 1; k < Pc.length; k++) {
+              let a1 = ang(Pc[k]); while (a1 <= prev - 1e-12) a1 += 2 * Math.PI;
+              if (a1 - prev >= Math.PI) { ok = false; break; }
+              const am = (prev + a1) / 2; mids.push(add3(c, add3(mul3(xd, R * Math.cos(am)), mul3(yd, R * Math.sin(am))))); tot += a1 - prev; prev = a1;
+            }
+            if (!ok || tot > 2 * Math.PI + 1e-9 || (ch.closed && Math.abs(tot - 2 * Math.PI) > 1e-6)) continue;
+            if (fits(mids)) { curve = { kind: 'circle', pts: ch.pts, c, n, xd, R }; break; }
+            P = P0;
+          }
+        }
+        if (!curve && (ch.closed ? P.length >= 5 : P.length >= 3)) {
+          // ellisse: sezione obliqua di un cilindro (un piano inclinato, o due cilindri uguali con gli assi che si
+          // incontrano, come due raccordi che si incontrano ad angolo). Piano dei punti: estremi e punto più lontano.
+          for (const f of fs) {
+            if (curve || !f.curved || f.surf.type !== 'cyl') continue;
+            const s = f.surf, d = s.d;
+            const A = P[0]; let B = P[P.length - 1];
+            if (ch.closed) { let bd = -1; for (const p of P) { const q = len3(sub3(p, A)); if (q > bd) { bd = q; B = p; } } }
+            const u = sub3(B, A); let M = null, md = -1;
+            for (const p of P) { const w = sub3(p, A), q = len3(cross3(w, u)); if (q > md) { md = q; M = p; } }
+            if (!M) continue;
+            const n = nrm3(cross3(u, sub3(M, A))), cs = dot3(n, d);
+            if (!(Math.abs(cs) > 1e-6) || Math.abs(cs) > 1 - 1e-9) continue;   // parallelo all'asse, o un cerchio
+            if (!P.every(p => Math.abs(dot3(sub3(p, A), n)) <= tol)) continue;
+            const c = add3(s.o, mul3(d, dot3(sub3(A, s.o), n) / cs));          // asse ∩ piano
+            const xd = nrm3(sub3(d, mul3(n, cs))), yd = cross3(n, xd);
+            const a = s.R / Math.abs(cs), b = s.R;
+            const par = p => { const w = sub3(p, c); return [dot3(w, xd) / a, dot3(w, yd) / b]; };
+            const on = P.map(p => { const [x, y] = par(p); return Math.abs(Math.hypot(x, y) - 1) * b <= tol; });
+            let okc = on[0] && on[P.length - 1];
+            for (let k = 1, last = 0; k < P.length && okc; k++) if (on[k]) { for (let j = last + 1; j < k; j++) if (segDist(P[j], P[last], P[k]) > TOLP) okc = false; last = k; }
+            const Pc = P.filter((p, k) => on[k]);
+            if (!okc || Pc.length < 3) continue;
+            // parametro t crescente lungo la catena (verso della normale scelto di conseguenza)
+            let nn = n, yy = yd;
+            const tOf = (p, y2) => { const w = sub3(p, c); return Math.atan2(dot3(w, y2) / b, dot3(w, xd) / a); };
+            { let t0 = tOf(Pc[0], yy), t1 = tOf(Pc[1], yy), dt = t1 - t0; while (dt > Math.PI) dt -= 2 * Math.PI; while (dt < -Math.PI) dt += 2 * Math.PI; if (dt < 0) { nn = mul3(n, -1); yy = mul3(yd, -1); } }
+            const mids = []; let prev = tOf(Pc[0], yy), ok = true, tot = 0;
+            for (let k = 1; k < Pc.length; k++) {
+              let t1 = tOf(Pc[k], yy); while (t1 <= prev - 1e-12) t1 += 2 * Math.PI;
+              if (t1 - prev >= Math.PI) { ok = false; break; }
+              const tm = (prev + t1) / 2; mids.push(add3(c, add3(mul3(xd, a * Math.cos(tm)), mul3(yy, b * Math.sin(tm))))); tot += t1 - prev; prev = t1;
+            }
+            if (!ok || tot > 2 * Math.PI + 1e-9 || (ch.closed && Math.abs(tot - 2 * Math.PI) > 1e-6)) continue;
+            if (fits(mids)) curve = { kind: 'ellipse', pts: ch.pts, c, n: nn, xd, a, b };
+          }
+        }
+        if (!curve) {
+          const bad = fs.filter(f => f.curved);
+          if (bad.length) { for (const f of bad) if (!fallback.has(f.sk)) { fallback.add(f.sk); why.edge++; if (o.debug) o.debug.push(['edge' + pass, f.sk, fs.map(x => x.curved ? x.surf.type : 'plane').join('-'), ch.pts.length, o.debugPts ? ch.pts.map(i => V[i]) : null]); } redo = true; continue; }
+          // facce piane: un segmento dritto per lato
+          for (let k = 0; k < ch.pts.length - 1; k++) { const A = V[ch.pts[k]], B = V[ch.pts[k + 1]]; out.push({ kind: 'line', pts: [ch.pts[k], ch.pts[k + 1]], u: nrm3(sub3(B, A)), L: len3(sub3(B, A)) }); }
+          continue;
+        }
+        out.push(curve);
+      }
+      if (redo) continue;
+      chains = out;
+      break;
     }
-    // 3) vertici intermedi su un lato dritto (due soli vicini, allineati): si tolgono, così ogni spigolo è un pezzo solo
-    const nb = new Map();
-    const link = (a, b) => { if (!nb.has(a)) nb.set(a, new Set()); nb.get(a).add(b); };
-    for (const f of faces) for (const lp of f.loops) for (let k = 0; k < lp.length; k++) { const a = lp[k], b = lp[(k + 1) % lp.length]; link(a, b); link(b, a); }
-    const rem = new Set();
-    for (const [v, s] of nb) {
-      if (s.size !== 2) continue;
-      const [a, b] = [...s]; const u = sub3(V[a], V[v]), w = sub3(V[b], V[v]);
-      const lu = len3(u), lw = len3(w);
-      if (lu > 0 && lw > 0 && len3(cross3(u, w)) <= 1e-9 * lu * lw && dot3(u, w) < 0) rem.add(v);
+    // sfere e tori interi: due facce, divise da cerchi aggiunti qui (con un vertice ciascuno)
+    const synth = [];
+    for (const cs of closedSurfs) {
+      const s = cs.surf, xd = perp(s.d), F = cs.sense ? 1 : -1;
+      const circle = (c, R) => { V.push(add3(c, mul3(xd, R))); const vi = V.length - 1; chains.push({ kind: 'circle', pts: [vi, vi], c, n: s.d, xd, R }); return chains.length - 1; };
+      if (s.type === 'sph') {
+        const e = circle(s.c, s.R);
+        synth.push({ surf: s, sense: cs.sense, curved: true, loops: [[V.length - 1]], oes: [[{ ci: e, fwd: F > 0, cnt: 1 }]] });
+        synth.push({ surf: s, sense: cs.sense, curved: true, loops: [[V.length - 1]], oes: [[{ ci: e, fwd: F < 0, cnt: 1 }]] });
+      } else {
+        const eo = circle(s.c, s.R + s.r), vo = V.length - 1, ei = circle(s.c, s.R - s.r), vi = V.length - 1;
+        // metà di sopra: cerchio esterno in senso antiorario attorno all'asse, interno in senso orario (viste da fuori)
+        synth.push({ surf: s, sense: cs.sense, curved: true, loops: [[vo], [vi]], oes: [[{ ci: eo, fwd: F > 0, cnt: 1 }], [{ ci: ei, fwd: F < 0, cnt: 1 }]] });
+        synth.push({ surf: s, sense: cs.sense, curved: true, loops: [[vo], [vi]], oes: [[{ ci: eo, fwd: F < 0, cnt: 1 }], [{ ci: ei, fwd: F > 0, cnt: 1 }]] });
+      }
     }
-    stats.removed = rem.size;
-    for (const f of faces) f.loops = f.loops.map(lp => lp.filter(v => !rem.has(v)));
-    faces = faces.filter(f => f.loops[0].length >= 3);
-    // 4) spigoli: ogni coppia di vertici una volta; in un solido chiuso ogni spigolo è percorso due volte, nei due sensi
-    const edges = new Map();
-    faces.forEach((f, fi) => { for (const lp of f.loops) for (let k = 0; k < lp.length; k++) {
-      const a = lp[k], b = lp[(k + 1) % lp.length], key = a < b ? a + ',' + b : b + ',' + a;
-      if (!edges.has(key)) edges.set(key, { a: Math.min(a, b), b: Math.max(a, b), fwd: 0, back: 0, faces: [] });
-      const e = edges.get(key); if (a < b) e.fwd++; else e.back++; e.faces.push(fi);
-    } });
-    for (const e of edges.values()) if (e.fwd !== 1 || e.back !== 1) stats.badEdges++;
+    // segmento → catena (con il verso)
+    segChain = new Map();
+    chains.forEach((c, ci) => { for (let k = 0; k < c.pts.length - 1; k++) { const a = c.pts[k], b = c.pts[k + 1]; segChain.set(a + '>' + b, { ci, fwd: true, k }); segChain.set(b + '>' + a, { ci, fwd: false, k }); } });
+    // contorni delle facce come elenchi di spigoli orientati
+    for (const f of faces) {
+      if (f.oes) continue;
+      f.oes = f.loops.map(lp => {
+        const n = lp.length, sc = k => segChain.get(lp[k] + '>' + lp[(k + 1) % n]);
+        // si comincia dove comincia una catena
+        let s0 = 0;
+        for (let k = 0; k < n; k++) { const x = sc(k), pv = sc((k - 1 + n) % n); if (x.ci !== pv.ci || (x.fwd ? x.k === 0 : x.k === chains[x.ci].pts.length - 2)) { s0 = k; break; } }
+        const res = [];
+        for (let j = 0; j < n; j++) {
+          const x = sc((s0 + j) % n);
+          if (!res.length || res[res.length - 1].ci !== x.ci || res[res.length - 1].cnt >= chains[x.ci].pts.length - 1) res.push({ ci: x.ci, fwd: x.fwd, cnt: 1 }); else res[res.length - 1].cnt++;
+        }
+        return res;
+      });
+    }
+    for (const f of synth) faces.push(f);
     // 5) pezzi staccati: facce collegate dagli spigoli
     const par = faces.map((_, i) => i); const find = i => { while (par[i] !== i) i = par[i] = par[par[i]]; return i; };
-    for (const e of edges.values()) for (let k = 1; k < e.faces.length; k++) { const a = find(e.faces[0]), b = find(e.faces[k]); if (a !== b) par[a] = b; }
+    const chainFaces = chains.map(() => []);
+    faces.forEach((f, fi) => { for (const l of f.oes) for (const x of l) chainFaces[x.ci].push(fi); });
+    for (const l of chainFaces) for (let k = 1; k < l.length; k++) { const a = find(l[0]), b = find(l[k]); if (a !== b) par[a] = b; }
     const comps = new Map(); faces.forEach((f, i) => { const r = find(i); if (!comps.has(r)) comps.set(r, []); comps.get(r).push(i); });
 
     // 6) scrittura (ISO 10303-21, AP214)
@@ -4205,25 +4589,41 @@ self.onmessage = async ev => {
     const su = E('( NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT() )');
     const unc = E(`UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-05),${lu},'distance_accuracy_value','confusion accuracy')`);
     const gctx = E(`( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((${unc})) GLOBAL_UNIT_ASSIGNED_CONTEXT((${lu},${au},${su})) REPRESENTATION_CONTEXT('Context3D','3D') )`);
-    const origin = E(`AXIS2_PLACEMENT_3D('',${E("CARTESIAN_POINT('',(0.,0.,0.))")},${E("DIRECTION('',(0.,0.,1.))")},${E("DIRECTION('',(1.,0.,0.))")})`);
+    const pt3 = p => E(`CARTESIAN_POINT('',(${R(p[0])},${R(p[1])},${R(p[2])}))`);
+    const dir3 = u => E(`DIRECTION('',(${R(u[0])},${R(u[1])},${R(u[2])}))`);
+    const ax3 = (p, z, x) => E(`AXIS2_PLACEMENT_3D('',${pt3(p)},${dir3(z)},${dir3(x)})`);
+    const origin = ax3([0, 0, 0], [0, 0, 1], [1, 0, 0]);
     const vref = new Map(), cpref = new Map();
-    const cp = i => { if (!cpref.has(i)) cpref.set(i, E(`CARTESIAN_POINT('',(${R(V[i][0])},${R(V[i][1])},${R(V[i][2])}))`)); return cpref.get(i); };
+    const cp = i => { if (!cpref.has(i)) cpref.set(i, pt3(V[i])); return cpref.get(i); };
     const vx = i => { if (!vref.has(i)) vref.set(i, E(`VERTEX_POINT('',${cp(i)})`)); return vref.get(i); };
-    const eref = new Map();
-    for (const [k, e] of edges) {
-      const d = sub3(V[e.b], V[e.a]), l = len3(d), u = nrm3(d);
-      const line = E(`LINE('',${cp(e.a)},${E(`VECTOR('',${E(`DIRECTION('',(${R(u[0])},${R(u[1])},${R(u[2])}))`)},${R(l)})`)})`);
-      eref.set(k, E(`EDGE_CURVE('',${vx(e.a)},${vx(e.b)},${line},.T.)`));
-    }
+    const eref = chains.map(c => {
+      const a = c.pts[0], b = c.pts[c.pts.length - 1];
+      let geo;
+      if (c.kind === 'line') geo = E(`LINE('',${cp(a)},${E(`VECTOR('',${dir3(c.u)},${R(c.L)})`)})`);
+      else if (c.kind === 'circle') geo = E(`CIRCLE('',${ax3(c.c, c.n, c.xd)},${R(c.R)})`);
+      else geo = E(`ELLIPSE('',${ax3(c.c, c.n, c.xd)},${R(c.a)},${R(c.b)})`);
+      return E(`EDGE_CURVE('',${vx(a)},${vx(b)},${geo},.T.)`);
+    });
+    const surfCount = {};
     const fref = faces.map(f => {
-      const bounds = f.loops.map((lp, li) => {
-        const oes = lp.map((a, k) => { const b = lp[(k + 1) % lp.length]; return E(`ORIENTED_EDGE('',*,*,${eref.get(a < b ? a + ',' + b : b + ',' + a)},${a < b ? '.T.' : '.F.'})`); });
-        const loop = E(`EDGE_LOOP('',(${oes.join(',')}))`);
-        return E(`${li ? 'FACE_BOUND' : 'FACE_OUTER_BOUND'}('',${loop},.T.)`);
+      const bounds = f.oes.map((lp, li) => {
+        const loop = E(`EDGE_LOOP('',(${lp.map(x => E(`ORIENTED_EDGE('',*,*,${eref[x.ci]},${x.fwd ? '.T.' : '.F.'})`)).join(',')}))`);
+        return E(`${li || f.curved ? 'FACE_BOUND' : 'FACE_OUTER_BOUND'}('',${loop},.T.)`);
       });
-      const n = f.n, ex = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], xd = nrm3(cross3(cross3(n, ex), n));
-      const ax = E(`AXIS2_PLACEMENT_3D('',${cp(f.loops[0][0])},${E(`DIRECTION('',(${R(n[0])},${R(n[1])},${R(n[2])}))`)},${E(`DIRECTION('',(${R(xd[0])},${R(xd[1])},${R(xd[2])}))`)})`);
-      return E(`ADVANCED_FACE('',(${bounds.join(',')}),${E(`PLANE('',${ax})`)},.T.)`);
+      let surf;
+      if (!f.curved) {
+        const n = f.n, p0 = V[f.loops[0][0]];
+        surf = E(`PLANE('',${ax3(p0, n, perp(n))})`);
+        surfCount.plane = (surfCount.plane || 0) + 1;
+      } else {
+        const s = f.surf, xd = perp(s.d);
+        if (s.type === 'cyl') surf = E(`CYLINDRICAL_SURFACE('',${ax3(s.o, s.d, xd)},${R(s.R)})`);
+        else if (s.type === 'cone') surf = E(`CONICAL_SURFACE('',${ax3(s.loc, s.dir, perp(s.dir))},${R(s.R)},${R(s.semi)})`);
+        else if (s.type === 'sph') surf = E(`SPHERICAL_SURFACE('',${ax3(s.c, s.d, xd)},${R(s.R)})`);
+        else surf = E(`TOROIDAL_SURFACE('',${ax3(s.c, s.d, xd)},${R(s.R)},${R(s.r)})`);
+        surfCount[s.type] = (surfCount[s.type] || 0) + 1;
+      }
+      return E(`ADVANCED_FACE('',(${bounds.join(',')}),${surf},${f.curved && !f.sense ? '.F.' : '.T.'})`);
     });
     const solids = [];
     let si = 0;
@@ -4242,9 +4642,12 @@ self.onmessage = async ev => {
       const items = solids.map(s => E(`STYLED_ITEM('',(${psa}),${s})`));
       E(`MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION('',(${items.join(',')}),${gctx})`);
     }
-    const usedV = new Set(); for (const e of edges.values()) { usedV.add(e.a); usedV.add(e.b); }
+    const usedV = new Set(); for (const c of chains) { usedV.add(c.pts[0]); usedV.add(c.pts[c.pts.length - 1]); }
+    const allV = new Set(); for (const f of faces) for (const lp of f.loops) for (const v of lp) allV.add(v);
     stats.faces = faces.length; stats.loops = faces.reduce((s, f) => s + f.loops.length, 0); stats.holes = stats.loops - stats.faces;
-    stats.edges = edges.size; stats.verts = usedV.size; stats.solids = comps.size;
+    stats.edges = chains.length; stats.verts = usedV.size; stats.solids = comps.size; stats.removed = allV.size - usedV.size;
+    stats.surfaces = surfCount; stats.exact = faces.filter(f => f.curved).length; stats.fallback = fallback.size;
+    stats.circles = chains.filter(c => c.kind === 'circle').length; stats.ellipses = chains.filter(c => c.kind === 'ellipse').length; stats.why = why;
     const d = o.date || new Date(), p2 = n => String(n).padStart(2, '0');
     const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
     const head = ['ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION(('Banco CAD'),'2;1');", `FILE_NAME(${S(o.file || name + '.step')},'${stamp}',(''),(''),'Banco CAD','Banco CAD','');`,
@@ -7318,13 +7721,13 @@ self.onmessage = async ev => {
     } catch (e) { console.error(e); toast('Non sono riuscito a creare il PDF: ' + e.message); return null; }
     finally { App.pdfBusy = false; }
   };
-  /* ---------- STEP: il pezzo come solido a facce piane, per SolidWorks, Inventor, Fusion, FreeCAD… ---------- */
+  /* ---------- STEP: il pezzo con le superfici vere (cilindri, coni, sfere, tori) e le altre a facce piane, per SolidWorks, Inventor, Fusion, FreeCAD… ---------- */
   App.stepText = function () {
     const st = App.st;
     if (!st || !st.body.length) return null;
     const name = App.doc.name || 'parte';
     const topo = Geom.topology(st.body, st.tags);
-    return Export.toSTEP(st.body, topo, { name, file: name + '.step', color: [0.66, 0.7, 0.74] });
+    return Export.toSTEP(st.body, topo, { name, file: name + '.step', color: [0.66, 0.7, 0.74], tags: st.tags });
   };
   function exportSTEP() {
     const r = App.stepText();
@@ -7333,7 +7736,7 @@ self.onmessage = async ev => {
     const s = r.stats;
     App.offerFile((App.doc.name || 'parte') + '.step', 'model/step', new Blob([r.text], { type: 'model/step' }), 'Esporta STEP');
     toast(s.badEdges || s.openLoops ? `File STEP pronto, ma il solido non è chiuso del tutto (${s.badEdges + s.openLoops} punti): l'altro programma potrebbe aprirlo come superfici.`
-      : `File STEP pronto: ${s.solids === 1 ? 'un solido' : s.solids + ' solidi'} con ${s.faces} facce, in millimetri.`, 6000);
+      : `File STEP pronto: ${s.solids === 1 ? 'un solido' : s.solids + ' solidi'} con ${s.faces} facce, in millimetri` + (s.exact ? `; ${s.exact} ${s.exact === 1 ? 'è una superficie vera' : 'sono superfici vere'} (${Object.entries(s.surfaces).filter(([k]) => k !== 'plane').map(([k, v]) => v + ' ' + ({ cyl: v === 1 ? 'cilindro' : 'cilindri', cone: v === 1 ? 'cono' : 'coni', sph: v === 1 ? 'sfera' : 'sfere', tor: v === 1 ? 'toro' : 'tori' }[k])).join(', ')})` : '') + (s.fallback ? `; ${s.fallback === 1 ? 'una superficie curva è' : s.fallback + ' superfici curve sono'} a facce piane` : '') + '.', 7000);
   }
   /* ---------- importazione di file STL e OBJ (corpo a faccette, come «Importato» di SolidWorks) ---------- */
   const MESH_MAX = 100000;
@@ -7584,13 +7987,14 @@ self.onmessage = async ev => {
     if (inSketch && Sketcher.session() && Sketcher.session().opts.hole) { toast('Nello schizzo delle posizioni dei fori non si importano file DXF.'); return; }
     modal('Importa un file DXF', `<p class="note">Linee, archi e cerchi del disegno entrano ${inSketch ? 'nello <b>schizzo aperto</b>' : 'in uno <b>schizzo nuovo</b>'}: poi li estrudi, o li fai ruotare attorno a una linea di mezzeria. <b>Ellissi e spline</b> diventano archi tangenti tra loro, vicinissimi alla curva vera. Testi, quote e tratteggi non si importano.</p>
       <p><input type="file" id="dxfFile" accept=".dxf,.zip"></p>
+      <div class="row" id="dxfZipRow" hidden><label for="dxfZip">Disegno nello zip</label><select id="dxfZip" style="min-width: 14em; max-width: 60%"></select></div>
       <div class="dxf-prev" id="dxfPrev"><span class="ph">Scegli un file: qui vedrai l'anteprima del disegno.</span></div>
       <p class="dxf-cap" id="dxfCap"></p>
       <div class="dxf-layers" id="dxfLayers" hidden></div>
       ${inSketch ? '' : '<div class="row"><label for="dxfPlane">Piano dello schizzo</label><select id="dxfPlane"><option value="front">Piano frontale</option><option value="top">Piano superiore</option><option value="right">Piano destro</option></select></div>'}
       <div class="row"><label for="dxfUnit">Unità del file</label><select id="dxfUnit"><option value="file">dal file</option><option value="mm">millimetri</option><option value="cm">centimetri</option><option value="m">metri</option><option value="in">pollici</option></select></div>
       <div class="row"><label for="dxfOrigin">Posizione</label><select id="dxfOrigin"><option value="file">come nel file</option><option value="corner">angolo in basso a sinistra sull'origine</option><option value="center">centro sull'origine</option></select></div>
-      <p class="note">Nell'anteprima la crocetta rossa è il punto che andrà sull'origine dello schizzo. Togli la spunta ai <b>layer</b> che non servono (cartiglio, quote, squadratura). Le linee tratto-punto (assi) diventano <b>linee di mezzeria</b>, quelle tratteggiate <b>geometria di costruzione</b>. Gli estremi molto vicini vengono uniti e le entità doppie tolte. Se il file non dice l'unità si usano i millimetri. Va bene anche uno <b>.zip</b> con il DXF dentro. Un file DWG va prima convertito in DXF con il Convertitore DWG → DXF.</p>
+      <p class="note">Nell'anteprima la crocetta rossa è il punto che andrà sull'origine dello schizzo. Togli la spunta ai <b>layer</b> che non servono (cartiglio, quote, squadratura). Le linee tratto-punto (assi) diventano <b>linee di mezzeria</b>, quelle tratteggiate <b>geometria di costruzione</b>. Gli estremi molto vicini vengono uniti e le entità doppie tolte. Se il file non dice l'unità si usano i millimetri. Va bene anche uno <b>.zip</b> con il DXF dentro (se ce n'è più di uno, scegli quale). Un file DWG va prima convertito in DXF con il Convertitore DWG → DXF.</p>
       <p class="note err" id="dxfErr" hidden></p>`, [
       { label: 'Annulla' },
       { label: 'Importa', primary: true, keep: true, fn: async () => {
@@ -7605,13 +8009,22 @@ self.onmessage = async ev => {
       } },
     ]);
     // file letto: nome, byte, layer del file (oppure error con il messaggio, se il file non va bene)
-    let cur = null, loading = null;
+    let cur = null, loading = null, zipData = null;
+    $('#dxfZip').addEventListener('change', () => {
+      if (!zipData) return;
+      cur = null; showErr(''); $('#dxfLayers').hidden = true; $('#dxfCap').textContent = '';
+      placeholder('Lettura del disegno…');
+      loading = (async () => {
+        try { const z = await Import.unzipDxf(zipData, $('#dxfZip').value); loadDxfPreview(z.name, z.data); }
+        catch (e) { cur = { name: $('#dxfZip').value, error: e.message }; placeholder('Nessuna anteprima'); showErr(e.message); }
+      })();
+    });
     const chosenLayers = () => [...document.querySelectorAll('#dxfLayers input[data-ly]')].filter(x => x.checked).map(x => x.dataset.ly);
     const showErr = t => { const e = $('#dxfErr'); e.textContent = t || ''; e.hidden = !t; dwgLink(e); };
     const placeholder = t => { $('#dxfPrev').innerHTML = `<span class="ph">${esc(t)}</span>`; };
     $('#dxfFile').addEventListener('change', () => {
       const file = $('#dxfFile').files[0];
-      cur = null; showErr(''); $('#dxfLayers').hidden = true; $('#dxfCap').textContent = '';
+      cur = null; showErr(''); $('#dxfLayers').hidden = true; $('#dxfCap').textContent = ''; $('#dxfZipRow').hidden = true; zipData = null;
       if (!file) { placeholder('Scegli un file: qui vedrai l\'anteprima del disegno.'); return; }
       placeholder('Lettura del file…');
       loading = new Promise(res => {
@@ -7621,8 +8034,16 @@ self.onmessage = async ev => {
             let name = file.name, data = new Uint8Array(rd.result);
             // .zip (per esempio salvato dal Convertitore DWG → DXF): si prende il DXF che c'è dentro
             if (/\.zip$/i.test(name)) {
-              try { ({ name, data } = await Import.unzipDxf(data)); }
+              let z;
+              try { z = await Import.unzipDxf(data); }
               catch (e) { cur = { name, error: e.message }; placeholder('Nessuna anteprima'); showErr(e.message); return; }
+              // più disegni nello zip (per esempio «Salva tutti i DXF» del convertitore): si sceglie quale importare
+              if (z.dxfs.length > 1) {
+                zipData = data;
+                $('#dxfZip').innerHTML = z.dxfs.map(n => `<option value="${esc(n)}">${esc(n.split('/').pop())}</option>`).join('');
+                $('#dxfZipRow').hidden = false;
+              }
+              ({ name, data } = z);
             }
             loadDxfPreview(name, data);
           } finally { res(); }
@@ -12710,7 +13131,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Messa in tavola', 'Esporta SVG', ['svg'], 'Disegno vettoriale in scala 1:1 su carta: si apre nel browser e nei programmi di grafica.'],
     ['Messa in tavola', 'Esporta STL', ['stl', 'stampa 3d'], 'Il formato per la stampa 3D: il solido descritto da tanti triangoli.'],
     ['Messa in tavola', 'Salva PDF', ['pdf', 'salva pdf della tavola', 'salva pdf dello schizzo', 'salva pdf della vista 3d', 'file pdf'], 'Crea subito un file PDF, che si apre e si stampa su qualunque computer, tablet o telefono. Nella Messa in tavola salva la tavola vettoriale sul foglio vero (A4–A2) in scala 1:1; in uno schizzo salva lo schizzo vettoriale su un A4 orizzontale con una scala unificata (2:1, 1:1, 1:2…) scritta in basso; altrimenti salva la vista 3D com\'è sullo schermo (un\'immagine) su un A4 orizzontale. Si trova nel menu Progetto e, nella Messa in tavola, anche tra i comandi.'],
-    ['Importazione', 'Esporta STEP', ['esporta step (per altri cad)', 'salvare in step', 'step esportato'], 'Progetto › Esporta STEP salva il pezzo in un file .step che si apre come solido in SolidWorks, Inventor, Fusion, FreeCAD e negli altri CAD 3D, in millimetri. Le facce piane restano facce piane; le superfici curve (cilindri, raccordi) arrivano divise in tante facce piane strette, come il pezzo del Banco CAD. Arrivano solo la forma e il colore: le quote e la storia delle funzioni non passano (nessun CAD le scambia).'],
+    ['Importazione', 'Esporta STEP', ['esporta step (per altri cad)', 'salvare in step', 'step esportato'], 'Progetto › Esporta STEP salva il pezzo in un file .step che si apre come solido in SolidWorks, Inventor, Fusion, FreeCAD e negli altri CAD 3D, in millimetri. Piani, cilindri, coni, sfere e tori (fori, raccordi, smussi conici, angoli sferici, rivoluzioni) arrivano come superfici vere, con i bordi a cerchio o a ellisse: l\'altro CAD vede un foro vero, con il suo diametro. Le superfici che non si possono scrivere esatte (per esempio due cilindri che si incrociano) arrivano divise in tante facce piane strette, come nel Banco CAD. Arrivano solo la forma e il colore: le quote e la storia delle funzioni non passano (nessun CAD le scambia).'],
+    ['Importazione', 'Superficie vera', ['superfici vere', 'superficie analitica', 'cilindro vero'], 'Superficie scritta con la sua formula (piano, cilindro, cono, sfera, toro) invece che come tante facce piane: un foro Ø10 resta un cilindro di raggio 5 esatto. Il Banco CAD calcola volume e massa sulle superfici vere, ma sullo schermo le mostra a faccette; nel file STEP esportato le scrive vere, così l\'altro CAD misura diametri e volumi esatti.'],
 
     // ---------- importazione ----------
     ['Importazione', 'Importa STL o OBJ', ['importato', 'corpo importato', 'file importato', 'importare'], 'Porta nel Banco CAD un pezzo fatto con un altro programma (Progetto › Importa STL o OBJ). Nell\'albero compare la funzione «Importato»: il pezzo si vede, si misura, si mette in tavola e se ne calcolano volume e massa. Le quote originali non si possono modificare, ma sopra si possono disegnare schizzi e aggiungere funzioni (tagli, fori, estrusioni).'],
@@ -12723,10 +13145,10 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Importazione', 'Corpo chiuso', ['corpo non chiuso', 'lati liberi'], 'Un corpo a faccette è chiuso quando ogni lato di triangolo è in comune con esattamente un altro triangolo: allora racchiude un volume. Se ci sono lati liberi (buchi nella superficie) volume e massa non sono attendibili e le funzioni aggiunte sopra possono fallire.'],
     ['Importazione', 'Inserisci DXF', ['importa dxf', 'importa dxf (schizzo)', 'importare un dxf'], 'Porta in uno schizzo le linee, gli archi e i cerchi di un disegno 2D fatto con un altro programma (AutoCAD, DraftSight, LibreCAD, la messa in tavola di SolidWorks…). Fuori da uno schizzo, o da Progetto › Importa DXF (schizzo), crea uno schizzo nuovo sul piano scelto; dentro uno schizzo aggiunge la geometria a quello aperto. Le entità arrivano senza quote, quindi blu (sotto definite): si possono estrudere o far ruotare subito, oppure quotare.'],
     ['Importazione', 'File DXF', ['.dxf', 'formato dxf'], 'Formato di scambio dei disegni 2D, nato con AutoCAD e letto da quasi tutti i CAD. Qui si leggono i file DXF di testo (ASCII): linee, archi, cerchi, polilinee (anche con tratti curvi), ellissi, spline e blocchi. Ellissi e spline diventano archi tangenti tra loro (biarchi). Testi, quote e tratteggi si saltano. Si può scegliere anche uno .zip con il DXF dentro. Il DWG è il formato chiuso di AutoCAD: va prima trasformato in DXF (vedi Convertitore DWG → DXF).'],
-    ['Importazione', 'Convertitore DWG → DXF', ['dwg', '.dwg', 'convertitore', 'libredwg', 'convertire un dwg'], 'Pagina a parte, gratuita, che trasforma i disegni di AutoCAD (.dwg, dalla versione R1.4 alla 2018 e oltre) in file DXF da importare qui. Lavora nel browser, senza mandare il file da nessuna parte, con il lettore libero LibreDWG. È un programma separato dal Banco CAD perché ha un\'altra licenza (GNU GPL 3). Le spline arrivano con i soli punti di passaggio: la curva ricostruita qui può scostarsi da quella di AutoCAD di qualche decimo di millimetro per metro (nelle prove 0,1 e 0,3 mm/m).'],
+    ['Importazione', 'Convertitore DWG → DXF', ['dwg', '.dwg', 'convertitore', 'libredwg', 'convertire un dwg'], 'Pagina a parte, gratuita, che trasforma i disegni di AutoCAD (.dwg, dalla versione R1.4 alla 2018 e oltre) in file DXF da importare qui. Lavora nel browser, senza mandare il file da nessuna parte, con il lettore libero LibreDWG. È un programma separato dal Banco CAD perché ha un\'altra licenza (GNU GPL 3). Mostra l\'anteprima di ogni disegno con l\'ingombro (quello che il Banco CAD leggerà) e può salvare tutti i DXF in un solo .zip, da cui il Banco CAD fa scegliere il disegno. Parte con poca memoria (16 MB) e ne prende di più solo per i disegni grandi, quindi va anche sui tablet. Le spline arrivano con i soli punti di passaggio: la curva ricostruita qui può scostarsi da quella di AutoCAD di qualche decimo di millimetro per metro (nelle prove 0,1 e 0,3 mm/m).'],
     ['Importazione', 'Ellisse', ['ellissi', 'ellipse'], 'Curva chiusa «schiacciata», come un cerchio visto di sbieco: ha un semiasse maggiore a e uno minore b; l\'area è π·a·b. Nei file DXF può essere intera o solo un tratto (arco di ellisse). Nel Banco CAD, come in molti CAD, l\'ellisse importata diventa una catena di archi tangenti (biarchi) molto vicina alla curva vera.'],
     ['Importazione', 'Spline', ['spline', 'nurbs', 'curva spline', 'b-spline'], 'Curva libera e morbida definita da pochi punti: i punti di controllo la «tirano» verso di sé (spline NURBS, con eventuali pesi), oppure la curva passa esattamente per i punti di passaggio. Serve per profili che non sono fatti di rette e archi (carrozzerie, camme, sagome). Importata da un DXF diventa una catena di archi tangenti (biarchi).'],
-    ['Importazione', 'Biarco', ['biarchi', 'archi tangenti'], 'Coppia di archi tangenti tra loro, che parte e arriva con la stessa direzione della curva da imitare. Con tanti biarchi uno dopo l\'altro si segue un\'ellisse o una spline senza spigoli: dove lo scostamento è troppo grande il tratto viene diviso a metà, finché resta sotto 1/10 000 della dimensione minore della curva. Nel pezzo le facce di questi archi si vedono come una superficie sola, senza righe tra l\'una e l\'altra, e i loro centri non compaiono nello schizzo.'],
+    ['Importazione', 'Biarco', ['biarchi', 'archi tangenti'], 'Coppia di archi tangenti tra loro, che parte e arriva con la stessa direzione della curva da imitare. Con tanti biarchi uno dopo l\'altro si segue un\'ellisse o una spline senza spigoli: ogni biarco va il più lontano possibile lungo la curva, con il punto di giunzione dei due archi scelto per stare più vicino alla curva, finché lo scostamento resta sotto 1/10 000 della dimensione minore della curva (un\'ellisse 100 × 60 diventa circa 36 archi). La spline passa sempre esattamente per i suoi punti di passaggio. Nel pezzo le facce di questi archi si vedono come una superficie sola, senza righe tra l\'una e l\'altra, e i loro centri non compaiono nello schizzo.'],
     ['Importazione', 'Scostamento dalla curva', ['scostamento', 'tolleranza della curva'], 'La distanza più grande tra la curva vera (ellisse o spline del file DXF) e gli archi che la sostituiscono. Il messaggio dell\'importazione dice quanto vale, in millimetri: di solito pochi millesimi, quindi volume e massa restano esatti ben sotto l\'1 %.'],
     ['Importazione', 'Layer', ['livello', 'livelli', 'strato'], 'In un disegno DXF (o DWG) ogni entità sta su un «layer», come su un foglio trasparente: per esempio PEZZO, QUOTE, CARTIGLIO. Nella finestra di importazione DXF si sceglie con le caselle quali layer importare; quelli spenti o congelati nel file partono senza spunta. Le entità di un blocco che stanno sul layer «0» prendono il layer del blocco inserito, come in AutoCAD.'],
     ['Importazione', 'Tipo di linea', ['tratto-punto', 'tratteggiata', 'linetype'], 'Il modo in cui è disegnata una linea: continua, tratteggiata (spigoli nascosti) o tratto-punto (assi). Nell\'importazione DXF le linee tratto-punto diventano linee di mezzeria, le tratteggiate geometria di costruzione; le continue formano i contorni.'],
@@ -13528,6 +13950,22 @@ SK.push(['DXF: ellisse 100×60 → archi tangenti tra loro, sulla curva entro 1/
   const j = joints(r.geo);
   return { ok: true, got: [r.geo.every(g => g.t === 'arc') ? 1 : 0, dmax <= tol ? 1 : 0, r.approx.err <= tol ? 1 : 0, j.worst < 1e-8 ? 1 : 0, j.n, r.approx.ellipses], exp: [1, 1, 1, 1, r.geo.length, 1] };
 }]);
+// meno archi: ogni biarco va il più lontano possibile lungo la curva; lo scostamento vero (misurato fitto nei due sensi)
+// resta entro 1/10 000 del diametro minore. Con la divisione a metà di prima: 56 archi (100×60) e 152 (200×2).
+const ellDense = (a, b, geo) => {
+  const dEl = (x, y) => Math.abs(x * x / (a * a) + y * y / (b * b) - 1) / Math.hypot(2 * x / (a * a), 2 * y / (b * b));
+  let e1 = 0; for (const g of geo) for (let k = 0; k <= 64; k++) { const [x, y] = arcPt(g, g.a0 + (g.a1 - g.a0) * k / 64); e1 = Math.max(e1, dEl(x, y)); }
+  const dArc = (q, g) => { let f = Math.atan2(q[1] - g.c[1], q[0] - g.c[0]); while (f < g.a0) f += 2 * PI; while (f > g.a0 + 2 * PI) f -= 2 * PI;
+    if (f <= g.a1) return Math.abs(Math.hypot(q[0] - g.c[0], q[1] - g.c[1]) - g.r); return Math.min(...endsOf(g).map(e => Math.hypot(q[0] - e[0], q[1] - e[1]))); };
+  let e2 = 0; for (let k = 0; k < 4000; k++) { const t = 2 * PI * k / 4000, q = [a * Math.cos(t), b * Math.sin(t)]; e2 = Math.max(e2, Math.min(...geo.map(g => dArc(q, g)))); }
+  return Math.max(e1, e2);
+};
+SK.push(['DXF: meno archi per curva: ellisse 100×60 in non più di 40 archi, 200×2 in non più di 100; scostamento vero ≤ 1/10 000 del diametro minore', () => {
+  const r1 = MI.parseDXF(dxfFile([dEll(0, 0, 50, 0, 0.6)])), r2 = MI.parseDXF(dxfFile([dEll(0, 0, 100, 0, 0.01)]));
+  const e1 = ellDense(50, 30, r1.geo), e2 = ellDense(100, 1, r2.geo), t1 = MI.DXF_CURVE_TOL * 60, t2 = MI.DXF_CURVE_TOL * 2;
+  return { ok: true, got: [r1.geo.length <= 40 ? 1 : 0, r2.geo.length <= 100 ? 1 : 0, e1 <= t1 * (1 + 1e-9) ? 1 : 0, e2 <= t2 * (1 + 1e-9) ? 1 : 0, joints(r1.geo).worst < 1e-8 ? 1 : 0, Math.abs(r1.approx.err - e1) <= 0.01 * t1 ? 1 : 0], exp: [1, 1, 1, 1, 1, 1],
+    info: `${r1.geo.length} e ${r2.geo.length} archi; scostamento ${(e1 / t1).toFixed(4)} e ${(e2 / t2).toFixed(4)} della tolleranza` };
+}]);
 SK.push(['DXF: ELLIPSE con rapporto 1 = cerchio vero; arco di ELLIPSE con rapporto 1 = arco vero', () => {
   const r = MI.parseDXF(dxfFile([dEll(10, 20, 0, 15, 1), dEll(0, 0, 10, 0, 1, 0, PI / 2)]));
   const c = r.geo.find(g => g.t === 'circle'), a = r.geo.find(g => g.t === 'arc');
@@ -13701,6 +14139,58 @@ SK.push(['STEP: nome con lettere accentate e apostrofo scritto come vuole la nor
   const d = box(); d.name = "Flangia d'uscita è"; const t = stepOf(d).text;
   const ok = t.includes("PRODUCT('Flangia d''uscita \\X2\\00E8\\X0\\'") && !/[^\x09\x0a\x0d\x20-\x7e]/.test(t);
   return { ok, got: [ok ? 1 : 0], exp: [1] };
+}]);
+// STEP con le superfici vere (come fa il programma: o.tags = st.tags). Conti fatti a mano: un cilindro intero è una
+// faccia sola con due anelli (i due cerchi), senza cucitura; la sfera e il toro interi sono divisi in due metà.
+const stepX = doc => { const st = Model.regen(doc); if (st.errors.size || !st.body.length) throw new Error('pezzo non costruito'); return Export.toSTEP(st.body, Geom.topology(st.body, st.tags), { name: doc.name, tags: st.tags, date: new Date(2026, 9, 29) }); };
+const cntE = (t, re) => (t.match(re) || []).length;
+SK.push(['STEP vero: piastra 100×60×8 con 4 fori R5 → 4 CYLINDRICAL_SURFACE R5 e 8 CIRCLE; 16 vertici, 20 spigoli, 10 facce, 12 anelli interni, Eulero −6', () => {
+  const d = D0('piastra'); const b = SB(); b.rect(0, 0, 100, 60); for (const [x, y] of [[20, 15], [80, 15], [20, 45], [80, 45]]) b.circle(x, y, 5);
+  feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 8 });
+  const r = stepX(d), t = r.text, g = stepCounts(r);
+  return { ok: true, got: [...g, cntE(t, /CYLINDRICAL_SURFACE\('',#\d+,5\.\)/g), cntE(t, /CIRCLE\('',#\d+,5\.\)/g), r.stats.fallback], exp: [16, 20, 10, 12, 1, -6, 0, 4, 8, 0] };
+}]);
+SK.push(['STEP vero: tubo di rivoluzione R 20/12 alto 30 → 2 cilindri e 2 corone piane, 4 cerchi; 4 vertici, 4 spigoli, 4 facce, Eulero 0', () => {
+  const d = D0('tubo'); const b = SB(); b.center(0, -100, 0, 100); b.rect(12, 0, 20, 30); feat(d, { type: 'revolve', sketch: sketch(d, STD('front'), b), angle: 360 });
+  const r = stepX(d), t = r.text;
+  return { ok: true, got: [...stepCounts(r), cntE(t, /CYLINDRICAL_SURFACE\('',#\d+,20\.\)/g), cntE(t, /CYLINDRICAL_SURFACE\('',#\d+,12\.\)/g), cntE(t, /\bPLANE\(/g), r.stats.circles], exp: [4, 4, 4, 4, 1, 0, 0, 1, 1, 2, 4] };
+}]);
+SK.push(['STEP vero: sfera R10 intera → 2 SPHERICAL_SURFACE R10 divise dall\'equatore (1 vertice, 1 spigolo, 2 facce, Eulero 2)', () => {
+  const d = D0('sfera'); const b = SB(); b.center(0, -100, 0, 100); const c = b.pt(0, 0), a = b.pt(0, -10), e = b.pt(0, 10); b.arc(c, a, e); b.line(e, a);
+  feat(d, { type: 'revolve', sketch: sketch(d, STD('front'), b), angle: 360 });
+  const r = stepX(d);
+  return { ok: true, got: [...stepCounts(r), cntE(r.text, /SPHERICAL_SURFACE\('',#\d+,10\.\)/g), cntE(r.text, /CIRCLE\('',#\d+,10\.\)/g)], exp: [1, 1, 2, 0, 1, 2, 0, 2, 1] };
+}]);
+SK.push(['STEP vero: toro R20 r5 intero → 2 TOROIDAL_SURFACE (20, 5) divise dai cerchi R25 e R15 (2 vertici, 2 spigoli, 2 facce, Eulero 0)', () => {
+  const d = D0('toro'); const b = SB(); b.center(0, -100, 0, 100); b.circle(20, 0, 5); feat(d, { type: 'revolve', sketch: sketch(d, STD('front'), b), angle: 360 });
+  const r = stepX(d), t = r.text;
+  return { ok: true, got: [...stepCounts(r), cntE(t, /TOROIDAL_SURFACE\('',#\d+,20\.,5\.\)/g), cntE(t, /CIRCLE\('',#\d+,25\.\)/g), cntE(t, /CIRCLE\('',#\d+,15\.\)/g)], exp: [2, 2, 2, 2, 1, 0, 0, 2, 1, 1] };
+}]);
+SK.push(['STEP vero: raccordo R3 su tutti i 12 spigoli → 12 cilindri R3, 8 sfere R3 agli angoli; 24 vertici, 48 spigoli (24 rette, 24 archi), 26 facce, Eulero 2', () => {
+  const d = box(); feat(d, { type: 'fillet', r: 3, edges: allEdges(d) });
+  const r = stepX(d), t = r.text;
+  return { ok: true, got: [...stepCounts(r), cntE(t, /CYLINDRICAL_SURFACE\('',#\d+,3\.\)/g), cntE(t, /SPHERICAL_SURFACE\('',#\d+,3\.\)/g), r.stats.circles, cntE(t, /\bLINE\(/g)], exp: [24, 48, 26, 0, 1, 2, 0, 12, 8, 24, 24] };
+}]);
+SK.push(['STEP vero: foro cieco Ø8 con punta a 118° → CONICAL_SURFACE con semiangolo 59° esatto e cilindro R4; nessuna faccia a faccette', () => {
+  const d = box(); const top = face(d, nearW([0, 1, 0], 10));
+  const h = SB(); h.pt(40, 25, { hole: true }); feat(d, { type: 'hole', sketch: sketch(d, top, h), kind: 'simple', dia: 8, end: 'blind', depth: 6 });
+  const r = stepX(d), m = r.text.match(/CONICAL_SURFACE\('',#\d+,([^,]+),([^)]+)\)/);
+  return { ok: true, got: [m ? 1 : 0, m ? +m[2] : 0, cntE(r.text, /CYLINDRICAL_SURFACE\('',#\d+,4\.\)/g), r.stats.fallback, r.stats.badEdges + r.stats.openLoops], exp: [1, 59 * PI / 180, 1, 0, 0] };
+}]);
+SK.push(['STEP vero: due raccordi R4 che si incontrano ad angolo → il bordo tra i due cilindri è un\'ellisse (semiassi 4√2 e 4); nessuna faccia a faccette', () => {
+  const d = box(); feat(d, { type: 'fillet', r: 4, edges: [edge(d, [40, 10, 0], 'line'), edge(d, [80, 10, -25], 'line')] });
+  const r = stepX(d), m = r.text.match(/ELLIPSE\('',#\d+,([^,]+),([^)]+)\)/);
+  return { ok: true, got: [r.stats.ellipses, m ? +m[1] : 0, m ? +m[2] : 0, cntE(r.text, /CYLINDRICAL_SURFACE/g), r.stats.fallback, r.stats.badEdges + r.stats.openLoops], exp: [1, 4 * Math.SQRT2, 4, 2, 0, 0] };
+}]);
+SK.push(['STEP vero: serie lineare di 4 fori (i tagli spezzano le faccette degli altri fori: vertici a T sulle corde) → 4 cilindri veri', () => {
+  const c = CASES.find(x => /^Serie lineare 4 fori/.test(x.name)), r = stepX(c.build());
+  return { ok: true, got: [cntE(r.text, /CYLINDRICAL_SURFACE\('',#\d+,4\.\)/g), r.stats.fallback, r.stats.badEdges + r.stats.openLoops, r.stats.faces], exp: [4, 0, 0, 10] };
+}]);
+SK.push(['STEP: cilindro R10 forato di traverso da un foro R4 (bordo tra i due cilindri = curva 3D) → i due cilindri restano a facce piane, le due basi vere; solido chiuso', () => {
+  const d = D0('perno'); const b = SB(); b.circle(0, 0, 10); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 30 });
+  const h = SB(); h.circle(0, 15, 4); feat(d, { type: 'cut', sketch: sketch(d, STD('front'), h), end: 'mid', depth: 40 });
+  const r = stepX(d);
+  return { ok: true, got: [r.stats.fallback, cntE(r.text, /CYLINDRICAL_SURFACE/g), r.stats.badEdges + r.stats.openLoops, r.stats.solids, r.stats.verts - r.stats.edges + r.stats.faces - r.stats.holes], exp: [2, 0, 0, 1, 0] };
 }]);
 // PDF: un quarto di cerchio con una curva di Bézier (punti di controllo a 4/3·tan(22,5°) = 0,55228 del raggio) si scosta
 // dal cerchio al massimo di 2,7253·10⁻⁴ del raggio (valore noto)
@@ -13993,7 +14483,7 @@ if (isNode) {
       'Le entità arrivano selezionate e blu ([[Sotto definito]]): controlla che i contorni siano chiusi, poi premi ✓. Le [[Ellisse|ellissi]] e le [[Spline|spline]] arrivano come catene di archi tangenti ([[Biarco|biarchi]]).',
       'Seleziona lo schizzo e usa **Estrusione base**, oppure **Rivoluzione base** se c\'è una [[Linea di mezzeria]].',
     ],
-    tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Il messaggio finale dice in quanti archi è stata divisa ogni ellisse o spline e lo [[Scostamento dalla curva]]: di solito pochi millesimi di millimetro.', 'Si importano anche tavole intere, con migliaia di entità; per avere solo il pezzo togli la spunta ai layer che non servono (cartiglio, squadratura, quote).', 'I layer spenti o congelati nel file partono senza spunta.', 'Puoi scegliere anche uno **.zip** con il DXF dentro: è così che il Convertitore DWG → DXF salva i file nella pagina pubblicata.'],
+    tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Il messaggio finale dice in quanti archi è stata divisa ogni ellisse o spline e lo [[Scostamento dalla curva]]: di solito pochi millesimi di millimetro.', 'Si importano anche tavole intere, con migliaia di entità; per avere solo il pezzo togli la spunta ai layer che non servono (cartiglio, squadratura, quote).', 'I layer spenti o congelati nel file partono senza spunta.', 'Puoi scegliere anche uno **.zip** con il DXF dentro: è così che il Convertitore DWG → DXF salva i file nella pagina pubblicata. Se nello zip ci sono più disegni (il pulsante «Salva tutti i DXF» del convertitore), scegli quale in **Disegno nello zip**.'],
     terms: ['Inserisci DXF', 'File DXF', 'Convertitore DWG → DXF', 'Layer', 'Tipo di linea', 'Unità del file', 'Ellisse', 'Spline', 'Biarco', 'Scostamento dalla curva'],
   });
   add('Schizzo', 'sk-converti', 'Converti entità', {
@@ -14271,10 +14761,11 @@ if (isNode) {
     steps: [
       'Scegli **Progetto › Esporta STEP (per altri CAD)**: il file .step contiene il pezzo come solido, in millimetri.',
       'Nell\'altro programma aprilo con **File › Apri** (in SolidWorks: tipo di file STEP).',
-      'Le facce piane restano facce piane; cilindri, fori e raccordi arrivano divisi in tante facce piane strette, come nel Banco CAD.',
+      'Piani, cilindri, coni, sfere e tori arrivano come [[Superficie vera|superfici vere]]: nell\'altro CAD un foro ha il suo diametro esatto e un raccordo il suo raggio. Il messaggio dice quante sono.',
+      'Le superfici che non si possono scrivere esatte (due cilindri che si incrociano, uno sweep lungo una curva libera) arrivano divise in facce piane strette: il solido resta chiuso.',
     ],
     tips: ['Le quote e la storia delle funzioni non passano: nessun CAD le scambia con gli altri. Si possono aggiungere funzioni nuove sopra al pezzo importato.', 'Il Banco CAD rilegge i suoi STEP con Progetto › Importa STEP o IGES.'],
-    terms: ['Esporta STEP', 'STEP'],
+    terms: ['Esporta STEP', 'STEP', 'Superficie vera'],
   });
 
   /* ================= 7. Esercitazioni ================= */

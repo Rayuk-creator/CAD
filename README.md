@@ -37,6 +37,8 @@ Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo
 
 Il lavoro si salva da solo nel browser. Per portarlo su un altro computer usa **Progetto › Esporta il progetto** e poi **Importa un progetto**.
 
+Con **Progetto › Esporta STEP** il pezzo si apre in un altro programma CAD (SolidWorks, Inventor, Fusion, FreeCAD…): cilindri, coni, sfere e tori arrivano come **superfici vere**, con i bordi a cerchio o a ellisse, come li avrebbe scritti SolidWorks; solo le superfici che non si possono scrivere esatte (per esempio due cilindri che si incrociano) arrivano a facce piane. Con **Salva PDF** si salvano la tavola, lo schizzo o la vista 3D.
+
 Con **Progetto › Importa STEP o IGES** si apre un pezzo (o un piccolo assieme) fatto con un altro programma CAD (SolidWorks, Inventor, Fusion, FreeCAD… salvato in STEP o IGES): arriva con le sue facce vere e l'unità del file, si misura, si mette in tavola, se ne calcolano volume e massa con un errore molto sotto l'1 %, e sopra si aggiungono schizzi e funzioni. Se il file contiene più corpi si sceglie quali importare, e ognuno arriva nella sua funzione «Importato» (oppure tutti insieme in una); i colori delle facce scritti nel file si vedono sul pezzo. Il lettore è OpenCascade, compresso dentro la pagina: funziona anche senza internet, e legge il file a parte, così la pagina non si blocca (la lettura si può annullare).
 
 Con **Progetto › Importa STL o OBJ** si apre anche un pezzo fatto con un altro programma (SolidWorks, Inventor, Tinkercad… salvato in STL o OBJ): arriva come corpo a faccette che si misura, si mette in tavola, se ne calcolano volume e massa, e sulle cui facce piane si possono aggiungere schizzi e funzioni.
@@ -54,10 +56,10 @@ I file **DWG** di AutoCAD si trasformano prima in DXF con il **Convertitore DWG 
 > 2. GitHub scrive che il file è troppo grande da mostrare («Sorry about that, but we can't show files that are this big right now»): **è normale**, il file è a posto. Premi il pulsante **Download raw file**: è la **freccia verso il basso**, in alto a destra. **Non** premere «Raw» né «View raw»: mostrerebbero solo il testo del programma.
 > 3. Il file scaricato si chiama `index.html`, **come il Banco CAD**: rinominalo, per esempio `convertitore-dwg.html`, così non li confondi.
 > 4. Aprilo con un **doppio clic**: si apre in Chrome, Edge o Firefox. Non serve internet.
-> 5. Premi **Scegli i file DWG** (oppure trascina i file `.dwg` nella pagina), poi **Salva DXF** accanto a ogni disegno.
+> 5. Premi **Scegli i file DWG** (oppure trascina i file `.dwg` nella pagina), guarda l'**anteprima**, poi premi **Salva DXF** accanto a ogni disegno, oppure **Salva tutti i DXF (.zip)** per averli in un solo file.
 > 6. Nel Banco CAD: **Progetto › Importa DXF (schizzo)** e scegli il file `.dxf` appena salvato.
 >
-> Usalo su un **computer**: il convertitore chiede al browser circa 1 GB di memoria e su telefoni o tablet vecchi può non partire.
+> Funziona anche su **tablet e telefoni**: il convertitore parte con 16 MB di memoria e ne prende di più solo per i disegni grandi.
 
 ## Il primo pezzo in 6 passi
 
@@ -127,7 +129,7 @@ Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nasc
 
 ## Calcoli verificati
 
-Ogni calcolo del programma è controllato da prove automatiche: 110 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, su archi, sul bordo di ellissi e spline e con la propagazione tangente, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 14 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, assiemi con colori, file danneggiati).
+Ogni calcolo del programma è controllato da prove automatiche: 110 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, su archi, sul bordo di ellissi e spline e con la propagazione tangente, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 14 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, assiemi con colori, file danneggiati), e 14 rileggono gli STEP esportati dal Banco CAD: con le superfici vere il volume riletto è quello esatto (sfera, cono, tubo, piastra forata).
 
 Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifica**.
 
@@ -141,7 +143,7 @@ Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScr
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (142 + 19 prove STEP/IGES e STEP esportati + 11 del convertitore DWG, pochi secondi)
+npm run test:kernel               # solo i calcoli (152 + 28 prove STEP/IGES e STEP esportati + 14 del convertitore DWG, circa un minuto)
 npm run test:ui                   # solo l'interfaccia in Chromium (52 prove)
 ```
 

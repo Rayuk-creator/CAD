@@ -122,12 +122,16 @@ const CASES = [
     console.log((ok ? 'OK  ' : 'NO  ') + name + (ok ? '' : '\n      messaggio: ' + got));
   }
 
-  // esportazione STEP del Banco CAD riletta con OpenCascade (come farebbero SolidWorks, FreeCAD…): stesse facce, stessi solidi,
-  // e il volume e l'area dei triangoli riletti uguali a quelli del corpo a faccette del Banco CAD (entro 10⁻⁷)
+  // esportazione STEP del Banco CAD riletta con OpenCascade (come farebbero SolidWorks, FreeCAD…), nei due modi:
+  // - a facce piane (senza i tag): stesse facce, stessi solidi, volume e area dei triangoli riletti uguali a quelli del corpo
+  //   a faccette del Banco CAD (entro 10⁻⁷);
+  // - con le superfici vere (come fa il programma): stesse facce e solidi; riletto con triangoli fini (0,02 rad) il volume è
+  //   quello esatto entro 2·10⁻⁴, e per i pezzi con superfici curve almeno 5 volte più vicino di quello a facce piane
   const SB = () => { const s2 = Sketch.newSketch(); const pt = (x, y, ex = {}) => { const id = 'p' + (s2.next++); s2.ents.push({ id, t: 'pt', x, y, ...ex }); return id; };
     const api = { s: s2, pt, line(a, b, ex = {}) { const id = 'l' + (s2.next++); s2.ents.push({ id, t: 'ln', a, b, ...ex }); return id; },
       rect(x0, y0, x1, y1) { const ids = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => pt(x, y)); for (let i = 0; i < 4; i++) api.line(ids[i], ids[(i + 1) % 4]); },
       circle(x, y, r) { const c = pt(x, y); s2.ents.push({ id: 'c' + (s2.next++), t: 'ci', c, r }); },
+      arc(c, a, b) { s2.ents.push({ id: 'a' + (s2.next++), t: 'ar', c, a, b }); },
       center(x0, y0, x1, y1) { return api.line(pt(x0, y0), pt(x1, y1), { cons: true, center: true }); } };
     return api; };
   const feat = (d, f) => { f.id = f.id || Model.uid(d, 'F'); f.name = f.name || Model.defaultName(d, f.type); d.features.push(f); return f.id; };
@@ -144,7 +148,15 @@ const CASES = [
     ['tubo di rivoluzione R 20/12, alto 30 (superfici curve divise in facce)', () => { const d = D0('tubo'); const b = SB(); b.center(0, -100, 0, 100); b.rect(12, 0, 20, 30);
       feat(d, { type: 'revolve', sketch: skf(d, 'front', b), angle: 360 }); return d; }, PI * (400 - 144) * 30],
     ['due blocchi 10 × 10 × 10 staccati (due solidi)', () => { const d = D0('due'); const b = SB(); b.rect(0, 0, 10, 10); b.rect(20, 0, 30, 10); feat(d, { type: 'extrude', sketch: skf(d, 'top', b), end: 'blind', depth: 10 }); return d; }, 2000],
+    ['sfera R10 (rivoluzione di un mezzo cerchio)', () => { const d = D0('sfera'); const b = SB(); b.center(0, -100, 0, 100); const c = b.pt(0, 0), a = b.pt(0, -10), e = b.pt(0, 10); b.arc(c, a, e); b.line(e, a);
+      feat(d, { type: 'revolve', sketch: skf(d, 'front', b), angle: 360 }); return d; }, 4000 * PI / 3],
+    ['cono R10 alto 20 (rivoluzione di un triangolo)', () => { const d = D0('cono'); const b = SB(); b.center(0, -100, 0, 100); const o = b.pt(0, 0), r = b.pt(10, 0), t = b.pt(0, 20); b.line(o, r); b.line(r, t); b.line(t, o);
+      feat(d, { type: 'revolve', sketch: skf(d, 'front', b), angle: 360 }); return d; }, PI * 100 * 20 / 3],
   ];
+  const fineVolume = text => { const res = occt.ReadStepFile(enc(text), { linearUnit: 'millimeter', linearDeflectionType: 'bounding_box_ratio', linearDeflection: 0.0001, angularDeflection: 0.02 });
+    let V = 0, nf = 0; for (const m of res.meshes) { const p = m.attributes.position.array, ix = m.index.array; nf += (m.brep_faces || []).length;
+      for (let k = 0; k < ix.length; k += 3) { const a = ix[k] * 3, b = ix[k + 1] * 3, c = ix[k + 2] * 3; V += (p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1]) + p[a + 1] * (p[b + 2] * p[c] - p[b] * p[c + 2]) + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c])) / 6; } }
+    return { ok: res.success, V, nf, n: res.meshes.length }; };
   for (const [name, build, Vexact] of exportCases) {
     n++;
     let ok = true; const msg = [];
@@ -167,7 +179,24 @@ const CASES = [
       msg.unshift(`${ex.stats.faces} facce, ${ex.stats.edges} spigoli, ${ex.stats.solids} solid${ex.stats.solids === 1 ? 'o' : 'i'}; volume riletto ${mp2.volume.toFixed(4)} (corpo a faccette ${f0.V.toFixed(4)}, scarto ${(rv * 100).toExponential(1)} %; dal valore esatto ${(re * 100).toFixed(3)} %); area scarto ${(ra * 100).toExponential(1)} %`);
     } catch (e) { ok = false; msg.push('ERRORE ' + e.message); }
     if (!ok) fail++;
-    console.log((ok ? 'OK  ' : 'NO  ') + 'Esporta STEP e rileggi con OpenCascade: ' + name + '\n      ' + msg.join('\n      '));
+    console.log((ok ? 'OK  ' : 'NO  ') + 'Esporta STEP a facce piane e rileggi con OpenCascade: ' + name + '\n      ' + msg.join('\n      '));
+    // con le superfici vere
+    n++; ok = true; const m2 = [];
+    try {
+      const d = build(), st = Model.regen(d);
+      const topo = Geom.topology(st.body, st.tags);
+      const ex = Export.toSTEP(st.body, topo, { name: d.name, color: [0.66, 0.7, 0.74], tags: st.tags });
+      const fa = Export.toSTEP(st.body, topo, { name: d.name });
+      const r = fineVolume(ex.text), rf = fineVolume(fa.text);
+      const eq = (lab, g, e) => { if (g !== e) { ok = false; m2.push(`${lab}: ${g} invece di ${e}`); } };
+      eq('Lettura', r.ok, true); eq('Facce rilette', r.nf, ex.stats.faces); eq('Solidi riletti', r.n, ex.stats.solids); eq('Spigoli aperti nel file', ex.stats.badEdges + ex.stats.openLoops, 0);
+      const e = Math.abs(r.V - Vexact) / Vexact, ef = Math.abs(rf.V - Vexact) / Vexact, curved = ex.stats.exact > 0;
+      if (e > 2e-4) { ok = false; m2.push(`volume riletto ${r.V.toFixed(4)} lontano dal valore esatto ${Vexact.toFixed(4)}`); }
+      if (curved && !(e * 5 < ef)) { ok = false; m2.push('il volume non è più vicino di quello a facce piane'); }
+      m2.unshift(`${ex.stats.faces} facce (${Object.entries(ex.stats.surfaces).map(([k, v]) => v + ' ' + ({ plane: 'piane', cyl: 'cilindriche', cone: 'coniche', sph: 'sferiche', tor: 'toroidali' }[k] || k)).join(', ')}), ${ex.stats.edges} spigoli; volume riletto ${r.V.toFixed(4)}, esatto ${Vexact.toFixed(4)}: scarto ${(e * 100).toFixed(5)} % (a facce piane ${(ef * 100).toFixed(4)} %)`);
+    } catch (e) { ok = false; m2.push('ERRORE ' + e.message); }
+    if (!ok) fail++;
+    console.log((ok ? 'OK  ' : 'NO  ') + 'Esporta STEP con le superfici vere e rileggi con OpenCascade: ' + name + '\n      ' + m2.join('\n      '));
   }
   console.log(`\n${n - fail}/${n} superati (tolleranza ${(TOL * 100).toFixed(1)}%)`);
   process.exit(fail ? 1 : 0);

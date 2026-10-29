@@ -468,7 +468,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     await page.click('.pm-ok');
     await page.waitForFunction(() => App.st && App.st.body.length && !App.pm, null, { timeout: 120000 });
     const p = await props();
-    const ok = !capAll.warn && !capAll.err && /^3\.084 tra linee, archi e cerchi/.test(capAll.t) && /^3\.044 tra linee, archi e cerchi/.test(cap)
+    const ok = !capAll.warn && !capAll.err && /^3\.?084 tra linee, archi e cerchi/.test(capAll.t) && /^3\.?044 tra linee, archi e cerchi/.test(cap)
       && sk.ln === 4 + 8 * nO + 2 * nS && sk.ar === 2 * nS && sk.st === 'under' && tMove < 5000 && p && rel(p.V, 10 * area) < TOL;
     rec('Interfaccia: DXF grande (3044 entità, oltre il vecchio limite di 3000): senza avvisi, schizzo, mouse veloce, estrusione', ok,
       `«${capAll.t}»${capAll.warn ? ' (avviso)' : ''}${capAll.err ? ' errore «' + capAll.err + '»' : ''} → senza cartiglio «${cap}»; importazione ${tImp} ms; schizzo ${sk.ln} linee, ${sk.ar} archi (${sk.st}); 10 movimenti del mouse ${tMove} ms; V ${p && p.V.toFixed(1)} (${(10 * area).toFixed(1)})`);
@@ -1081,7 +1081,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
         s: { ver: 'AC1032', units: 4, ents: { LINE: 4000, ARC: 1200, TEXT: 30 }, total: 5230, blocks: 0, ok: true } });
       return { text: it.textContent.replace(/\s+/g, ' '), warn: it.querySelectorAll('.msg.warn').length, chip: it.querySelector('.chip').textContent };
     });
-    const okBig = big.chip === 'Pronto' && /4\.000 linee, 1\.200 archi/.test(big.text) && /30 testi/.test(big.text) && !big.warn && !/3000|3\.000|al massimo/.test(big.text);
+    const okBig = big.chip === 'Pronto' && /4\.?000 linee, 1\.?200 archi/.test(big.text) && /30 testi/.test(big.text) && !big.warn && !/3000|3\.000|al massimo/.test(big.text);
     await cpage.close();
     // il DXF salvato, importato nel Banco CAD
     await fresh();
@@ -1100,6 +1100,46 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     rec('Convertitore DWG → DXF: più file, esempio, file sbagliato, disegno grande senza avviso, DXF salvato e importato nel Banco CAD', ok,
       `lettore: ${mode}; ${rows.map(r => r.name + ' ' + r.chip).join(', ')}; disegno grande: «${big.text.slice(0, 120)}…»${big.warn ? ' CON AVVISO' : ' senza avvisi'}; file salvato ${dl.suggestedFilename()} (${dxf.length} byte, ${okDxf ? 'DXF R14 completo' : 'NON valido'}); nel Banco CAD ${imp.n} linee («${imp.toast}»)${cerr.length ? '; errori: ' + cerr.join(' | ') : ''}`);
   } catch (e) { rec('Convertitore DWG → DXF: più file, esempio, file sbagliato, disegno grande senza avviso, DXF salvato e importato nel Banco CAD', false, e.message.split('\n')[0]); }
+
+  // 6b. Convertitore: anteprima di ogni disegno (con l'ingombro) e «Salva tutti i DXF» in un solo .zip; nel Banco CAD lo zip
+  //     con due disegni fa comparire «Disegno nello zip»: si sceglie il secondo (un arco solo) e si importa quello
+  try {
+    const cpage = await ctx.newPage();
+    const cerr = []; cpage.on('pageerror', e => cerr.push(e.message));
+    await cpage.goto('file://' + path.join(path.dirname(page_), 'convertitore-dwg', 'index.html'));
+    const P = n => path.join(path.dirname(page_), 'convertitore-dwg', 'prove', n);
+    const tools0 = await cpage.evaluate(() => document.querySelector('#tools').hidden);
+    await cpage.setInputFiles('#dwgFile', [P('v-r14.dwg'), P('arco-2018.dwg')]);
+    await cpage.waitForFunction(() => document.querySelectorAll('.item').length === 2 && !document.querySelector('.chip.run'), null, { timeout: 60000 });
+    const pv = await cpage.evaluate(() => [...document.querySelectorAll('.item')].map(it => { const p = it.querySelector('.pv svg path'), c = it.querySelector('.pv figcaption');
+      const b = p ? p.getBBox() : null; return { name: it.querySelector('.name').textContent, d: p ? p.getAttribute('d').length : 0, cap: c ? c.textContent : '', w: b && b.width, h: b && b.height }; }));
+    const tools1 = await cpage.evaluate(() => document.querySelector('#tools').hidden);
+    await cpage.screenshot({ path: path.join(OUT, 'convertitore-anteprima.png'), fullPage: true });
+    const [dl] = await Promise.all([cpage.waitForEvent('download', { timeout: 15000 }), cpage.click('#btnAll')]);
+    const zipPath = path.join(OUT, 'disegni-dxf.zip'); await dl.saveAs(zipPath);
+    await cpage.close();
+    const r14 = pv.find(x => x.name === 'v-r14.dwg') || {}, arc = pv.find(x => x.name === 'arco-2018.dwg') || {};
+    // nel Banco CAD
+    await fresh();
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', zipPath);
+    await page.waitForFunction(() => /tra linee, archi e cerchi/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 10000 });
+    const z0 = await page.evaluate(() => ({ row: !document.querySelector('#dxfZipRow').hidden, opts: [...document.querySelectorAll('#dxfZip option')].map(o => o.textContent), cap: document.querySelector('#dxfCap').textContent }));
+    await page.selectOption('#dxfZip', 'arco-2018.dxf');
+    await page.waitForFunction(c => document.querySelector('#dxfCap').textContent && document.querySelector('#dxfCap').textContent !== c, z0.cap, { timeout: 10000 });
+    const cap2 = await page.evaluate(() => document.querySelector('#dxfCap').textContent);
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    const imp = await page.evaluate(() => { const s = Sketcher.session(); return { ln: s.sk.ents.filter(e => e.t === 'ln').length, ar: s.sk.ents.filter(e => e.t === 'ar').length }; });
+    await page.evaluate(() => Sketcher.exit(false));
+    const ok = tools0 && !tools1 && r14.d > 100 && arc.d > 100 && /ingombro 37,41 × 83,12/.test(r14.cap) && /16,59 × 16,57 pollici/.test(arc.cap) && r14.w > 0 && r14.h > 0 && Math.abs(r14.h / r14.w - 83.125 / 37.406) < 0.01
+      && dl.suggestedFilename() === 'disegni-dxf.zip' && z0.row && z0.opts.join('|') === 'v-r14.dxf|arco-2018.dxf' && /^1 tra linee/.test(cap2) && imp.ar === 1 && imp.ln === 0 && !cerr.length;
+    rec('Convertitore: anteprima con l\'ingombro, «Salva tutti i DXF» in uno .zip; nel Banco CAD «Disegno nello zip» e importazione del disegno scelto', ok,
+      `anteprime: ${pv.map(x => x.name + ' «' + x.cap + '»').join('; ')}; pulsante ${tools0 ? 'nascosto' : 'VISIBILE'} → ${tools1 ? 'NASCOSTO' : 'visibile'}; ${dl.suggestedFilename()}; nel Banco CAD: ${z0.row ? 'scelta ' + z0.opts.join(', ') : 'NESSUNA SCELTA'}, poi «${cap2}» → ${imp.ar} arco, ${imp.ln} linee${cerr.length ? '; errori: ' + cerr.join(' | ') : ''}`);
+  } catch (e) {
+    rec('Convertitore: anteprima con l\'ingombro, «Salva tutti i DXF» in uno .zip; nel Banco CAD «Disegno nello zip» e importazione del disegno scelto', false, e.message.split('\n')[0]);
+    await page.evaluate(() => { if (!document.querySelector('#modal').hidden) document.querySelector('#modalActions .btn')?.click(); if (App.mode === 'sketch') Sketcher.exit(false); }).catch(() => {});
+  }
 
   rec('Nessun errore JavaScript durante i test', !errors.length, errors.slice(0, 5).join(' | '));
   await page.screenshot({ path: path.join(OUT, 'ui-last.png') });

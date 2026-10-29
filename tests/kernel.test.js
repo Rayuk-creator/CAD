@@ -653,6 +653,22 @@ SK.push(['DXF: ellisse 100×60 → archi tangenti tra loro, sulla curva entro 1/
   const j = joints(r.geo);
   return { ok: true, got: [r.geo.every(g => g.t === 'arc') ? 1 : 0, dmax <= tol ? 1 : 0, r.approx.err <= tol ? 1 : 0, j.worst < 1e-8 ? 1 : 0, j.n, r.approx.ellipses], exp: [1, 1, 1, 1, r.geo.length, 1] };
 }]);
+// meno archi: ogni biarco va il più lontano possibile lungo la curva; lo scostamento vero (misurato fitto nei due sensi)
+// resta entro 1/10 000 del diametro minore. Con la divisione a metà di prima: 56 archi (100×60) e 152 (200×2).
+const ellDense = (a, b, geo) => {
+  const dEl = (x, y) => Math.abs(x * x / (a * a) + y * y / (b * b) - 1) / Math.hypot(2 * x / (a * a), 2 * y / (b * b));
+  let e1 = 0; for (const g of geo) for (let k = 0; k <= 64; k++) { const [x, y] = arcPt(g, g.a0 + (g.a1 - g.a0) * k / 64); e1 = Math.max(e1, dEl(x, y)); }
+  const dArc = (q, g) => { let f = Math.atan2(q[1] - g.c[1], q[0] - g.c[0]); while (f < g.a0) f += 2 * PI; while (f > g.a0 + 2 * PI) f -= 2 * PI;
+    if (f <= g.a1) return Math.abs(Math.hypot(q[0] - g.c[0], q[1] - g.c[1]) - g.r); return Math.min(...endsOf(g).map(e => Math.hypot(q[0] - e[0], q[1] - e[1]))); };
+  let e2 = 0; for (let k = 0; k < 4000; k++) { const t = 2 * PI * k / 4000, q = [a * Math.cos(t), b * Math.sin(t)]; e2 = Math.max(e2, Math.min(...geo.map(g => dArc(q, g)))); }
+  return Math.max(e1, e2);
+};
+SK.push(['DXF: meno archi per curva: ellisse 100×60 in non più di 40 archi, 200×2 in non più di 100; scostamento vero ≤ 1/10 000 del diametro minore', () => {
+  const r1 = MI.parseDXF(dxfFile([dEll(0, 0, 50, 0, 0.6)])), r2 = MI.parseDXF(dxfFile([dEll(0, 0, 100, 0, 0.01)]));
+  const e1 = ellDense(50, 30, r1.geo), e2 = ellDense(100, 1, r2.geo), t1 = MI.DXF_CURVE_TOL * 60, t2 = MI.DXF_CURVE_TOL * 2;
+  return { ok: true, got: [r1.geo.length <= 40 ? 1 : 0, r2.geo.length <= 100 ? 1 : 0, e1 <= t1 * (1 + 1e-9) ? 1 : 0, e2 <= t2 * (1 + 1e-9) ? 1 : 0, joints(r1.geo).worst < 1e-8 ? 1 : 0, Math.abs(r1.approx.err - e1) <= 0.01 * t1 ? 1 : 0], exp: [1, 1, 1, 1, 1, 1],
+    info: `${r1.geo.length} e ${r2.geo.length} archi; scostamento ${(e1 / t1).toFixed(4)} e ${(e2 / t2).toFixed(4)} della tolleranza` };
+}]);
 SK.push(['DXF: ELLIPSE con rapporto 1 = cerchio vero; arco di ELLIPSE con rapporto 1 = arco vero', () => {
   const r = MI.parseDXF(dxfFile([dEll(10, 20, 0, 15, 1), dEll(0, 0, 10, 0, 1, 0, PI / 2)]));
   const c = r.geo.find(g => g.t === 'circle'), a = r.geo.find(g => g.t === 'arc');
@@ -826,6 +842,58 @@ SK.push(['STEP: nome con lettere accentate e apostrofo scritto come vuole la nor
   const d = box(); d.name = "Flangia d'uscita è"; const t = stepOf(d).text;
   const ok = t.includes("PRODUCT('Flangia d''uscita \\X2\\00E8\\X0\\'") && !/[^\x09\x0a\x0d\x20-\x7e]/.test(t);
   return { ok, got: [ok ? 1 : 0], exp: [1] };
+}]);
+// STEP con le superfici vere (come fa il programma: o.tags = st.tags). Conti fatti a mano: un cilindro intero è una
+// faccia sola con due anelli (i due cerchi), senza cucitura; la sfera e il toro interi sono divisi in due metà.
+const stepX = doc => { const st = Model.regen(doc); if (st.errors.size || !st.body.length) throw new Error('pezzo non costruito'); return Export.toSTEP(st.body, Geom.topology(st.body, st.tags), { name: doc.name, tags: st.tags, date: new Date(2026, 9, 29) }); };
+const cntE = (t, re) => (t.match(re) || []).length;
+SK.push(['STEP vero: piastra 100×60×8 con 4 fori R5 → 4 CYLINDRICAL_SURFACE R5 e 8 CIRCLE; 16 vertici, 20 spigoli, 10 facce, 12 anelli interni, Eulero −6', () => {
+  const d = D0('piastra'); const b = SB(); b.rect(0, 0, 100, 60); for (const [x, y] of [[20, 15], [80, 15], [20, 45], [80, 45]]) b.circle(x, y, 5);
+  feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 8 });
+  const r = stepX(d), t = r.text, g = stepCounts(r);
+  return { ok: true, got: [...g, cntE(t, /CYLINDRICAL_SURFACE\('',#\d+,5\.\)/g), cntE(t, /CIRCLE\('',#\d+,5\.\)/g), r.stats.fallback], exp: [16, 20, 10, 12, 1, -6, 0, 4, 8, 0] };
+}]);
+SK.push(['STEP vero: tubo di rivoluzione R 20/12 alto 30 → 2 cilindri e 2 corone piane, 4 cerchi; 4 vertici, 4 spigoli, 4 facce, Eulero 0', () => {
+  const d = D0('tubo'); const b = SB(); b.center(0, -100, 0, 100); b.rect(12, 0, 20, 30); feat(d, { type: 'revolve', sketch: sketch(d, STD('front'), b), angle: 360 });
+  const r = stepX(d), t = r.text;
+  return { ok: true, got: [...stepCounts(r), cntE(t, /CYLINDRICAL_SURFACE\('',#\d+,20\.\)/g), cntE(t, /CYLINDRICAL_SURFACE\('',#\d+,12\.\)/g), cntE(t, /\bPLANE\(/g), r.stats.circles], exp: [4, 4, 4, 4, 1, 0, 0, 1, 1, 2, 4] };
+}]);
+SK.push(['STEP vero: sfera R10 intera → 2 SPHERICAL_SURFACE R10 divise dall\'equatore (1 vertice, 1 spigolo, 2 facce, Eulero 2)', () => {
+  const d = D0('sfera'); const b = SB(); b.center(0, -100, 0, 100); const c = b.pt(0, 0), a = b.pt(0, -10), e = b.pt(0, 10); b.arc(c, a, e); b.line(e, a);
+  feat(d, { type: 'revolve', sketch: sketch(d, STD('front'), b), angle: 360 });
+  const r = stepX(d);
+  return { ok: true, got: [...stepCounts(r), cntE(r.text, /SPHERICAL_SURFACE\('',#\d+,10\.\)/g), cntE(r.text, /CIRCLE\('',#\d+,10\.\)/g)], exp: [1, 1, 2, 0, 1, 2, 0, 2, 1] };
+}]);
+SK.push(['STEP vero: toro R20 r5 intero → 2 TOROIDAL_SURFACE (20, 5) divise dai cerchi R25 e R15 (2 vertici, 2 spigoli, 2 facce, Eulero 0)', () => {
+  const d = D0('toro'); const b = SB(); b.center(0, -100, 0, 100); b.circle(20, 0, 5); feat(d, { type: 'revolve', sketch: sketch(d, STD('front'), b), angle: 360 });
+  const r = stepX(d), t = r.text;
+  return { ok: true, got: [...stepCounts(r), cntE(t, /TOROIDAL_SURFACE\('',#\d+,20\.,5\.\)/g), cntE(t, /CIRCLE\('',#\d+,25\.\)/g), cntE(t, /CIRCLE\('',#\d+,15\.\)/g)], exp: [2, 2, 2, 2, 1, 0, 0, 2, 1, 1] };
+}]);
+SK.push(['STEP vero: raccordo R3 su tutti i 12 spigoli → 12 cilindri R3, 8 sfere R3 agli angoli; 24 vertici, 48 spigoli (24 rette, 24 archi), 26 facce, Eulero 2', () => {
+  const d = box(); feat(d, { type: 'fillet', r: 3, edges: allEdges(d) });
+  const r = stepX(d), t = r.text;
+  return { ok: true, got: [...stepCounts(r), cntE(t, /CYLINDRICAL_SURFACE\('',#\d+,3\.\)/g), cntE(t, /SPHERICAL_SURFACE\('',#\d+,3\.\)/g), r.stats.circles, cntE(t, /\bLINE\(/g)], exp: [24, 48, 26, 0, 1, 2, 0, 12, 8, 24, 24] };
+}]);
+SK.push(['STEP vero: foro cieco Ø8 con punta a 118° → CONICAL_SURFACE con semiangolo 59° esatto e cilindro R4; nessuna faccia a faccette', () => {
+  const d = box(); const top = face(d, nearW([0, 1, 0], 10));
+  const h = SB(); h.pt(40, 25, { hole: true }); feat(d, { type: 'hole', sketch: sketch(d, top, h), kind: 'simple', dia: 8, end: 'blind', depth: 6 });
+  const r = stepX(d), m = r.text.match(/CONICAL_SURFACE\('',#\d+,([^,]+),([^)]+)\)/);
+  return { ok: true, got: [m ? 1 : 0, m ? +m[2] : 0, cntE(r.text, /CYLINDRICAL_SURFACE\('',#\d+,4\.\)/g), r.stats.fallback, r.stats.badEdges + r.stats.openLoops], exp: [1, 59 * PI / 180, 1, 0, 0] };
+}]);
+SK.push(['STEP vero: due raccordi R4 che si incontrano ad angolo → il bordo tra i due cilindri è un\'ellisse (semiassi 4√2 e 4); nessuna faccia a faccette', () => {
+  const d = box(); feat(d, { type: 'fillet', r: 4, edges: [edge(d, [40, 10, 0], 'line'), edge(d, [80, 10, -25], 'line')] });
+  const r = stepX(d), m = r.text.match(/ELLIPSE\('',#\d+,([^,]+),([^)]+)\)/);
+  return { ok: true, got: [r.stats.ellipses, m ? +m[1] : 0, m ? +m[2] : 0, cntE(r.text, /CYLINDRICAL_SURFACE/g), r.stats.fallback, r.stats.badEdges + r.stats.openLoops], exp: [1, 4 * Math.SQRT2, 4, 2, 0, 0] };
+}]);
+SK.push(['STEP vero: serie lineare di 4 fori (i tagli spezzano le faccette degli altri fori: vertici a T sulle corde) → 4 cilindri veri', () => {
+  const c = CASES.find(x => /^Serie lineare 4 fori/.test(x.name)), r = stepX(c.build());
+  return { ok: true, got: [cntE(r.text, /CYLINDRICAL_SURFACE\('',#\d+,4\.\)/g), r.stats.fallback, r.stats.badEdges + r.stats.openLoops, r.stats.faces], exp: [4, 0, 0, 10] };
+}]);
+SK.push(['STEP: cilindro R10 forato di traverso da un foro R4 (bordo tra i due cilindri = curva 3D) → i due cilindri restano a facce piane, le due basi vere; solido chiuso', () => {
+  const d = D0('perno'); const b = SB(); b.circle(0, 0, 10); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 30 });
+  const h = SB(); h.circle(0, 15, 4); feat(d, { type: 'cut', sketch: sketch(d, STD('front'), h), end: 'mid', depth: 40 });
+  const r = stepX(d);
+  return { ok: true, got: [r.stats.fallback, cntE(r.text, /CYLINDRICAL_SURFACE/g), r.stats.badEdges + r.stats.openLoops, r.stats.solids, r.stats.verts - r.stats.edges + r.stats.faces - r.stats.holes], exp: [2, 0, 0, 1, 0] };
 }]);
 // PDF: un quarto di cerchio con una curva di Bézier (punti di controllo a 4/3·tan(22,5°) = 0,55228 del raggio) si scosta
 // dal cerchio al massimo di 2,7253·10⁻⁴ del raggio (valore noto)

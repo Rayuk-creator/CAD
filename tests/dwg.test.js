@@ -157,7 +157,8 @@ const acadver = u8 => { const m = /\$ACADVER\s*\r?\n\s*1\s*\r?\n\s*(\S+)/.exec(B
   // il Banco CAD apre il DXF anche dentro uno .zip (come lo salva la pagina pubblicata), compresso o no
   try {
     const dxf = new Uint8Array(fs.readFileSync(path.join(PROVE, 'riferimento', 'entita-r11.dxf')));
-    const pjs = html.match(/function crc32\(u8\) \{.*\n  function zipOne\(name, u8\) \{[\s\S]*?\n  \}\n/)[0];
+    // le funzioni della pagina: crc32, zipMany e zipOne (un file solo)
+    const pjs = (html.match(/  function crc32\(u8\) \{.*\n/) || [])[0] + html.slice(html.indexOf('  function zipMany(files) {'), html.indexOf('  // salva lo .zip'));
     const zipOne = new Function(pjs + '; return zipOne;')();
     const stored = new Uint8Array(await zipOne('disegno.dxf', dxf).arrayBuffer());
     // archivio compresso (metodo 8), scritto qui a mano con zlib
@@ -174,6 +175,63 @@ const acadver = u8 => { const m = /\$ACADVER\s*\r?\n\s*1\s*\r?\n\s*(\S+)/.exec(B
     rec('Il Banco CAD apre il DXF dentro uno .zip (senza compressione e compresso)', u1.name === 'disegno.dxf' && same(u1.data) && u2.name === 'pezzo.dxf' && same(u2.data) && /danneggiato/.test(msgs[0]) && /c'è un DWG/.test(msgs[1]),
       `${u1.name} ${u1.data.length} byte, ${u2.name} ${u2.data.length} byte (originale ${dxf.length}); messaggi: «${msgs.join('» «')}»`);
   } catch (e) { rec('Il Banco CAD apre il DXF dentro uno .zip (senza compressione e compresso)', false, 'ERRORE ' + e.message); }
+  // memoria del lettore: nel modulo WebAssembly la memoria iniziale è 16 MB (libredwg-web la compila con 1 GB, che sui
+  // tablet non c'è); la memoria cresce da sola: con 300 MB occupati la conversione dà lo stesso DXF, byte per byte
+  try {
+    const wasm = zlib.gunzipSync(Buffer.from(b64.trim(), 'base64'));
+    let p = 8, mem = null; const leb = () => { let r = 0, sh = 0, x; do { x = wasm[p++]; r += (x & 0x7f) * 2 ** sh; sh += 7; } while (x & 0x80); return r; };
+    while (p < wasm.length) { const id = wasm[p++], size = leb(), st = p; if (id === 5) { leb(); const fl = wasm[p++]; const ini = leb(); mem = { ini, max: fl & 1 ? leb() : null }; } p = st + size; }
+    let ex = null;
+    const M2 = await createModule({ wasmBinary: wasm, locateFile: f => f, print: () => {}, printErr: () => {},
+      instantiateWasm: (imports, cb) => { WebAssembly.instantiate(wasm, imports).then(r => { ex = r.instance.exports; cb(r.instance, r.module); }); return {}; } });
+    const MB = () => ex.memory.buffer.byteLength / 1048576;
+    const m0 = MB();
+    const big = new Uint8Array(fs.readFileSync(path.join(PROVE, 'esempio-2000.dwg')));
+    const ref = runConvert(M, big);
+    const ptrs = []; for (let i = 0; i < 6; i++) ptrs.push(ex.malloc(50 * 1048576));
+    const m1 = MB(), r = runConvert(M2, big); ptrs.forEach(q => ex.free(q));
+    const same = r.err === ref.err && Buffer.compare(Buffer.from(r.dxf), Buffer.from(ref.dxf)) === 0;
+    rec('Lettore con la memoria iniziale di 16 MB (prima 1 GB) che cresce da sola: con 300 MB occupati lo stesso DXF, byte per byte',
+      mem && mem.ini === 256 && mem.max === 65536 && m0 <= 20 && ptrs.every(q => q > 0) && m1 >= 300 && same,
+      `memoria nel modulo: ${mem && mem.ini * 64 / 1024} MB iniziali, ${mem && mem.max * 64 / 1024} MB al massimo; all'avvio ${m0.toFixed(1)} MB, dopo 6 blocchi da 50 MB ${m1.toFixed(0)} MB; DXF ${same ? 'uguale' : 'DIVERSO'} (${r.dxf ? r.dxf.length : 0} byte)`);
+  } catch (e) { rec('Lettore con la memoria iniziale di 16 MB (prima 1 GB) che cresce da sola: con 300 MB occupati lo stesso DXF, byte per byte', false, 'ERRORE ' + e.message); }
+
+  // anteprima del convertitore (la funzione della pagina): stesso ingombro che misura il Banco CAD, per tutti i DWG di prova
+  try {
+    const src = html.slice(html.indexOf('  function preview(u8) {'), html.indexOf('  const SVGNS'));
+    const preview = new Function(src + '; return preview;')();
+    const msg = []; let ok = true;
+    for (const f of fs.readdirSync(PROVE).filter(x => x.endsWith('.dwg')).sort()) {
+      const r = runConvert(M, new Uint8Array(fs.readFileSync(path.join(PROVE, f))));
+      // ingombro esatto di quello che legge il Banco CAD (archi: estremi e punti dei quadranti)
+      const geo = IM.parseDXF(r.dxf).geo, mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
+      const grow = q => { mn[0] = Math.min(mn[0], q[0]); mn[1] = Math.min(mn[1], q[1]); mx[0] = Math.max(mx[0], q[0]); mx[1] = Math.max(mx[1], q[1]); };
+      for (const g of geo) { if (g.t === 'line') { grow(g.a); grow(g.b); continue; } const a0 = g.t === 'circle' ? 0 : g.a0; let a1 = g.t === 'circle' ? 2 * Math.PI : g.a1; while (a1 <= a0) a1 += 2 * Math.PI;
+        for (const a of [a0, a1]) grow([g.c[0] + g.r * Math.cos(a), g.c[1] + g.r * Math.sin(a)]); for (let q = Math.ceil(a0 / (Math.PI / 2)); q * Math.PI / 2 <= a1; q++) grow([g.c[0] + g.r * Math.cos(q * Math.PI / 2), g.c[1] + g.r * Math.sin(q * Math.PI / 2)]); }
+      const m = { w: mx[0] - mn[0], h: mx[1] - mn[1] };
+      const pv = preview(r.dxf);
+      const w = pv.ext[2] - pv.ext[0], h = pv.ext[3] - pv.ext[1], s = Math.max(m.w, m.h);
+      const good = Math.abs(w - m.w) <= 1e-6 * s && Math.abs(h - m.h) <= 1e-6 * s && pv.count > 0;
+      if (!good) ok = false;
+      msg.push(`${f}: ${pv.count} elementi, ${w.toFixed(3)} × ${h.toFixed(3)} (Banco CAD ${m.w.toFixed(3)} × ${m.h.toFixed(3)})`);
+    }
+    rec('Anteprima del disegno nel convertitore: stesso ingombro del Banco CAD (blocchi con scala diversa in x e y saltati come nel Banco CAD)', ok, msg.join('; '));
+  } catch (e) { rec('Anteprima del disegno nel convertitore: stesso ingombro del Banco CAD', false, 'ERRORE ' + e.message); }
+
+  // «Salva tutti i DXF»: più disegni in un solo .zip (due con lo stesso nome); il Banco CAD elenca tutti i DXF e apre quello scelto
+  try {
+    const crcSrc = (html.match(/  function crc32\(u8\) \{.*\n/) || [])[0], zSrc = html.slice(html.indexOf('  function zipMany(files) {'), html.indexOf('  const zipOne ='));
+    const zipMany = new Function(crcSrc + zSrc + '; return zipMany;')();
+    const conv = f => runConvert(M, new Uint8Array(fs.readFileSync(path.join(PROVE, f)))).dxf;
+    const a = conv('v-r14.dwg'), b = conv('arco-2018.dwg'), c = conv('cerchio-2010.dwg');
+    const zip = new Uint8Array(await zipMany([{ name: 'porta.dxf', data: a }, { name: 'pezzo.dxf', data: b }, { name: 'pezzo.dxf', data: c }]).arrayBuffer());
+    const z0 = await IM.unzipDxf(zip), z2 = await IM.unzipDxf(zip, 'pezzo (2).dxf'), z1 = await IM.unzipDxf(zip, 'pezzo.dxf');
+    const same = (x, y) => x.length === y.length && Buffer.compare(Buffer.from(x), Buffer.from(y)) === 0;
+    rec('«Salva tutti i DXF»: tre disegni in un solo .zip (nomi uguali resi diversi); il Banco CAD li elenca e apre quello scelto',
+      z0.dxfs.join('|') === 'porta.dxf|pezzo.dxf|pezzo (2).dxf' && z0.name === 'porta.dxf' && same(z0.data, a) && z1.name === 'pezzo.dxf' && same(z1.data, b) && z2.name === 'pezzo (2).dxf' && same(z2.data, c),
+      `nello zip: ${z0.dxfs.join(', ')} (${zip.length} byte); aperti: ${[z0, z1, z2].map(z => z.name + ' ' + z.data.length + ' byte').join(', ')}`);
+  } catch (e) { rec('«Salva tutti i DXF»: tre disegni in un solo .zip; il Banco CAD li elenca e apre quello scelto', false, 'ERRORE ' + e.message); }
+
   fs.rmSync(tmp, { recursive: true, force: true });
   const fail = rows.filter(x => !x).length;
   console.log(`\n${rows.length - fail}/${rows.length} superati (tolleranza ${(TOL * 100).toFixed(1)}%)`);
