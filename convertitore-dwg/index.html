@@ -159,7 +159,7 @@ footer p { margin: 0; }
 
   <footer>
     <p>Programma libero con licenza <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU GPL 3</a>. Legge i DWG con <a href="https://www.gnu.org/software/libredwg/" target="_blank" rel="noopener">LibreDWG</a>, compilato per il browser da <a href="https://github.com/mlightcad/libredwg-web" target="_blank" rel="noopener">libredwg-web</a> <span id="dwgVer"></span>. Sorgenti e licenza: <a href="https://github.com/Rayuk-creator/CAD/tree/main/convertitore-dwg" target="_blank" rel="noopener">cartella convertitore-dwg</a> del Banco CAD.</p>
-    <p>È separato dal Banco CAD (che ha un'altra licenza) e funziona anche senza internet. <a href="https://claude.ai/artifact/MB1heHPSzDXuv6brJimWUP" target="_blank" rel="noopener">Apri il Banco CAD</a></p>
+    <p>È separato dal Banco CAD (che ha un'altra licenza) e funziona anche senza internet. <a id="cadLink" href="https://claude.ai/artifact/MB1heHPSzDXuv6brJimWUP" target="_blank" rel="noopener">Apri il Banco CAD</a></p>
   </footer>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
@@ -171,6 +171,8 @@ footer p { margin: 0; }
   const $ = s => document.querySelector(s);
   const LIBREDWG_VERSION = '0.8.2';
   $('#dwgVer').textContent = LIBREDWG_VERSION;
+  // sul sito GitHub Pages (….github.io) il Banco CAD è la pagina dello stesso sito, una cartella più su
+  try { if (/\.github\.io$/i.test(location.hostname)) $('#cadLink').href = new URL('../', location.href).href; } catch (e) { /* indirizzo non leggibile */ }
 
   /* ---------- utilità ---------- */
   const b64dec = s => { const bin = atob(s); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };

@@ -1143,6 +1143,39 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
 
   rec('Nessun errore JavaScript durante i test', !errors.length, errors.slice(0, 5).join(' | '));
   await page.screenshot({ path: path.join(OUT, 'ui-last.png') });
+  // 6c. Sito GitHub Pages: le pagine servite da rayuk-creator.github.io (qui simulato con page.route dai file del repository)
+  //     si collegano tra loro sullo stesso sito; da disco restano i collegamenti a claude.ai
+  try {
+    const fs = require('fs'), ROOTD = path.dirname(page_), SITE = 'https://rayuk-creator.github.io/CAD/';
+    const gctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+    await gctx.route('https://rayuk-creator.github.io/**', r => {
+      const u = new URL(r.request().url()).pathname.replace(/^\/CAD\//, '');
+      const f = u === '' || u === 'index.html' ? page_ : u === 'convertitore-dwg/' || u === 'convertitore-dwg/index.html' ? path.join(ROOTD, 'convertitore-dwg', 'index.html') : null;
+      return f ? r.fulfill({ status: 200, contentType: 'text/html', body: fs.readFileSync(f) }) : r.fulfill({ status: 404, body: '' });
+    });
+    await gctx.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+    const gp = await gctx.newPage(); const gerr = []; gp.on('pageerror', e => gerr.push(e.message));
+    await gp.goto(SITE); await gp.waitForFunction(() => window.App && App.DWG_CONVERTER_URL, null, { timeout: 30000 });
+    await gp.click('#btnFile'); await gp.click('#menuFile [data-act="importDxf"]');
+    await gp.setInputFiles('#dxfFile', { name: 'pezzo.dwg', mimeType: 'application/octet-stream', buffer: Buffer.from('AC1032') });
+    await gp.waitForTimeout(300);
+    const g1 = await gp.evaluate(() => ({ url: App.DWG_CONVERTER_URL, href: (document.querySelector('#dxfErr a.dwg-link') || {}).href }));
+    const cp = await gctx.newPage(); cp.on('pageerror', e => gerr.push(e.message));
+    await cp.goto(SITE + 'convertitore-dwg/');
+    const g2 = await cp.evaluate(() => document.querySelector('#cadLink').href);
+    await cp.goto(SITE + 'convertitore-dwg/index.html');
+    const g3 = await cp.evaluate(() => document.querySelector('#cadLink').href);
+    await gctx.close();
+    const lp = await ctx.newPage();
+    await lp.goto('file://' + path.join(ROOTD, 'convertitore-dwg', 'index.html'));
+    const g4 = await lp.evaluate(() => document.querySelector('#cadLink').href); await lp.close();
+    const g5 = await page.evaluate(() => App.DWG_CONVERTER_URL);
+    rec('Sito GitHub Pages: Banco CAD e Convertitore si collegano tra loro sullo stesso sito; da disco restano i collegamenti a claude.ai',
+      g1.url === SITE + 'convertitore-dwg/' && g1.href === SITE + 'convertitore-dwg/' && g2 === SITE && g3 === SITE &&
+      g4 === 'https://claude.ai/artifact/MB1heHPSzDXuv6brJimWUP' && g5 === 'https://claude.ai/artifact/8PeF7HpK8VZ1RFpsfAJYkY' && !gerr.length,
+      `sito: Banco CAD → ${g1.href}; Convertitore → ${g2} (e da index.html → ${g3}); da disco: ${g4} e ${g5}${gerr.length ? '; errori: ' + gerr.join(' | ') : ''}`);
+  } catch (e) { rec('Sito GitHub Pages: Banco CAD e Convertitore si collegano tra loro sullo stesso sito', false, e.message.split('\n')[0]); }
+
   await browser.close();
   const f = results.filter(r => !r.ok).length;
   console.log(`\n${results.length - f}/${results.length} superati`);

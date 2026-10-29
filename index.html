@@ -7972,8 +7972,12 @@ self.onmessage = async ev => {
   App.importCadDialog = importCadDialog;
   /* ---------- importazione DXF in uno schizzo (come «Importa in un nuovo schizzo 2D» e «Inserisci DXF» di SolidWorks) ---------- */
   // Convertitore DWG → DXF: programma separato (licenza GPL 3, cartella convertitore-dwg del repository), pubblicato a parte.
-  // I messaggi sui file DWG portano il collegamento alla sua pagina.
-  const DWG_CONVERTER_URL = 'https://claude.ai/artifact/8PeF7HpK8VZ1RFpsfAJYkY';
+  // I messaggi sui file DWG portano il collegamento alla sua pagina: sul sito GitHub Pages (….github.io) la pagina dello
+  // stesso sito, nella cartella convertitore-dwg; altrimenti (file aperto da disco, pagina su claude.ai) quella su claude.ai.
+  const DWG_CONVERTER_URL = (() => {
+    try { if (/\.github\.io$/i.test(location.hostname)) return new URL('convertitore-dwg/', location.href).href; } catch (e) { /* indirizzo non leggibile */ }
+    return 'https://claude.ai/artifact/8PeF7HpK8VZ1RFpsfAJYkY';
+  })();
   App.DWG_CONVERTER_URL = DWG_CONVERTER_URL;
   function dwgLink(e) {
     if (!e || !/Convertitore DWG → DXF/.test(e.textContent)) return;
