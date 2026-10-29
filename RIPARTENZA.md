@@ -2,7 +2,7 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 29 ottobre 2026 (decisioni per il disegno 2D libero; STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
+Ultimo aggiornamento: 29 ottobre 2026 (pagine su claude.ai ripubblicate; decisioni per il disegno 2D libero; STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
 
 **Stato attuale:** ultima modifica su `main` = «STEP con superfici vere, meno archi nei DXF, convertitore DWG più leggero» del 29 ottobre (vedi `git log`). Tutte le prove superate: 152/152 di calcolo, 28/28 STEP/IGES (comprese 14 di STEP esportati e riletti), 14/14 del convertitore DWG, 59/59 dell'interfaccia, Autoverifica 152/152. Nessun lavoro lasciato a metà.
 
@@ -170,4 +170,4 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 - La propagazione tangente si ferma agli angoli vivi: dove la catena finisce contro un altro spigolo (per esempio mezza ellisse con i lati che arrivano alla base) il raccordo finisce piatto, come prima. Gli spigoli aggiunti dalla propagazione si vedono nell'anteprima del raccordo, non sono elencati uno per uno nel pannello.
 - L'assonometria ombreggiata usa l'algoritmo del pittore (facce ordinate per profondità): con pezzi molto intrecciati potrebbe sbagliare qualche faccia; nelle prove e nelle esercitazioni non succede.
 - Due facce vere adiacenti nello stesso piano (per esempio una faccia divisa con una «linea di divisione») si vedono unite, senza lo spigolo in mezzo: si potrebbe distinguere con la faccia d'origine in `surfKey`, ma toccherebbe anche i pezzi normali. Per ora lasciato così.
-- Pagine pubblicate su claude.ai: «Banco CAD» (versione 14 del 28 ottobre: Salva PDF ed Esporta STEP a facce piane; nella pagina pubblicata lo STEP arriva dentro uno .zip, il PDF da solo) e «Convertitore DWG → DXF» (artifact a parte, versione 2 del 22 ottobre): **non** ancora aggiornate con i lavori del 29 ottobre; ripubblicarle se l'utente lo chiede. La versione giusta resta `index.html` del repository.
+- Pagine pubblicate su claude.ai, **aggiornate il 29 ottobre** con tutti i lavori di quel giorno (controllate identiche byte per byte ai file del repository): «Banco CAD» versione 15 (condivisa con chiunque abbia il link; nella pagina pubblicata lo STEP arriva dentro uno .zip, il PDF da solo) e «Convertitore DWG → DXF» versione 3 (artifact a parte, ancora **privato**). Si ripubblicano agli stessi indirizzi con il permesso «downloads» già presente. La versione giusta resta `index.html` del repository.
