@@ -5979,10 +5979,11 @@ self.onmessage = async ev => {
       vec3 c = mix(vC * d + s, vC, uFlat);
       gl_FragColor = vec4(c, 1.0);
     }`;
+  const LINE_ZOFF_PX = 1, SIL_ZOFF_PX = 6;
   const VS_LINE = `
     attribute vec3 aPos; attribute vec3 aCol; attribute float aDist;
-    uniform mat4 uMVP; varying vec3 vC; varying float vD; varying vec3 vP;
-    void main(){ gl_Position = uMVP * vec4(aPos,1.0); gl_Position.z -= 0.0006 * gl_Position.w; vC = aCol; vD = aDist; vP = aPos; }`;
+    uniform mat4 uMVP; uniform float uZOff; varying vec3 vC; varying float vD; varying vec3 vP;
+    void main(){ gl_Position = uMVP * vec4(aPos,1.0); gl_Position.z -= uZOff * gl_Position.w; vC = aCol; vD = aDist; vP = aPos; }`;
   const FS_LINE = `
     precision mediump float;
     varying vec3 vC; varying float vD; varying vec3 vP;
@@ -6253,6 +6254,11 @@ self.onmessage = async ev => {
     gl.uniformMatrix4fv(L.loc.uMVP, false, new Float32Array(m.MVP));
     gl.uniform4f(L.loc.uClip, clip[0], clip[1], clip[2], clip[3]); gl.uniform1f(L.loc.uClipOn, clipOn);
     gl.uniform1f(L.loc.uAlpha, 1);
+    // Spigoli un poco «davanti» alle facce, per non mescolarsi con loro: lo spostamento è di LINE_ZOFF_PX pixel (misurati
+    // nel mondo, quindi uguali a ogni ingrandimento). Prima era fisso (0,0006 della profondità, almeno 1,2 mm): ingrandendo
+    // diventava decine di pixel e gli spigoli nascosti appena dietro una faccia si vedevano per un tratto sopra di lei.
+    // Le facce sono già spinte indietro da polygonOffset (pendenza 1,5): copre gli spigoli visti di taglio.
+    gl.uniform1f(L.loc.uZOff, Math.max(LINE_ZOFF_PX * this.pxSize() / m.depth, 2e-6));
     const dashLen = this.pxSize() * 9;
     gl.uniform1f(L.loc.uDashLen, dashLen);
     if (showEdges && this.lineData && this.lineData.pos.length) {
@@ -6279,7 +6285,10 @@ self.onmessage = async ev => {
         this.bindAttr(L.loc.aPos, 'spos', 3); this.bindAttr(L.loc.aCol, 'scol', 3); this.bindAttr(L.loc.aDist, 'sdist', 1);
         gl.uniform1f(L.loc.uDash, 0);
         if (this.mode === 'wire') gl.disable(gl.DEPTH_TEST);
+        // contorni apparenti: stanno tra una faccetta vista quasi di taglio e una girata dall'altra parte, serve un po' di più
+        gl.uniform1f(L.loc.uZOff, Math.max(SIL_ZOFF_PX * this.pxSize() / m.depth, 2e-6));
         gl.drawArrays(gl.LINES, 0, sil.length / 3);
+        gl.uniform1f(L.loc.uZOff, Math.max(LINE_ZOFF_PX * this.pxSize() / m.depth, 2e-6));
         gl.enable(gl.DEPTH_TEST);
       }
     }

@@ -1143,6 +1143,53 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
 
   rec('Nessun errore JavaScript durante i test', !errors.length, errors.slice(0, 5).join(' | '));
   await page.screenshot({ path: path.join(OUT, 'ui-last.png') });
+  // 6d. Spigoli nascosti che «escono» davanti a una faccia: due blocchi (STL) con quello davanti staccato di 0,5 mm, vista
+  //     isometrica ingrandita fino a 0,06 mm per pixel. Dentro la sagoma del blocco davanti, lontano più di 3 px dai suoi
+  //     9 spigoli visibili, non ci deve essere nessun pixel di spigolo (prima: lo spostamento fisso di 1,2 mm verso
+  //     l'osservatore faceva vedere per un tratto gli spigoli appena dietro). I 9 spigoli visibili restano interi.
+  try {
+    await fresh();
+    const boxes = [[0, 0, 0, 120, 40, 40], [40, 0, 40.5, 80, 40, 80.5]], f = [];
+    for (const [x0, y0, z0, x1, y1, z1] of boxes) { const P = (i, j, k) => [[x0, x1][i], [y0, y1][j], [z0, z1][k]]; const q = (a, b, c, d) => f.push([a, b, c], [a, c, d]);
+      q(P(0,0,0), P(0,1,0), P(1,1,0), P(1,0,0)); q(P(0,0,1), P(1,0,1), P(1,1,1), P(0,1,1)); q(P(0,0,0), P(1,0,0), P(1,0,1), P(0,0,1));
+      q(P(0,1,0), P(0,1,1), P(1,1,1), P(1,1,0)); q(P(0,0,0), P(0,0,1), P(0,1,1), P(0,1,0)); q(P(1,0,0), P(1,1,0), P(1,1,1), P(1,0,1)); }
+    const stl = 'solid t\n' + f.map(t => 'facet normal 0 0 0\nouter loop\n' + t.map(v => 'vertex ' + v.join(' ')).join('\n') + '\nendloop\nendfacet').join('\n') + '\nendsolid t\n';
+    const res = await page.evaluate(({ stl, B, zooms }) => {
+      App.importMeshData('blocchi.stl', new TextEncoder().encode(stl), { unit: 'mm', zUp: false });
+      App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false);
+      const mode0 = App.r.mode, out = [];
+      for (const z of zooms) {
+        App.r.cam.scale = z; App.r.cam.target = [(B[0] + B[3]) / 2, (B[1] + B[4]) / 2, (B[2] + B[5]) / 2];
+        const gl = App.r.gl, W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, px = new Uint8Array(W * H * 4), p0 = new Uint8Array(W * H * 4);
+        App.r.mode = 'shaded'; App.r.draw(); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, p0);
+        App.r.mode = 'shadedEdges'; App.r.draw(); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        const k = W / App.r.cssW, C = []; for (const i of [0, 3]) for (const j of [1, 4]) for (const l of [2, 5]) C.push([B[i], B[j], B[l]]);
+        const S = C.map(c => App.r.project(c).map((v, ii) => ii < 2 ? v * k : v));
+        let ni = 0; S.forEach((s, i) => { if (s[2] > S[ni][2]) ni = i; });
+        const segs = S.map((s, i) => i).filter(i => i !== ni && [0, 1, 2].filter(t => C[i][t] !== C[ni][t]).length === 1).map(i => [S[ni], S[i]]);
+        const pts = S.map(s => [s[0], s[1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+        const lo = [], hi = []; for (const q of pts) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+        for (const q of pts.slice().reverse()) { while (hi.length >= 2 && cr(hi[hi.length - 2], hi[hi.length - 1], q) <= 0) hi.pop(); hi.push(q); }
+        const hull = lo.slice(0, -1).concat(hi.slice(0, -1)); for (let i = 0; i < hull.length; i++) segs.push([hull[i], hull[(i + 1) % hull.length]]);
+        const dseg = (q, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], t = Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / (dx * dx + dy * dy))); return Math.hypot(q[0] - a[0] - t * dx, q[1] - a[1] - t * dy); };
+        const inside = q => hull.every((h, i) => cr(h, hull[(i + 1) % hull.length], q) >= 0);
+        const edgeAt = (x, y) => { if (x < 0 || y < 0 || x >= W || y >= H) return false; const o = ((H - 1 - y) * W + x) * 4; return (0.3 * p0[o] + 0.59 * p0[o + 1] + 0.11 * p0[o + 2]) - (0.3 * px[o] + 0.59 * px[o + 1] + 0.11 * px[o + 2]) > 25; };
+        let bad = 0, far = 0; const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+        for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(H - 1, Math.ceil(Math.max(...ys))); y++)
+          for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(W - 1, Math.ceil(Math.max(...xs))); x++) {
+            const q = [x + 0.5, y + 0.5]; if (!inside(q)) continue; const d = Math.min(...segs.map(s => dseg(q, s[0], s[1]))); if (d <= 3 * k) continue;
+            if (edgeAt(x, y)) { bad++; far = Math.max(far, d / k); } }
+        let tot = 0, hit = 0;
+        for (const [a, c] of segs) { const L = Math.hypot(c[0] - a[0], c[1] - a[1]); for (let t = 4 * k; t < L - 4 * k; t += 2 * k) { const x = a[0] + (c[0] - a[0]) * t / L, y = a[1] + (c[1] - a[1]) * t / L; if (x < 2 || y < 2 || x > W - 3 || y > H - 3) continue; tot++;
+          let ok = false; for (let dx = -1; dx <= 1 && !ok; dx++) for (let dy = -1; dy <= 1 && !ok; dy++) ok = edgeAt(Math.floor(x) + dx, Math.floor(y) + dy); if (ok) hit++; } }
+        out.push({ mmPx: +App.r.pxSize().toFixed(3), bad, far: +far.toFixed(1), cover: +(100 * hit / Math.max(1, tot)).toFixed(1) });
+      }
+      App.r.mode = mode0; return out;
+    }, { stl, B: boxes[1], zooms: [300, 80, 40] });
+    rec('Vista 3D: gli spigoli nascosti non escono davanti alle facce (blocco staccato di 0,5 mm, ingrandimenti fino a 0,06 mm/px), spigoli visibili interi',
+      res.every(r => r.bad === 0 && r.cover === 100), res.map(r => `${r.mmPx} mm/px: ${r.bad} pixel di spigolo nascosto${r.bad ? ' (fino a ' + r.far + ' px dentro)' : ''}, spigoli visibili ${r.cover} %`).join('; '));
+  } catch (e) { rec('Vista 3D: gli spigoli nascosti non escono davanti alle facce', false, e.message.split('\n')[0]); }
+
   // 6c. Sito GitHub Pages: le pagine servite da rayuk-creator.github.io (qui simulato con page.route dai file del repository)
   //     si collegano tra loro sullo stesso sito; da disco restano i collegamenti a claude.ai
   try {
