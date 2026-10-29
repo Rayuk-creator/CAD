@@ -232,6 +232,16 @@ const acadver = u8 => { const m = /\$ACADVER\s*\r?\n\s*1\s*\r?\n\s*(\S+)/.exec(B
       `nello zip: ${z0.dxfs.join(', ')} (${zip.length} byte); aperti: ${[z0, z1, z2].map(z => z.name + ' ' + z.data.length + ' byte').join(', ')}`);
   } catch (e) { rec('«Salva tutti i DXF»: tre disegni in un solo .zip; il Banco CAD li elenca e apre quello scelto', false, 'ERRORE ' + e.message); }
 
+  // Codifica dei caratteri dichiarata nella pagina (entro i primi 1024 byte, dove il browser la cerca): senza, una pagina
+  // servita da un sito che non la manda (o aperta da disco) può mostrare «Â·» al posto di «·». Su claude.ai la aggiunge la piattaforma.
+  try {
+    const head = f => fs.readFileSync(f).subarray(0, 1024).toString('latin1');
+    const has = f => /<meta\s+charset\s*=\s*["']?utf-8["']?\s*\/?>/i.test(head(f));
+    const conv = page, cad = path.join(ROOT, 'index.html');
+    rec('Codifica UTF-8 dichiarata all\'inizio della pagina (Convertitore e Banco CAD), per GitHub Pages e per il file aperto da disco',
+      has(conv) && has(cad), `convertitore: ${has(conv) ? 'sì' : 'NO'}, Banco CAD: ${has(cad) ? 'sì' : 'NO'}`);
+  } catch (e) { rec('Codifica UTF-8 dichiarata all\'inizio della pagina', false, 'ERRORE ' + e.message); }
+
   fs.rmSync(tmp, { recursive: true, force: true });
   const fail = rows.filter(x => !x).length;
   console.log(`\n${rows.length - fail}/${rows.length} superati (tolleranza ${(TOL * 100).toFixed(1)}%)`);

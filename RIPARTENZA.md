@@ -2,9 +2,9 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 29 ottobre 2026 (pagine su claude.ai ripubblicate; decisioni per il disegno 2D libero; STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
+Ultimo aggiornamento: 29 ottobre 2026 (sito su GitHub Pages; pagine su claude.ai ripubblicate; decisioni per il disegno 2D libero; STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
 
-**Stato attuale:** ultima modifica su `main` = «STEP con superfici vere, meno archi nei DXF, convertitore DWG più leggero» del 29 ottobre (vedi `git log`). Tutte le prove superate: 152/152 di calcolo, 28/28 STEP/IGES (comprese 14 di STEP esportati e riletti), 14/14 del convertitore DWG, 59/59 dell'interfaccia, Autoverifica 152/152. Nessun lavoro lasciato a metà.
+**Stato attuale:** ultima modifica su `main` = «GitHub Pages: codifica UTF-8 nel Convertitore e collegamenti al sito nei README» del 29 ottobre (vedi `git log`). Tutte le prove superate: 152/152 di calcolo, 28/28 STEP/IGES (comprese 14 di STEP esportati e riletti), 15/15 del convertitore DWG, 59/59 dell'interfaccia, Autoverifica 152/152. Nessun lavoro lasciato a metà.
 
 ---
 
@@ -66,6 +66,7 @@ Ultimo aggiornamento: 29 ottobre 2026 (pagine su claude.ai ripubblicate; decisio
 ```
 index.html            il programma completo
 README.md / .en.md    presentazione in italiano e in inglese (con immagini)
+.nojekyll             GitHub Pages pubblica i file così come sono (senza Jekyll)
 docs/img/             7 schermate del README
 IDEE.md               lavori futuri e idee rimandate
 RIPARTENZA.md         questo file
@@ -79,7 +80,7 @@ tests/kernel.test.js  111 casi geometrici + 41 di controllo = 152 prove (usate a
 tests/step.test.js    28 prove del lettore STEP/IGES vero (prende il lettore da index.html), di cui 14 su STEP esportati dal Banco CAD e riletti (7 pezzi, a facce piane e con le superfici vere)
 tests/stepgen.js      scrive file STEP di prova (blocco, cilindro, piastra con foro, due blocchi, due blocchi colorati, unità mm/cm/m)
 tests/igesgen.js      scrive file IGES di prova (blocco fatto di superfici piane tagliate)
-tests/dwg.test.js     14 prove del convertitore (prende il lettore dalla sua pagina; confronto con i DXF di riferimento; memoria, anteprima, zip di più disegni)
+tests/dwg.test.js     15 prove del convertitore (prende il lettore dalla sua pagina; confronto con i DXF di riferimento; memoria, anteprima, zip di più disegni; codifica UTF-8 dichiarata nelle due pagine)
 tests/ui.test.js      59 prove dell'interfaccia in Chromium (Playwright), compresa la pagina del convertitore
 tests/pdfcheck.py     rilegge un PDF con pdfplumber (Python) e scrive le misure in mm in JSON (usato da ui.test.js; se manca, il controllo indipendente si salta e lo dice)
 package.json          npm test / test:kernel (comprende step.test.js e dwg.test.js) / test:ui
@@ -157,6 +158,8 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 
 - 29 ottobre: i tre «lavori piccoli» chiesti dall'utente. (1) **STEP con superfici vere** (vedi `Export` sopra). Controllo su tutti i 111 pezzi delle prove: esportati, riletti con OpenCascade, stesso numero di facce, nessuno spigolo aperto, volume più vicino al valore esatto (es. sfera R10: 0,007 % invece di 0,26 %). Trovati e risolti strada facendo: vertici a T sulle corde lasciati dai tagli (serie, specchi, fori svasati), raggio preso da un vertice a T, schegge di area nulla, sfere e tori interi, bordi a ellisse. (2) **Meno archi nei DXF**: circa −40 % (ellisse 100 × 60: 56 → 36 archi, 200 × 2: 152 → 92; il disegno d'esempio 2013: 212 → 135); lo scostamento ora è misurato davvero (prima i 16 campioni potevano sbagliare del 2,5 %) e resta ≤ 1/10 000; circa 20 ms per ellisse (prima 11). (3) **Convertitore**: memoria iniziale 16 MB invece di 1 GB (i 7 DXF di prova identici byte per byte; con 300 MB occupati la memoria cresce a 383 MB e il DXF è uguale), anteprima con l'ingombro, «Salva tutti i DXF» in uno .zip; il Banco CAD fa scegliere il disegno dentro lo zip. Prove nuove: 10 di calcolo, 9 STEP riletti con OpenCascade, 3 del convertitore, 1 dell'interfaccia; tutte quelle che devono cambiare falliscono sulla versione vecchia. Corretto anche: due prove dell'interfaccia aspettavano «3.084», ma il Chromium nuovo scrive i numeri italiani di 4 cifre senza punto («3084», regola CLDR): ora accettano le due forme.
 
+- 29 ottobre (pomeriggio): **sito su GitHub Pages** (scelta dell'utente: «come itch.io»): https://rayuk-creator.github.io/CAD/ (Banco CAD) e https://rayuk-creator.github.io/CAD/convertitore-dwg/ (Convertitore), attivato dall'utente in Settings › Pages (ramo `main`, cartella `/`; da questo ambiente l'API di Pages non è permessa); si aggiorna da solo a ogni push su `main`. Aggiunto `.nojekyll`. Prova con un server locale che serve i file come Pages: trovato che il Convertitore **non dichiarava la codifica** (su claude.ai la aggiunge la piattaforma; servito senza codifica mostrava «Â·» al posto di «·»): aggiunto `<meta charset="utf-8">` in cima, con 1 prova in `dwg.test.js` che fallisce sulla versione vecchia. Nel browser via http: Autoverifica 152/152, importazione STEP nel Worker, Convertitore con anteprima giusti. Riquadri «Come si usa» dei due README e del convertitore (README e LEGGIMI): prima il collegamento al sito, poi lo scaricamento per usarlo senza internet (il lavoro del sito e quello del file scaricato restano separati).
+
 ## 6. Cose aperte
 
 - Tutto quello che c'è in `IDEE.md`. **Prossimo lavoro deciso dall'utente: il disegno 2D libero** (vedi `IDEE.md`, sezione «Disegno 2D libero»). Decisioni già prese il 29 ottobre: **scheda nuova**, **documento a parte** (non dentro il progetto del pezzo), **prima le basi**, poi layer, blocchi, tolleranze e rugosità. Si può cominciare senza richiederle. Dopo: **assiemi con accoppiamenti** (richiesti il 28 ottobre, vedi `IDEE.md`) e, forse, il cablaggio 3D semi-automatico da PDF.
@@ -170,4 +173,5 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 - La propagazione tangente si ferma agli angoli vivi: dove la catena finisce contro un altro spigolo (per esempio mezza ellisse con i lati che arrivano alla base) il raccordo finisce piatto, come prima. Gli spigoli aggiunti dalla propagazione si vedono nell'anteprima del raccordo, non sono elencati uno per uno nel pannello.
 - L'assonometria ombreggiata usa l'algoritmo del pittore (facce ordinate per profondità): con pezzi molto intrecciati potrebbe sbagliare qualche faccia; nelle prove e nelle esercitazioni non succede.
 - Due facce vere adiacenti nello stesso piano (per esempio una faccia divisa con una «linea di divisione») si vedono unite, senza lo spigolo in mezzo: si potrebbe distinguere con la faccia d'origine in `surfKey`, ma toccherebbe anche i pezzi normali. Per ora lasciato così.
+- **Sito su GitHub Pages** (dal 29 ottobre): si aggiorna da solo con `main`, niente da ripubblicare. Il collegamento ai DWG dentro il Banco CAD (`DWG_CONVERTER_URL`) e «Apri il Banco CAD» nel Convertitore portano ancora alle pagine su claude.ai, anche dal sito: si potrebbero far puntare alla pagina dello stesso sito quando la pagina è aperta da github.io (da decidere con l'utente).
 - Pagine pubblicate su claude.ai, **aggiornate il 29 ottobre** con tutti i lavori di quel giorno (controllate identiche byte per byte ai file del repository): «Banco CAD» versione 15 (condivisa con chiunque abbia il link; nella pagina pubblicata lo STEP arriva dentro uno .zip, il PDF da solo) e «Convertitore DWG → DXF» versione 3 (artifact a parte, condiviso con chiunque abbia il link). Si ripubblicano agli stessi indirizzi con il permesso «downloads» già presente. La versione giusta resta `index.html` del repository.

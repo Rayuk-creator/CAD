@@ -5,7 +5,9 @@ Pagina a parte del Banco CAD: trasforma i disegni di AutoCAD (`.dwg`) in file DX
 > [!IMPORTANT]
 > **Come si usa il Convertitore DWG → DXF**
 >
-> **Su GitHub il convertitore non funziona:** GitHub conserva il file ma non lo fa funzionare. Bisogna **scaricare il file e aprirlo nel browser**.
+> **Il modo più semplice: apri [rayuk-creator.github.io/CAD/convertitore-dwg](https://rayuk-creator.github.io/CAD/convertitore-dwg/)** e il convertitore parte subito nel browser.
+>
+> **Per usarlo senza internet** scarica il file e aprilo dal tuo computer (qui su GitHub il file si conserva, ma non funziona):
 >
 > 1. Apri il file [`index.html`](index.html) di questa cartella.
 > 2. GitHub scrive che il file è troppo grande da mostrare («Sorry about that, but we can't show files that are this big right now»): **è normale**, il file è a posto. Premi il pulsante **Download raw file**: è la **freccia verso il basso**, in alto a destra. **Non** premere «Raw» né «View raw»: mostrerebbero solo il testo del programma.

@@ -27,7 +27,9 @@ Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo
 > [!IMPORTANT]
 > **Come si usa il Banco CAD**
 >
-> **Su GitHub il Banco CAD non funziona:** GitHub conserva il file ma non lo fa funzionare. Bisogna **scaricare il file e aprirlo nel browser**.
+> **Il modo più semplice: apri [rayuk-creator.github.io/CAD](https://rayuk-creator.github.io/CAD/)** e il Banco CAD parte subito nel browser, anche su tablet. Il lavoro si salva in quel browser.
+>
+> **Per usarlo senza internet** scarica il file e aprilo dal tuo computer (qui su GitHub il file si conserva, ma non funziona). Il lavoro fatto sul sito e quello fatto con il file scaricato restano separati: per passarlo dall'uno all'altro usa **Progetto › Esporta il progetto** e **Importa un progetto**.
 >
 > 1. Apri il file [`index.html`](index.html).
 > 2. GitHub scrive che il file è troppo grande da mostrare («Sorry about that, but we can't show files that are this big right now»): **è normale**, il file è a posto. Premi il pulsante **Download raw file**: è la **freccia verso il basso**, in alto a destra. **Non** premere «Raw» né «View raw»: mostrerebbero solo il testo del programma.
@@ -50,7 +52,9 @@ I file **DWG** di AutoCAD si trasformano prima in DXF con il **Convertitore DWG 
 > [!IMPORTANT]
 > **Come si usa il Convertitore DWG → DXF**
 >
-> **Su GitHub il convertitore non funziona:** GitHub conserva il file ma non lo fa funzionare. Bisogna **scaricare il file e aprirlo nel browser**.
+> **Il modo più semplice: apri [rayuk-creator.github.io/CAD/convertitore-dwg](https://rayuk-creator.github.io/CAD/convertitore-dwg/)** e il convertitore parte subito nel browser.
+>
+> **Per usarlo senza internet** scarica il file e aprilo dal tuo computer (qui su GitHub il file si conserva, ma non funziona):
 >
 > 1. Apri il file [`convertitore-dwg/index.html`](convertitore-dwg/index.html).
 > 2. GitHub scrive che il file è troppo grande da mostrare («Sorry about that, but we can't show files that are this big right now»): **è normale**, il file è a posto. Premi il pulsante **Download raw file**: è la **freccia verso il basso**, in alto a destra. **Non** premere «Raw» né «View raw»: mostrerebbero solo il testo del programma.

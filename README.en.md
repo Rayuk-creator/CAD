@@ -29,7 +29,9 @@ Designed for technical secondary schools (mechanical and mechatronic engineering
 > [!IMPORTANT]
 > **How to use Banco CAD**
 >
-> **Banco CAD does not run on GitHub:** GitHub stores the file but does not run it. You must **download the file and open it in your browser**.
+> **The easiest way: open [rayuk-creator.github.io/CAD](https://rayuk-creator.github.io/CAD/)** and Banco CAD starts right away in your browser, tablets included. Your work is saved in that browser.
+>
+> **To use it without internet**, download the file and open it from your computer (here on GitHub the file is stored but does not run). Work done on the website and work done with the downloaded file are kept separate: to move it from one to the other use **Progetto › Esporta il progetto** (Export) and **Importa un progetto** (Import).
 >
 > 1. Open the file [`index.html`](index.html).
 > 2. GitHub says the file is too big to display ("Sorry about that, but we can't show files that are this big right now"): **this is normal**, the file is fine. Press the **Download raw file** button: the **down arrow** at the top right. Do **not** press "Raw" or "View raw": they would only show the program's text.
@@ -52,7 +54,9 @@ AutoCAD **DWG** files are first turned into DXF with the **DWG → DXF converter
 > [!IMPORTANT]
 > **How to use the DWG → DXF converter**
 >
-> **The converter does not run on GitHub:** GitHub stores the file but does not run it. You must **download the file and open it in your browser**.
+> **The easiest way: open [rayuk-creator.github.io/CAD/convertitore-dwg](https://rayuk-creator.github.io/CAD/convertitore-dwg/)** and the converter starts right away in your browser.
+>
+> **To use it without internet**, download the file and open it from your computer (here on GitHub the file is stored but does not run):
 >
 > 1. Open the file [`convertitore-dwg/index.html`](convertitore-dwg/index.html).
 > 2. GitHub says the file is too big to display ("Sorry about that, but we can't show files that are this big right now"): **this is normal**, the file is fine. Press the **Download raw file** button: the **down arrow** at the top right. Do **not** press "Raw" or "View raw": they would only show the program's text.
