@@ -41,7 +41,11 @@ Deciso con l'utente il 21 ottobre 2026: **prossimo lavoro grande**, da fare in u
 - **Stile**: base SolidWorks («tavola senza modello»: gli stessi strumenti dello schizzo, con relazioni e quote che comandano il disegno), più i comandi AutoCAD utili: **Offset, Copia, Sposta, Ruota** (e dove serve Taglia, Estendi).
 - **Contenuto** (l'utente ha detto «sì a tutto»): linee, archi, cerchi, rettangoli; quote; testi; tratteggi; tipi di linea (continua, tratteggiata, mezzeria); cartiglio e fogli A4–A2; stampa e salvataggio in DXF (e SVG); **layer**; **blocchi**; **tolleranze**; **rugosità**.
 - **Collegamento al 3D**: poter usare un disegno 2D come schizzo per fare un pezzo.
-- Da chiarire all'inizio della chat nuova: dove sta il comando (scheda nuova o dentro «Messa in tavola»), come si salva insieme al progetto, ordine dei lavori (prima le basi, poi layer, blocchi, tolleranze e rugosità). Ogni comando nuovo nella Guida, ogni termine nel Glossario, prove con valori calcolati a mano.
+- **Decisioni dell'utente (29 ottobre 2026)**, da seguire senza richiederle:
+  1. Il comando sta in una **scheda nuova** (non dentro «Messa in tavola»).
+  2. Il disegno 2D si salva come **documento a parte**, non dentro il progetto del pezzo.
+  3. **Ordine dei lavori**: prima le basi (entità, Offset, Copia, Sposta, Ruota, Taglia, Estendi, quote, testi, tratteggi, tipi di linea, cartiglio e fogli, stampa, DXF e SVG), poi layer, blocchi, tolleranze e rugosità.
+- Ogni comando nuovo nella Guida, ogni termine nel Glossario, prove con valori calcolati a mano.
 
 ## Assiemi con gli accoppiamenti (come SolidWorks)
 

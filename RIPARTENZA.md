@@ -2,7 +2,7 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 29 ottobre 2026 (STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
+Ultimo aggiornamento: 29 ottobre 2026 (decisioni per il disegno 2D libero; STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
 
 **Stato attuale:** ultima modifica su `main` = «STEP con superfici vere, meno archi nei DXF, convertitore DWG più leggero» del 29 ottobre (vedi `git log`). Tutte le prove superate: 152/152 di calcolo, 28/28 STEP/IGES (comprese 14 di STEP esportati e riletti), 14/14 del convertitore DWG, 59/59 dell'interfaccia, Autoverifica 152/152. Nessun lavoro lasciato a metà.
 
@@ -159,7 +159,7 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 
 ## 6. Cose aperte
 
-- Tutto quello che c'è in `IDEE.md`. **Prossimo lavoro deciso dall'utente: il disegno 2D libero** (vedi `IDEE.md`, sezione «Disegno 2D libero»). Dopo: **assiemi con accoppiamenti** (richiesti il 28 ottobre, vedi `IDEE.md`) e, forse, il cablaggio 3D semi-automatico da PDF.
+- Tutto quello che c'è in `IDEE.md`. **Prossimo lavoro deciso dall'utente: il disegno 2D libero** (vedi `IDEE.md`, sezione «Disegno 2D libero»). Decisioni già prese il 29 ottobre: **scheda nuova**, **documento a parte** (non dentro il progetto del pezzo), **prima le basi**, poi layer, blocchi, tolleranze e rugosità. Si può cominciare senza richiederle. Dopo: **assiemi con accoppiamenti** (richiesti il 28 ottobre, vedi `IDEE.md`) e, forse, il cablaggio 3D semi-automatico da PDF.
 - STEP esportato: restano a facce piane le superfici con bordi che non sono rette, cerchi o ellissi (intersezioni di cilindri diversi). Si potrebbero scrivere quei bordi come B-spline: da fare solo se serve.
 - Lo sweep lungo una spline lascia schegge di triangoli minuscole (area 10⁻⁸ mm²) nel corpo: lo STEP le ignora, ma vengono dai tagli BSP.
 - PDF della vista 3D: è un'immagine alla risoluzione dello schermo (circa 100 punti per pollice su un A4). Per una tavola nitida c'è il PDF della tavola.
