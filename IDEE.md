@@ -56,6 +56,14 @@ Chiesto dall'utente il 28 ottobre 2026 («l'opzione per montare gli assiemi con 
 - Albero dell'assieme (parti e accoppiamenti), interferenze, vista esplosa, distinta base nella tavola dell'assieme.
 - Prove con valori calcolati a mano (posizioni dopo gli accoppiamenti, gradi di libertà rimasti), Guida e Glossario per ogni comando.
 
+## Operazioni booleane tra corpi (come «Combina» di SolidWorks)
+
+Chiesto dall'utente il 29 ottobre 2026 («quanto ci andrebbe per aggiungere tutta la parte di operazioni booleane?»): **lavoro grande da fare in una chat nuova**; l'ordine rispetto al disegno 2D libero e agli assiemi è da decidere con l'utente. Il motore `CSG` fa già unione, sottrazione e intersezione; manca tutto il resto, perché oggi una parte è **un corpo solo**.
+
+- **Prima sessione (circa una sessione lunga):** casella **«Unisci risultato»** su estrusione, rivoluzione, sweep e importazione (senza spunta nasce un corpo nuovo); cartella **«Corpi solidi»** nell'albero; funzione **Combina** con **Aggiungi**, **Sottrai** e **Comune** (corpo principale e corpi da combinare); misure, proprietà di massa (anche per corpo), messa in tavola ed Esporta STEP (un solido per corpo) che tengono conto dei corpi separati.
+- **Seconda sessione:** **Sposta/Copia corpo** ed **Elimina/Mantieni corpo**.
+- Prove con valori calcolati a mano (volumi dopo Aggiungi/Sottrai/Comune, numero di corpi), una prova con il mouse per ogni comando, Guida e Glossario; i progetti già salvati devono restare uguali (una parte = un corpo, «Unisci risultato» spuntata).
+
 ## Altro ancora da fare
 
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.

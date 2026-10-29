@@ -164,7 +164,7 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 
 ## 6. Cose aperte
 
-- Tutto quello che c'è in `IDEE.md`. **Prossimo lavoro deciso dall'utente: il disegno 2D libero** (vedi `IDEE.md`, sezione «Disegno 2D libero»). Decisioni già prese il 29 ottobre: **scheda nuova**, **documento a parte** (non dentro il progetto del pezzo), **prima le basi**, poi layer, blocchi, tolleranze e rugosità. Si può cominciare senza richiederle. Dopo: **assiemi con accoppiamenti** (richiesti il 28 ottobre, vedi `IDEE.md`) e, forse, il cablaggio 3D semi-automatico da PDF.
+- Tutto quello che c'è in `IDEE.md`. **Prossimo lavoro deciso dall'utente: il disegno 2D libero** (vedi `IDEE.md`, sezione «Disegno 2D libero»). Decisioni già prese il 29 ottobre: **scheda nuova**, **documento a parte** (non dentro il progetto del pezzo), **prima le basi**, poi layer, blocchi, tolleranze e rugosità. Si può cominciare senza richiederle. Dopo: **assiemi con accoppiamenti** (richiesti il 28 ottobre, vedi `IDEE.md`), **operazioni booleane tra corpi** (Combina, richieste il 29 ottobre, vedi `IDEE.md`; ordine da decidere con l'utente) e, forse, il cablaggio 3D semi-automatico da PDF.
 - STEP esportato: restano a facce piane le superfici con bordi che non sono rette, cerchi o ellissi (intersezioni di cilindri diversi). Si potrebbero scrivere quei bordi come B-spline: da fare solo se serve.
 - Lo sweep lungo una spline lascia schegge di triangoli minuscole (area 10⁻⁸ mm²) nel corpo: lo STEP le ignora, ma vengono dai tagli BSP.
 - PDF della vista 3D: è un'immagine alla risoluzione dello schermo (circa 100 punti per pollice su un A4). Per una tavola nitida c'è il PDF della tavola.
