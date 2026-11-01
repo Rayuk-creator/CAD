@@ -64,6 +64,22 @@ Chiesto dall'utente il 29 ottobre 2026 («quanto ci andrebbe per aggiungere tutt
 - **Seconda sessione:** **Sposta/Copia corpo** ed **Elimina/Mantieni corpo**.
 - Prove con valori calcolati a mano (volumi dopo Aggiungi/Sottrai/Comune, numero di corpi), una prova con il mouse per ogni comando, Guida e Glossario; i progetti già salvati devono restare uguali (una parte = un corpo, «Unisci risultato» spuntata).
 
+## Licenza e pubblicazione su AlternativeTo (controllo del 1° novembre 2026)
+
+L'utente vuole inserire il Banco CAD su **AlternativeTo**. Controllo fatto su tutto il repository (non è un parere legale). **Licenza consigliata e accettata dall'utente: GNU GPL 3** (resta libero; stessa licenza del Convertitore; permetterebbe di rimettere il lettore DWG dentro il Banco CAD; la LGPL 2.1 di OpenCascade è compatibile). **Da chiedere all'utente prima di cominciare:** il nome per la riga «Copyright © 2026 …» (nome e cognome oppure «Rayuk-creator») e se le 8 esercitazioni sono tutte inventate da loro (se una è copiata da un libro di testo va tolta o rifatta).
+
+Cose da fare (in una chat nuova, con le prove come sempre):
+
+1. **File `LICENSE`** con la GPL 3 e intestazione nel README (italiano e inglese). Vincolo: la LGPL 2.1 del lettore STEP chiede una licenza che permetta modifiche e analisi del programma; la GPL 3 va bene.
+2. **Avviso di csg.js** (licenza MIT, © 2011 Evan Wallace, https://github.com/evanw/csg.js): il modulo `CSG` ne segue la struttura, quindi l'avviso MIT va riportato (oggi c'è solo il nome nel commento). Testo in `licenze/`.
+3. **Avviso delle metriche Adobe Core14 AFM** (tabelle `HELV`/`HELVB` per i PDF): la licenza Adobe chiede di tenere l'avviso di copyright e la licenza insieme ai dati. Testo in `licenze/`.
+4. **Finestra «Informazioni e licenze» nel programma** (menu Progetto o pulsante): componenti usati (OpenCascade/occt-import-js LGPL 2.1 con collegamento ai testi e ai sorgenti, csg.js MIT, Adobe AFM, IBM Plex OFL), licenza GPL 3 del Banco CAD, avviso sui marchi, «non raccoglie dati». La LGPL vuole un avviso ben visibile con ogni copia: chi apre il sito non vede la cartella `licenze`. Voce nella Guida e nel Glossario.
+5. **Sorgenti di occt-import-js «nello stesso posto»** (LGPL 2.1, punto 6d): l'utente fa un **fork su GitHub di occt-import-js alla versione 0.0.24** (con OpenCascade); poi si aggiornano `licenze/LEGGIMI.md` e il commento in `index.html`. Facoltativo lo stesso per libredwg-web 0.8.2 (la GPL 3 permette già i sorgenti su un altro server).
+6. **Marchi:** riga nel README e nella finestra del punto 4: «SolidWorks è un marchio di Dassault Systèmes, AutoCAD di Autodesk; il Banco CAD non è collegato a loro». Nessun logo loro. «FeatureManager» è un marchio registrato e non lo usiamo; «PropertyManager» e «CommandManager» non risultano tra i marchi registrati controllati (rischio basso, si possono lasciare).
+7. **Privacy:** oggi i caratteri IBM Plex arrivano da Google Fonts e il browser manda a Google l'indirizzo IP (tribunale di Monaco, 2022: contrario al GDPR). Mettere i caratteri **dentro la pagina** (la licenza OFL lo permette, testo in `licenze/`), anche nel Convertitore; riga «il programma non raccoglie dati: tutto resta nel browser» nel README.
+8. **Codice scritto con l'IA:** in Italia la L. 132/2025 (dal 10 ottobre 2025) protegge le opere fatte con l'IA solo se c'è un contributo creativo umano; non impedisce di pubblicare con licenza libera. Le condizioni di Anthropic trasferiscono all'utente i diritti di Anthropic sui risultati. Facoltativa una riga nel README «scritto con l'aiuto di Claude».
+9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 44 argomenti, Glossario 163 termini), da decidere con l'utente.
+
 ## Altro ancora da fare
 
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
