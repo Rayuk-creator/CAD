@@ -127,6 +127,8 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 - Il pulsante ✓ (`.pm-ok`) **resta nella pagina** anche a pannello chiuso (il pannello è solo nascosto): per aspettare la fine di una funzione si usa `!App.pm` (la rigenerazione dopo ✓ è sincrona), non «il pulsante non c'è».
 - Se l'interfaccia sembra bloccata dopo un'importazione, misurare i tempi: il calcolo più pesante è `Sketch.analyze` (stato dello schizzo).
 - Ogni prova nuova dell'interfaccia va in un suo blocco `try` con la pulizia nella `catch` (chiudere la finestra, uscire dallo schizzo): se fallisce dentro il blocco di un'altra prova, la finestra resta aperta e fa fallire anche le prove dopo.
+- Con un pannello aperto l'albero è nascosto: nelle prove i corpi si scelgono con le caselle (`#pm [data-body="…"]`) o con un clic nella vista (`App.r.project`); nell'albero solo prima di premere il comando (clic e Ctrl + clic).
+- In `kernel.test.js` i casi `T(…)` stanno prima della riga `const SK = []`, i controlli `SK.push(…)` dopo.
 - Convertitore: il lettore LibreDWG è un modulo ES; nel Worker si usa come script «classico» (tolto `export default`, `import.meta.url` → `self.location.href`), perché Chromium non avvia i Worker modulo da un blob con la pagina aperta da disco. Al lettore va passato `locateFile`, altrimenti cerca il `.wasm` accanto a sé e va in errore («Invalid URL»).
 - Numeri nei testi: il Chromium recente scrive i numeri italiani di 4 cifre senza il punto delle migliaia («3084», regola CLDR `minimumGroupingDigits` = 2), quelli di 5 o più con il punto («15.589»). Nelle prove usare `\.?`.
 - Prove STEP con OpenCascade: rileggere con triangoli troppo fini blocca tutto (un toro con 2·10⁻⁵ e 0,02 rad: 860 000 triangoli, 3 minuti). Nelle prove si usa 10⁻⁴ dell'ingombro e 0,02 rad su pezzi piccoli.
@@ -134,7 +136,7 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 
 ---
 
-## 5. Cronologia (14–22 ottobre 2026)
+## 5. Cronologia (14 ottobre – 3 novembre 2026)
 
 - Batteria di test sui calcoli e sull'interfaccia, tolleranza 1 %.
 - Corretti: raccordo sul bordo circolare di un cilindro pieno; anteprima che restava attiva dopo ✓ (pezzo sbagliato); salvataggio perso alla chiusura e funzioni «fantasma» alla riapertura; zoom a due dita che spostava la vista; dita «rimaste agganciate» tra un gesto e l'altro.
@@ -168,6 +170,9 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 - 3 novembre (sera): **corpi solidi e Combina** (le due sessioni previste, insieme), **bordi B-spline nello STEP** (volume riletto entro 0,0013 %, prima 0,08–0,13 %; sui 112 pezzi delle prove nessuna superficie a facce piane), **sweep senza schegge** (da 1572 a 0 nel tubo di prova), **spigolo tra facce vere complanari**. 18 prove di calcolo nuove, 7 riletture con OpenCascade, 1 dell'interfaccia con il mouse.
 
 ## 6. Cose aperte
+
+- **Da fare per primo: il fork di occt-import-js 0.0.24.** Lo fa l'utente dal suo account GitHub (ha detto il 3 novembre che lo fa il giorno dopo), togliendo la spunta «Copy the main branch only». Quando dà l'indirizzo, aggiornare `licenze/LEGGIMI.md`, la finestra «Informazioni e licenze» (`aboutDialog` in `index.html`; la prova dell'interfaccia conta 7 testi collegati) e il commento nel lettore.
+- **Da chiedere:** se ripubblicare «Banco CAD» su claude.ai (domanda rimasta aperta il 3 novembre sera). Attenzione: rileggere la pagina con l'Artifact tool senza `path` mette molto testo nella chat.
 
 - Corpi solidi, limiti: un taglio lavora sempre su tutti i corpi (in SolidWorks si può scegliere con «Ambito funzione»); i corpi si scelgono nel pannello o nella vista, non nell'albero mentre il pannello è aperto (l'albero è nascosto); serie e specchio lavorano sulle funzioni, non sui corpi.
 
