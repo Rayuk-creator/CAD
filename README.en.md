@@ -50,7 +50,7 @@ With **Progetto › Importa STL o OBJ** (Project › Import STL or OBJ) you can 
 
 With **Progetto › Importa DXF o DWG (schizzo)** (Project › Import DXF or DWG), or **Inserisci DXF o DWG** (Insert DXF or DWG) in the Sketch tab, a 2D drawing (AutoCAD, DraftSight, LibreCAD, a SolidWorks drawing…) becomes a sketch: lines, arcs, circles, polylines, ellipses, splines and blocks, in the file's units; ellipses and splines become chains of tangent arcs (biarcs) within a few thousandths of a millimetre of the true curve; dash-dot axes become centerlines. The dialog shows a preview of the drawing and lets you pick the layers to import (for example without the title block and dimensions). Then you extrude or revolve it.
 
-AutoCAD **DWG** files open directly in the same way, from release R1.4 to 2018 (so also files from AutoCAD 2019–2025), with the free LibreDWG reader inside the page. Texts, dimensions and hatches do not enter the sketch, which holds geometry only: the final message says how many there are.
+AutoCAD **DWG** files open directly in the same way, from release R1.4 to 2018 (so also files from AutoCAD 2019–2025), with the free LibreDWG reader inside the page. Texts and dimensions can arrive as a **grey background** under the sketch, only to look at while you dimension it: they do not drive the shape and do not end up in the part. Hatches are not imported: the final message says how many there are.
 
 To **save DXF files** (for other programs) or convert many drawings at once there is the **DWG → DXF converter** (*Convertitore DWG → DXF*), a separate page (folder `convertitore-dwg/`); Banco CAD also opens the `.zip` in which the published page saves the DXF files.
 
@@ -150,7 +150,7 @@ The program is one file, `index.html` (about 9 MB), with HTML, CSS and JavaScrip
 npm install
 npx playwright install chromium   # first time only
 npm test                          # all tests
-npm run test:kernel               # calculations only (170 + 35 STEP/IGES and exported STEP + 20 DWG reader and converter tests, about a minute)
+npm run test:kernel               # calculations only (178 + 35 STEP/IGES and exported STEP + 21 DWG reader and converter tests, about a minute)
 npm run test:ui                   # interface only, in Chromium (52 tests)
 ```
 

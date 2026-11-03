@@ -48,7 +48,7 @@ Con **Progetto › Importa STL o OBJ** si apre anche un pezzo fatto con un altro
 
 Con **Progetto › Importa DXF o DWG (schizzo)**, o con **Inserisci DXF o DWG** nella scheda Schizzo, un disegno 2D (AutoCAD, DraftSight, LibreCAD, tavola di SolidWorks…) entra in uno schizzo: linee, archi, cerchi, polilinee, ellissi, spline e blocchi, con l'unità del file; ellissi e spline diventano archi tangenti tra loro (biarchi) lontani pochi millesimi di millimetro dalla curva vera, gli assi tratto-punto diventano linee di mezzeria. Nella finestra si vede l'anteprima del disegno e si scelgono i layer da importare (per esempio senza cartiglio e quote). Poi si estrude o si fa ruotare.
 
-I file **DWG** di AutoCAD si aprono direttamente nello stesso modo, dalla versione R1.4 alla 2018 (e quindi anche i file di AutoCAD 2019–2025), con il lettore libero LibreDWG dentro la pagina. Testi, quote e tratteggi non entrano nello schizzo, che contiene solo geometria: il messaggio finale dice quanti sono.
+I file **DWG** di AutoCAD si aprono direttamente nello stesso modo, dalla versione R1.4 alla 2018 (e quindi anche i file di AutoCAD 2019–2025), con il lettore libero LibreDWG dentro la pagina. Testi e quote possono arrivare come **sfondo grigio** sotto lo schizzo, solo da guardare mentre lo quoti: non comandano la forma e non finiscono nel pezzo. I tratteggi non si importano: il messaggio finale dice quanti sono.
 
 Per **salvare i DXF** (per altri programmi) o convertire molti disegni insieme c'è il **Convertitore DWG → DXF**, una pagina a parte (cartella `convertitore-dwg/`); il Banco CAD apre anche lo `.zip` con cui la pagina pubblicata salva i DXF.
 
@@ -148,7 +148,7 @@ Il programma è un solo file, `index.html` (circa 9 MB), con HTML, CSS e JavaScr
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (170 + 35 prove STEP/IGES e STEP esportati + 20 del lettore e del convertitore DWG, circa un minuto)
+npm run test:kernel               # solo i calcoli (178 + 35 prove STEP/IGES e STEP esportati + 21 del lettore e del convertitore DWG, circa un minuto)
 npm run test:ui                   # solo l'interfaccia in Chromium (52 prove)
 ```
 

@@ -367,7 +367,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const b0 = await page.evaluate(d => { const r = App.importDxfData('r.dxf', new Uint8Array(d), { origin: 'file', plane: 'front' }); return r.msg; }, [...ref]);
     const b = await count();
     await closeAll();
-    const ok = JSON.stringify(a.c) === JSON.stringify(b.c) && a.c.ln === 4 && a.c.ar === 1 && a.c.ci === 1 && /1 testo/.test(a.toast) && /1 quota/.test(a.toast) && /1 traccia/.test(a.toast) && /1 forma/.test(a.toast) && feats === 1 && undone === 0
+    const ok = JSON.stringify(a.c) === JSON.stringify(b.c) && a.c.ln === 4 && a.c.ar === 1 && a.c.ci === 1 && /Sullo sfondo: 2 testi, 1 quota/.test(a.toast) && /1 traccia/.test(a.toast) && /1 forma/.test(a.toast) && feats === 1 && undone === 0
       && a.toast.match(/Ingombro [^(]*/)[0] === b0.match(/Ingombro [^(]*/)[0];
     rec('DWG nello schizzo aperto: stesse entità e ingombro del DXF di riferimento, testi e quote contati nel messaggio, Annulla', ok, `DWG ${JSON.stringify(a.c)}, riferimento ${JSON.stringify(b.c)}; dopo Annulla ${undone}; «${a.toast}»`);
   } catch (e) { rec('DWG nello schizzo aperto: stesse entità e ingombro del DXF di riferimento', false, e.message.split('\n')[0]); await closeAll(); }
@@ -1452,6 +1452,74 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const gpl3 = /GNU GENERAL PUBLIC LICENSE\s+Version 3, 29 June 2007/.test(require('fs').readFileSync(path.join(__dirname, '..', 'LICENSE'), 'utf8'));
     rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', ab.title === 'Informazioni e licenze' && !need.length && local.length === 9 && !noFile.length && gpl3, `mancano: ${need.join(', ') || 'nulla'}; ${local.length} testi, senza file: ${noFile.join(', ') || 'nessuno'}; LICENSE GPL 3: ${gpl3}`);
   } catch (e) { rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', false, e.message.split('\n')[0]); await page.evaluate(() => App.closeModal && App.closeModal()).catch(() => {}); }
+  // sfondo del disegno: testi e quote di un DXF sotto lo schizzo, dalla finestra all'estrusione
+  try {
+    await fresh();
+    const L = (a, b, c, d) => ['0', 'LINE', '8', 'PEZZO', '10', a, '20', b, '11', c, '21', d];
+    const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', '*D1', '10', 0, '20', 0, ...L(0, -12, 100, -12), '0', 'MTEXT', '8', '0', '10', 50, '20', -11, '40', 3.5, '71', 8, '1', '100', '0', 'ENDBLK', '0', 'ENDSEC'];
+    const file = ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', 4, '0', 'ENDSEC', ...blocks, '0', 'SECTION', '2', 'ENTITIES', ...L(0, 0, 100, 0), ...L(100, 0, 100, 60), ...L(100, 60, 0, 60), ...L(0, 60, 0, 0),
+      '0', 'TEXT', '8', 'QUOTE', '10', 40, '20', 20, '40', 20, '1', 'H', '0', 'DIMENSION', '8', 'QUOTE', '2', '*D1', '0', 'ENDSEC', '0', 'EOF'].map(String).join('\r\n');
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', { name: 'sfondo.dxf', mimeType: 'application/dxf', buffer: Buffer.from(file) });
+    await page.waitForSelector('#dxfPrev svg');
+    const prevOf = () => page.evaluate(() => ({ t: document.querySelectorAll('#dxfPrev .dxf-notes text').length, cap: document.querySelector('#dxfCap').textContent }));
+    const pv1 = await prevOf();
+    await page.uncheck('#dxfNotes'); await page.waitForTimeout(80);
+    const pv0 = await prevOf();
+    await page.check('#dxfNotes'); await page.waitForTimeout(80);
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    await page.waitForTimeout(300);
+    const st1 = await page.evaluate(() => { const s = Sketcher.session(); return { bg: s.sk.bg.length, ents: s.sk.ents.filter(e => e.t !== 'pt').length, ids: s.sk.ents.map(e => e.id).join(), dof: Sketch.analyze(s.sk).dof, toast: document.querySelector('#toast').textContent, sel: s.sel.size }; });
+    // pixel dello sfondo: si leggono sul foglio trasparente sopra la vista, nella zona della H (da 15 mm a sinistra a 35 mm a destra di x = 40... dentro la piastra)
+    const hBox = () => page.evaluate(() => {
+      const s = Sketcher.session(), P = (u, v) => App.r.project(Geom.to3(s.F, [u, v])), cv = document.querySelector('#ov'), k = cv.width / cv.clientWidth;
+      const a = P(30, 15), b = P(70, 45), x0 = Math.round(Math.min(a[0], b[0])), x1 = Math.round(Math.max(a[0], b[0])), y0 = Math.round(Math.min(a[1], b[1])), y1 = Math.round(Math.max(a[1], b[1]));
+      const d = cv.getContext('2d').getImageData(x0 * k, y0 * k, (x1 - x0) * k, (y1 - y0) * k), W = d.width, H = d.height;
+      let n = 0, mnx = 1e9, mxx = -1, mny = 1e9, mxy = -1;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d.data[4 * (y * W + x) + 3] > 128) { n++; mnx = Math.min(mnx, x); mxx = Math.max(mxx, x); mny = Math.min(mny, y); mxy = Math.max(mxy, y); }
+      return { n, h: (mxy - mny + 1) / k, left: mnx / k + x0, bottom: (mxy + 1) / k + y0, px: Math.hypot(P(1, 0)[0] - P(0, 0)[0], P(1, 0)[1] - P(0, 0)[1]), ax: P(40, 20)[0], ay: P(40, 20)[1], cx: P(47, 30)[0], cy: P(47, 30)[1] };
+    });
+    await page.evaluate(() => App.renderNow && App.renderNow()); await page.waitForTimeout(150);
+    const on = await hBox();
+    const expH = 20 * on.px;   // altezza delle maiuscole nel file: 20 mm
+    // un clic sul testo non seleziona niente
+    await page.mouse.click(on.cx, on.cy); await page.waitForTimeout(120);
+    const hit = await page.evaluate(() => { const s = Sketcher.session(); return { sel: s.sel.size, hover: !!s.hover }; });
+    // casella «Mostra lo sfondo»
+    const show = page.locator('#skBg label.chk input');
+    await show.uncheck(); await page.waitForTimeout(150);
+    const off = await hBox();
+    // nel PDF non c'è: lo stesso PDF con lo sfondo acceso e spento
+    const pdfLen = async () => { await page.evaluate(() => { App.lastPdf = null; App.savePdf(); }); await page.waitForFunction(() => App.lastPdf && !App.pdfBusy, null, { timeout: 30000 }); return page.evaluate(() => App.lastPdf.bytes.length); };
+    const pdfOff = await pdfLen();
+    await page.locator('#skBg label.chk input').check(); await page.waitForTimeout(150);
+    const pdfOn = await pdfLen();
+    const on2 = await hBox();
+    // Togli lo sfondo, Annulla, Ripeti
+    await page.click('#skBg .btn'); await page.waitForTimeout(100);
+    const gone = await page.evaluate(() => ({ bg: Sketcher.session().sk.bg, box: !!document.querySelector('#skBg') }));
+    await page.evaluate(() => Sketcher.undo()); await page.waitForTimeout(100);
+    const back = await page.evaluate(() => ({ bg: (Sketcher.session().sk.bg || []).length, box: !!document.querySelector('#skBg') }));
+    // lo schizzo si chiude: nella vista del pezzo lo sfondo non c'è; l'estrusione è quella della sola piastra
+    await tool('exitSketch'); await page.waitForTimeout(200);
+    await page.evaluate(() => App.setCmdTab('features'));
+    await tool('extrude');
+    const dep = page.locator('.pm-body .row', { hasText: 'Profondità' }).first().locator('input');
+    await dep.fill('10'); await dep.press('Tab');
+    await page.click('.pm-ok'); await page.waitForTimeout(300);
+    const pz = await props();
+    // resta nel progetto salvato: si ricarica la pagina
+    await page.waitForTimeout(700);
+    await page.reload(); await page.waitForFunction(() => window.App && App.doc && App.st, null, { timeout: 20000 }); await page.waitForTimeout(500);
+    const saved = await page.evaluate(() => { const f = App.doc.features.find(x => x.type === 'sketch'); return f && f.sk.bg ? f.sk.bg.length : -1; });
+    const pv = pv1.t === 2 && /sullo sfondo: 1 testo, 1 quota/.test(pv1.cap) && pv0.t === 0 && !/sullo sfondo/.test(pv0.cap);
+    const st = st1.ents === 4 && st1.bg === 3 && st1.sel === 4 && /Sullo sfondo: 1 testo, 1 quota/.test(st1.toast) && !/Non importati/.test(st1.toast);
+    const px = on.n > 50 && Math.abs(on.h - expH) <= 0.03 * expH && Math.abs(on.left - on.ax) <= 0.15 * expH && Math.abs(on.bottom - on.ay) <= 0.03 * expH;
+    const ok = pv && st && px && !hit.sel && !hit.hover && off.n === 0 && on2.n === on.n && pdfOn === pdfOff && pdfOn > 0 && gone.bg === undefined && !gone.box && back.bg === 3 && back.box && pz && !pz.err.length && Math.abs(pz.V - 60000) < 60 && saved === 3;
+    rec('Sfondo del disegno: anteprima, messaggio, altezza e posizione del testo, nessun clic, casella, PDF, Togli/Annulla, estrusione, salvataggio', ok,
+      `anteprima ${pv1.t}/${pv0.t}; entità ${st1.ents}, sfondo ${st1.bg}; H alta ${on.h.toFixed(1)} px (attesi ${expH.toFixed(1)}), sinistra ${(on.left - on.ax).toFixed(1)} e base ${(on.bottom - on.ay).toFixed(1)} px dal punto, ${on.n} pixel; clic: sel ${hit.sel}; spento ${off.n} pixel, riacceso ${on2.n}; PDF ${pdfOff}/${pdfOn} byte; tolto ${JSON.stringify(gone)}, annullato ${back.bg}; V ${pz && pz.V.toFixed(1)}; salvati ${saved}; «${st1.toast}»`);
+  } catch (e) { rec('Sfondo del disegno: anteprima, messaggio, altezza e posizione del testo, nessun clic, casella, PDF, Togli/Annulla, estrusione, salvataggio', false, e.message.split('\n')[0]); await page.evaluate(() => { App.closeModal(); if (App.mode === 'sketch') Sketcher.exit(false); }).catch(() => {}); }
   // privacy: le due pagine non chiedono nulla ad altri siti e usano davvero IBM Plex da dentro la pagina
   try {
     const nctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });

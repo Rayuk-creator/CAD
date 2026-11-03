@@ -242,6 +242,35 @@ const acadver = u8 => { const m = /\$ACADVER\s*\r?\n\s*1\s*\r?\n\s*(\S+)/.exec(B
       has(conv) && has(cad), `convertitore: ${has(conv) ? 'sì' : 'NO'}, Banco CAD: ${has(cad) ? 'sì' : 'NO'}`);
   } catch (e) { rec('Codifica UTF-8 dichiarata all\'inizio della pagina', false, 'ERRORE ' + e.message); }
 
+  // Sfondo di riferimento su un disegno vero: il numero scritto da AutoCAD in ogni quota deve essere la misura salvata nel file,
+  // e il DWG convertito deve dare le stesse quote e gli stessi testi del DXF di riferimento
+  try {
+    const rif = new Uint8Array(fs.readFileSync(path.join(PROVE, 'riferimento', 'esempio-2013.dxf')));
+    const a = IM.parseDXF(rif, { notes: true }), g0 = IM.parseDXF(rif);
+    // misure (codice 42) e blocchi delle quote, letti dal file senza passare dal Banco CAD
+    const L = Buffer.from(rif).toString('latin1').split(/\r?\n/), meas = [];
+    let sec = '', ent = null;
+    for (let i = 0; i + 1 < L.length; i += 2) {
+      const c = L[i].trim(), v = L[i + 1].trim();
+      if (c === '2' && L[i - 1] !== undefined && L[i - 1].trim() === 'SECTION') sec = v;
+      if (c === '0') { ent = sec === 'ENTITIES' && v === 'DIMENSION' ? {} : null; if (ent) meas.push(ent); }
+      else if (ent && c === '42') ent.m = parseFloat(v);
+      else if (ent && c === '70') ent.fl = parseInt(v, 10) & 7;
+    }
+    const texts = a.notes.filter(n => n.s !== undefined), nums = texts.map(t => parseFloat(t.s.replace(',', '.')));
+    // le quote lineari e di raggio/diametro (non gli angoli, salvati in radianti): il numero scritto, arrotondato come nel file, è la misura
+    const linear = meas.filter(d => d.fl !== 2 && d.fl !== 5);
+    const miss = linear.filter(d => !nums.some(x => Math.abs(x - d.m) <= 0.0051));
+    const same = JSON.stringify(a.geo) === JSON.stringify(g0.geo);
+    const conv = runConvert(M, new Uint8Array(fs.readFileSync(path.join(PROVE, 'esempio-2013.dwg'))));
+    const b = IM.parseDXF(conv.dxf, { notes: true }), tb = b.notes.filter(n => n.s !== undefined);
+    const inFile = t => tb.some(u => u.s === t.s && Math.abs(u.x - t.x) < 1e-3 && Math.abs(u.y - t.y) < 1e-3);
+    const lost = texts.filter(t => !inFile(t));
+    rec('Sfondo su un disegno vero (2013): i numeri delle quote sono le misure del file, geometria uguale, DWG convertito uguale al riferimento',
+      a.noteCount.quote === meas.length + 1 && linear.length >= 5 && !miss.length && same && a.noteCount.testi === 5 && b.noteCount.quote === a.noteCount.quote && b.noteCount.testi === a.noteCount.testi && !lost.length,
+      `quote ${a.noteCount.quote} (${meas.length} DIMENSION + 1 ARC_DIMENSION), misure non trovate ${miss.length}/${linear.length}, testi ${a.noteCount.testi}; DWG: quote ${b.noteCount.quote}, testi ${b.noteCount.testi}, testi diversi: ${lost.map(t => t.s).join(' | ') || 'nessuno'}`);
+  } catch (e) { rec('Sfondo su un disegno vero (2013)', false, 'ERRORE ' + e.message); }
+
   // Il lettore dentro il Banco CAD: uguale a quello del Convertitore, stesso DXF byte per byte per tutti i disegni di prova
   try {
     const cad = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');

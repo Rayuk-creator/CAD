@@ -52,10 +52,10 @@ L'utente vuole inserire il Banco CAD su **AlternativeTo**. Controllo fatto su tu
 Cose ancora da fare:
 
 5. **Sorgenti di occt-import-js «nello stesso posto»** (LGPL 2.1, punto 6d): l'utente fa un **fork su GitHub di occt-import-js alla versione 0.0.24** (con OpenCascade); poi si aggiornano `licenze/LEGGIMI.md` e il commento in `index.html`. Facoltativo lo stesso per libredwg-web 0.8.2 (la GPL 3 permette già i sorgenti su un altro server).
-9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 50 argomenti, Glossario 174 termini), da decidere con l'utente.
+9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 50 argomenti, Glossario 176 termini), da decidere con l'utente.
 
 ## Altro ancora da fare
 
-- **Testi, quote e tratteggi di DXF e DWG come sfondo di riferimento** nello schizzo (idea del 3 novembre, non chiesta): oggi si saltano perché lo schizzo contiene solo geometria. Da vedere senza toccare i contorni e senza far comandare le quote.
+- Sfondo del disegno: **fatti** il 3 novembre testi e quote. Non fatti, se servono: tratteggi, tolleranze geometriche, MULTILEADER, tabelle.
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
 - Le pagine pubblicate su claude.ai: «Banco CAD» (versione 20, con il lettore DWG) e «Convertitore DWG → DXF» sono aggiornate al 3 novembre notte. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.

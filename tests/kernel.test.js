@@ -1011,6 +1011,97 @@ SK.push(['PDF: foglio A3 = 1190,55 × 841,89 punti; «Ø20» centrato su x = 100
 }]);
 
 /* ---------- esecuzione ---------- */
+// ---- sfondo di riferimento: testi e quote di DXF e DWG (valori calcolati a mano) ----
+const near = (a, b, e = 1e-9) => Math.abs(a - b) <= e ? 1 : 0;
+const noteOf = (ents, o = {}) => MI.parseDXF(dxfFile(ents, o), { notes: true });
+const textsOf = r => r.notes.filter(n => n.s !== undefined);
+SK.push(['Sfondo DXF: TEXT con codici, rotazione e allineamenti', () => {
+  const t = (...kv) => ['0', 'TEXT', '8', '0', ...kv];
+  const r = noteOf([
+    t('10', 10, '20', 20, '40', 3.5, '50', 30, '1', '%%c20 %%p0,1 45%%d %%uX%%u 100%%%'),
+    t('10', 0, '20', 0, '11', 50, '21', 40, '40', 2, '72', 1, '73', 3, '1', 'centro sopra'),   // base 2 più in basso del punto
+    t('10', 0, '20', 0, '11', 50, '21', 40, '40', 4, '72', 2, '73', 1, '1', 'destra sotto'),   // base 0,25·4 = 1 più in alto
+    t('10', 0, '20', 0, '11', 30, '21', 40, '40', 2, '72', 3, '1', 'allineato'),               // da (0,0) a (30,40): larghezza 50
+    t('10', 0, '20', 0, '11', 50, '21', 40, '40', 6, '72', 4, '1', 'in mezzo'),                // base 3 più in basso
+  ]), T = textsOf(r);
+  return { ok: true, exp: [5, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    got: [r.noteCount.testi, T[0].s === 'Ø20 ±0,1 45° X 100%' ? 1 : 0, near(T[0].x, 10) * near(T[0].y, 20) * near(T[0].h, 3.5) * near(T[0].r, Math.PI / 6),
+      near(T[1].x, 50) * near(T[1].y, 38) * (T[1].ha === 1 ? 1 : 0), near(T[2].x, 50) * near(T[2].y, 41) * (T[2].ha === 2 ? 1 : 0),
+      near(T[3].fw, 50), near(T[3].r, Math.atan2(40, 30)), near(T[3].x, 0) * near(T[3].y, 0), near(T[4].y, 37) * (T[4].ha === 1 ? 1 : 0), r.geo.length === 0 ? 1 : 0] };
+}]);
+SK.push(['Sfondo DXF: testo dentro un blocco spostato, ruotato, scalato e specchiato', () => {
+  const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'B', '10', 5, '20', 5, '0', 'TEXT', '8', '0', '10', 15, '20', 5, '40', 2, '1', 'T', '0', 'ENDBLK', '0', 'ENDSEC'];
+  const r = noteOf([['0', 'INSERT', '8', '0', '2', 'B', '10', 100, '20', 100, '41', 2, '42', 2, '50', 90], ['0', 'INSERT', '8', '0', '2', 'B', '10', 0, '20', 0, '41', -1, '42', 1]], { blocks }), T = textsOf(r);
+  // (15,5) − base (5,5) = (10,0); ·2 = (20,0); ruotato di 90° = (0,20); + (100,100) = (100,120). Altezza 2·2 = 4.
+  // Specchio: (−10,0), direzione (−1,0) = 180°, testo capovolto rispetto alla sua direzione.
+  return { ok: true, exp: [2, 1, 1, 1, 1], got: [T.length, near(T[0].x, 100) * near(T[0].y, 120) * near(T[0].h, 4), near(T[0].r, Math.PI / 2) * (T[0].fy ? 0 : 1), near(T[1].x, -10) * near(T[1].y, 0) * near(T[1].h, 2), near(Math.abs(T[1].r), Math.PI) * (T[1].fy ? 1 : 0)] };
+}]);
+SK.push(['Sfondo DXF: MTEXT su più righe, punto di attacco, codici, pezzi, a capo', () => {
+  const m = (...kv) => ['0', 'MTEXT', '8', '0', ...kv];
+  const a = textsOf(noteOf([m('10', 100, '20', 200, '40', 10, '71', 5, '1', 'A\\PB\\PC')]));
+  // righe distanti 10·5/3; altezza del blocco H = 10 + 2·10·5/3; prima base = centro + H/2 − 10
+  const ls = 50 / 3, H = 10 + 2 * ls, y0 = 200 + H / 2 - 10;
+  const b = textsOf(noteOf([m('10', 0, '20', 0, '40', 3, '71', 7, '44', 2, '1', 'A\\PB')]));   // sotto: ultima base sul punto; righe distanti 3·5/3·2 = 10
+  const c = textsOf(noteOf([m('10', 0, '20', 0, '40', 3, '71', 1, '11', 0, '21', 2, '1', 'Q')]));   // attacco in alto a sinistra, testo verso +Y: base 3 più a destra
+  const d = textsOf(noteOf([m('10', 0, '20', 0, '40', 3, '3', 'uno ', '1', 'due')]));
+  const e = MI.mtextLines('{\\fArial|b1;Ø\\H0.7x;20}\\~mm \\S1^2;\\U+00B1\\\\ %%c', 0, 1)[0];
+  const f = MI.mtextLines('uno due tre quattro', 40, 5);   // una lettera ≈ 0,7·5 = 3,5: 11 lettere per riga
+  return { ok: true, exp: [3, 1, 1, 1, 1, 1, 1, 1, 1], got: [a.length, near(a[0].y, y0) * near(a[1].y, y0 - ls) * near(a[2].y, y0 - 2 * ls), a.every(t => t.ha === 1 && near(t.x, 100)) ? 1 : 0,
+    near(b[0].y, 10) * near(b[1].y, 0), near(c[0].x, -(-3)) * near(c[0].y, 0) * near(c[0].r, Math.PI / 2), d[0].s === 'uno due' ? 1 : 0, e === 'Ø20 mm 1/2±\\ Ø' ? 1 : 0, f.join('|') === 'uno due tre|quattro' ? 1 : 0, MI.mtextLines('{\\C1;rosso}', 0, 1)[0] === 'rosso' ? 1 : 0] };
+}]);
+SK.push(['Sfondo DXF: la quota si disegna dal suo blocco, nel posto giusto', () => {
+  const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', '*D1', '10', 0, '20', 0,
+    '0', 'LINE', '8', '0', '10', 0, '20', 0, '11', 10, '21', 0,
+    '0', 'SOLID', '8', '0', '10', 0, '20', 0, '11', 2, '21', 1, '12', 2, '22', -1, '13', 2, '23', -1,
+    '0', 'ARC', '8', '0', '10', 5, '20', 5, '40', 2, '50', 0, '51', 90,
+    '0', 'POINT', '8', 'Defpoints', '10', 0, '20', 0,
+    '0', 'MTEXT', '8', '0', '10', 5, '20', 1, '40', 2.5, '71', 8, '1', '\\A1;%%c10', '0', 'ENDBLK', '0', 'ENDSEC'];
+  const r = noteOf([['0', 'DIMENSION', '8', '0', '2', '*D1', '12', 100, '22', 50, '42', 10]], { blocks });
+  const ln = r.notes.find(n => n.p), fi = r.notes.find(n => n.f), ar = r.notes.find(n => n.c), T = textsOf(r);
+  // senza blocco: il numero misurato (42) nel punto del testo; «<>» è il numero misurato
+  const r2 = noteOf([['0', 'DIMENSION', '8', '0', '2', '*X', '11', 3, '21', 4, '42', 12.5, '53', 90, '1', 'L=<>']]), t2 = textsOf(r2)[0];
+  const r3 = noteOf([['0', 'DIMENSION', '8', '0']]);
+  return { ok: true, exp: [1, 1, 1, 1, 1, 1, 1, 1, 0, 1], got: [r.noteCount.quote, r.geo.length === 0 ? 1 : 0, ln.p.join() === '100,50,110,50' ? 1 : 0, fi.f.join() === '100,50,102,51,102,49,102,49' ? 1 : 0,
+    near(ar.c[0], 105) * near(ar.c[1], 55) * near(ar.r, 2) * near(ar.a0, 0) * near(ar.a1, Math.PI / 2), T.length === 1 && T[0].s === 'Ø10' && near(T[0].x, 105) * near(T[0].y, 51) * near(T[0].h, 2.5) && T[0].ha === 1 ? 1 : 0, t2.s === 'L=12,5' && near(t2.x, 3) * near(t2.y, 4) * near(t2.r, Math.PI / 2) ? 1 : 0, r3.noteCount.quote, r3.notes.length, r2.noteCount.quote] };
+}]);
+SK.push(['Sfondo DXF: layer scelti, attributi nascosti, fogli di layout; senza richiesta restano saltati', () => {
+  const ents = [['0', 'TEXT', '8', 'QUOTE', '10', 0, '20', 0, '40', 1, '1', 'a'], ['0', 'TEXT', '8', 'PEZZO', '10', 0, '20', 0, '40', 1, '1', 'b'], ['0', 'TEXT', '8', 'PEZZO', '67', 1, '10', 0, '20', 0, '40', 1, '1', 'foglio'],
+    ['0', 'ATTRIB', '8', 'PEZZO', '70', 1, '10', 0, '20', 0, '40', 1, '1', 'nascosto'], ['0', 'ATTRIB', '8', 'PEZZO', '70', 0, '10', 0, '20', 0, '40', 1, '1', 'c'], ['0', 'TEXT', '8', 'PEZZO', '10', 0, '20', 0, '40', 1, '1', '  '],
+    ['0', 'LEADER', '8', 'PEZZO', '10', 0, '20', 0, '10', 5, '20', 5, '10', 9, '20', 5]];
+  const r = MI.parseDXF(dxfFile(ents), { notes: true, layers: ['PEZZO'] }), old = MI.parseDXF(dxfFile(ents));
+  return { ok: true, exp: [1, 1, 3, 2, 1, 0, 1, 1], got: [textsOf(r).map(t => t.s).join() === 'b,c' ? 1 : 0, r.noteCount.richiami, old.skipped.testi - 1, r.noteCount.testi, r.notes.find(n => n.p).p.join() === '0,0,5,5,9,5' ? 1 : 0, old.notes.length, old.skipped.quote === undefined ? 1 : 0, old.skipped.richiami] };
+}]);
+SK.push(['Sfondo DXF: accenti nei file UTF-8 (dal 2007) e Windows-1252 (prima)', () => {
+  const head = (ver, cp) => ['0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', ver, '9', '$DWGCODEPAGE', '3', cp, '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES', '0', 'TEXT', '8', '0', '10', 0, '20', 0, '40', 1, '1'].join('\r\n') + '\r\n';
+  const tail = '\r\n0\r\nENDSEC\r\n0\r\nEOF';
+  const utf = new TextEncoder().encode(head('AC1027', 'ANSI_1252') + 'Perché €' + tail);
+  const win = Uint8Array.from(head('AC1018', 'ANSI_1252') + 'Perché \u0080' + tail, ch => ch.charCodeAt(0));
+  const bad = Uint8Array.from(head('AC1027', 'ANSI_1252') + 'Perché' + tail, ch => ch.charCodeAt(0));   // dichiarato UTF-8 ma non lo è: non si perde il testo
+  const s = u => textsOf(MI.parseDXF(u, { notes: true }))[0].s;
+  return { ok: true, exp: [1, 1, 1], got: [s(utf) === 'Perché €' ? 1 : 0, s(win) === 'Perché €' ? 1 : 0, s(bad) === 'Perché' ? 1 : 0] };
+}]);
+SK.push(['Sfondo DXF: l\'inquadratura comprende le quote intorno al pezzo, non un testo lontanissimo', () => {
+  const near1 = MI.notesBox([{ p: [0, -15, 100, -15] }, { s: 'AB', x: 110, y: 10, h: 2 }], [0, 0], [100, 60]);    // AB: lungo 2·0,7·2 = 2,8
+  const far = MI.notesBox([{ s: 'A', x: 972635, y: -320368, h: 184349 }, { p: [0, -26, 100, -26] }], [0, 0], [100, 60]);   // oltre 25 dalla geometria: non contano
+  return { ok: true, exp: [1, 1, 1], got: [near(near1.mn[1], -15) * near(near1.mn[0], 0), near(near1.mx[0], 112.8) * near(near1.mx[1], 60), near(far.mx[0], 100) * near(far.mn[1], 0) * near(far.mx[1], 60) * near(far.mn[0], 0)] };
+}]);
+SK.push(['Sfondo DXF nello schizzo: stessa origine e scala; geometria, stato e contorni identici a quelli senza sfondo', () => {
+  const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', '*D1', '10', 0, '20', 0, '0', 'LINE', '8', '0', '10', 50, '20', 18, '11', 60, '21', 18, '0', 'CIRCLE', '8', '0', '10', 52, '20', 23, '40', 1, '0', 'ENDBLK', '0', 'ENDSEC'];
+  // piastra 10 × 6 cm con l'angolo in (50,20) cm
+  const file = dxfFile([dLine(50, 20, 60, 20), dLine(60, 20, 60, 26), dLine(60, 26, 50, 26), dLine(50, 26, 50, 20), ['0', 'TEXT', '8', '0', '10', 52, '20', 23, '40', 0.5, '41', 0.8, '1', 'PIASTRA'], ['0', 'DIMENSION', '8', '0', '2', '*D1']], { units: 5, blocks });
+  const r = MI.parseDXF(file, { notes: true }), r0 = MI.parseDXF(file), a = SB(), b = SB();
+  const o = { scale: MI.DXF_SCALE.cm, origin: 'corner' };
+  MI.dxfToSketch(a.s, r.geo, { ...o, notes: r.notes }); MI.dxfToSketch(b.s, r0.geo, o);
+  const bg = a.s.bg, t = bg.find(n => n.s), l = bg.find(n => n.p), c = bg.find(n => n.c);
+  const same = JSON.stringify(a.s.ents) === JSON.stringify(b.s.ents) && JSON.stringify(a.s.cons) === JSON.stringify(b.s.cons) && a.s.next === b.s.next;
+  const an = Sketch.analyze(a.s), an0 = Sketch.analyze(b.s), pr = Sketch.profiles(a.s), pr0 = Sketch.profiles(b.s);
+  // un secondo disegno nello stesso schizzo si aggiunge; il progetto salvato e riletto lo conserva
+  const nBg = bg.length; MI.dxfToSketch(a.s, r.geo, { ...o, notes: r.notes });
+  const back = JSON.parse(JSON.stringify(a.s));
+  return { ok: true, exp: [1, 1, 1, 1, 1, 1, 1, 6000, 1, 1], got: [same ? 1 : 0, near(t.x, 20) * near(t.y, 30), near(t.h, 5) * near(t.w, 0.8), l.p.join() === '0,-20,100,-20' ? 1 : 0, c.c.join() === '20,30' && near(c.r, 10) ? 1 : 0,
+    an.dof === an0.dof && an.status === an0.status ? 1 : 0, b.s.bg === undefined ? 1 : 0, pr.regions.reduce((s, x) => s + x.area, 0), pr.regions.length === pr0.regions.length ? 1 : 0, back.bg.length === 2 * nBg ? 1 : 0] };
+}]);
+
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
   const rows = [];

@@ -3281,11 +3281,11 @@ self.postMessage({ hello: true });`;
     for (let i = 0; i + 1 < lines.length; i += 2) {
       const code = parseInt(lines[i].trim(), 10);
       if (!Number.isFinite(code)) { if (!lines[i].trim() && i === lines.length - 2) break; throw new Error('Il file non è un DXF valido (riga ' + (i + 1) + ').'); }
-      pairs.push([code, lines[i + 1].trim()]);
+      pairs.push([code, code === 1 || code === 3 ? lines[i + 1] : lines[i + 1].trim()]);   // 1 e 3: testi, gli spazi contano (un MTEXT lungo è a pezzi)
     }
     if (!pairs.some(p => p[0] === 0 && p[1] === 'SECTION')) throw new Error('Il file non è un DXF: manca la sezione delle entità.');
-    let insunits = 0;
-    const blocks = new Map(), layerLt = new Map(), layerOff = new Map();
+    let insunits = 0, acadver = '', codepage = '';
+    const blocks = new Map(), layerLt = new Map(), layerOff = new Map(), styles = new Map();
     const top = [];
     let i = 0;
     // legge un'entità a partire da pairs[i] (codice 0); restituisce {type, g: [[codice, valore], ...]}
@@ -3301,6 +3301,8 @@ self.postMessage({ hello: true });`;
         if (name === 'HEADER') {
           while (i < pairs.length && !(pairs[i][0] === 0 && pairs[i][1] === 'ENDSEC')) {
             if (pairs[i][0] === 9 && pairs[i][1] === '$INSUNITS') { const q = pairs[i + 1]; if (q && q[0] === 70) insunits = parseInt(q[1], 10) || 0; }
+            if (pairs[i][0] === 9 && pairs[i][1] === '$ACADVER') acadver = String((pairs[i + 1] || [])[1] || '').trim();
+            if (pairs[i][0] === 9 && pairs[i][1] === '$DWGCODEPAGE') codepage = String((pairs[i + 1] || [])[1] || '').trim();
             i++;
           }
         } else if (name === 'TABLES') {
@@ -3313,6 +3315,7 @@ self.postMessage({ hello: true });`;
               // spento (colore negativo) o congelato (bit 1 di 70): in AutoCAD non si vede
               if (num(e.g, 62, 7) < 0 || (num(e.g, 70) & 1)) layerOff.set(val(e.g, 2, ''), true);
             }
+            else if (e.type === 'STYLE') styles.set(val(e.g, 2, ''), { h: num(e.g, 40), w: num(e.g, 41, 1) });   // altezza e larghezza dei testi
           }
         } else if (name === 'BLOCKS') {
           let cur = null;
@@ -3476,6 +3479,119 @@ self.postMessage({ hello: true });`;
       const r = Math.hypot(p[0] - c[0], p[1] - c[1]);
       pushArc(m, c, r, Math.atan2(p[1] - c[1], p[0] - c[0]), unwrapAfter(Math.atan2(p[1] - c[1], p[0] - c[0]), Math.atan2(q[1] - c[1], q[0] - c[0])));
     };
+    /* ---- sfondo di riferimento (opts.notes): testi, quote e richiami del file, solo da guardare. Non entrano in geo:
+       non toccano contorni, punti, quote dello schizzo. Elementi, in coordinate del disegno:
+       {s, x, y, h, r, ha, w, fx, fy, fw} testo: (x, y) = punto sulla linea di base, h = altezza delle maiuscole, r = rotazione,
+         ha = 0 sinistra, 1 centro, 2 destra, w = larghezza, fx/fy = specchiato, fw = larghezza imposta (testi «allineati»);
+       {p: [x0, y0, x1, y1, …]} spezzata; {c, r, a0, a1} arco o cerchio; {f: [x0, y0, …]} poligono pieno (le frecce). */
+    const notes = [], noteCount = { testi: 0, quote: 0, richiami: 0 };
+    const lin = (m, v) => [m[0] * v[0] + m[1] * v[1], m[2] * v[0] + m[3] * v[1]];
+    let dec = null, rev = null;
+    const recode = t => {   // i byte del file sono stati letti come latin1: dal 2007 i DXF sono in UTF-8, prima nella code page dichiarata
+      if (typeof data === 'string' || !/[^\x00-\x7f]/.test(t)) return t;
+      try {
+        if (!dec) {
+          const cp = /^ANSI_(\d+)$/i.exec(codepage);
+          dec = acadver >= 'AC1021' ? new TextDecoder('utf-8', { fatal: true }) : new TextDecoder(cp && +cp[1] >= 1250 && +cp[1] <= 1258 ? 'windows-' + cp[1] : cp && cp[1] === '932' ? 'shift_jis' : 'windows-1252');
+        }
+        // il decodificatore «latin1» del browser è in realtà Windows-1252: si torna ai byte con la sua tabella
+        if (!rev) { rev = new Map(); const all = new TextDecoder('latin1').decode(Uint8Array.from({ length: 256 }, (x, k) => k)); for (let k = 0; k < 256; k++) rev.set(all[k], k); }
+        return dec.decode(Uint8Array.from(t, ch => rev.get(ch)));
+      } catch (err) { return t; }
+    };
+    const styleOf = g => styles.get(val(g, 7, 'STANDARD')) || styles.get('Standard') || { h: 0, w: 1 };
+    const noteText = (m, s, x, y, h, rot, ha, w, gen, fw) => {
+      if (!s || !String(s).trim() || !(h > 0)) return;
+      const P = app(m, [x, y]), D = lin(m, [Math.cos(rot), Math.sin(rot)]), U = lin(m, [-Math.sin(rot), Math.cos(rot)]), sc = Math.hypot(D[0], D[1]);
+      const n = { s, x: P[0], y: P[1], h: h * sc, r: Math.atan2(D[1], D[0]) };
+      if (ha) n.ha = ha;
+      if (w > 0 && Math.abs(w - 1) > 1e-9) n.w = w;
+      if (gen & 2) n.fx = 1;
+      if (!!(gen & 4) !== (D[0] * U[1] - D[1] * U[0] < 0)) n.fy = 1;   // sottosopra, o specchiato da un blocco
+      if (fw > 0) n.fw = fw * sc;
+      notes.push(n);
+    };
+    // TEXT e ATTRIB: punto di inserimento e allineamento (72: 0 sin, 1 centro, 2 destra, 3 allineato, 4 in mezzo, 5 adatta; verticale: 0 base, 1 sotto, 2 mezzo, 3 sopra)
+    const noteTEXT = (e, m) => {
+      const g = e.g, o = ocs(g); if (!o) { curves3d++; return; }
+      const mm = mmul(m, o), st = styleOf(g);
+      const h = num(g, 40) || st.h || 2.5, w = num(g, 41, st.w || 1), hj = num(g, 72), vj = num(g, e.type === 'TEXT' ? 73 : 74);
+      const A = [num(g, 10), num(g, 20)], B = [num(g, 11), num(g, 21)];
+      let rot = num(g, 50) * Math.PI / 180, base = hj || vj ? B : A, fw = 0;
+      const s = dxfText(recode(val(g, 1, '')));
+      if (hj === 3 || hj === 5) { fw = Math.hypot(B[0] - A[0], B[1] - A[1]); base = A; if (fw > 0) rot = Math.atan2(B[1] - A[1], B[0] - A[0]); }
+      const shift = hj === 3 || hj === 5 ? 0 : hj === 4 || vj === 2 ? -h / 2 : vj === 3 ? -h : vj === 1 ? 0.25 * h : 0;
+      noteText(mm, s, base[0] - Math.sin(rot) * shift, base[1] + Math.cos(rot) * shift, h, rot, hj === 3 || hj === 5 ? 0 : hj === 4 ? 1 : hj === 2 ? 2 : hj === 1 ? 1 : 0, w, num(g, 71), fw);
+    };
+    // MTEXT: più righe; 71 = punto di attacco (1–9: riga sopra/mezzo/sotto, colonna sinistra/centro/destra); righe distanti 5/3 dell'altezza per il fattore 44
+    const noteMTEXT = (e, m, wrap) => {
+      const g = e.g, st = styleOf(g);
+      const h = num(g, 40) || st.h || 2.5;
+      let raw = ''; for (const [c, v] of g) if (c === 1 || c === 3) raw += v;
+      const a = Math.min(9, Math.max(1, num(g, 71, 1))) - 1, col = a % 3, row = Math.floor(a / 3);
+      const dx = num(g, 11), dy = num(g, 21), rot = dx || dy ? Math.atan2(dy, dx) : num(g, 50) * Math.PI / 180;
+      const ls = (5 / 3) * h * (num(g, 44, 1) || 1), L = mtextLines(recode(raw), wrap ? num(g, 41) : 0, h), n = L.length;
+      const x0 = num(g, 10), y0 = num(g, 20);
+      L.forEach((s, k) => {
+        const by = row === 0 ? -h - k * ls : row === 1 ? ((n - 1) * ls - h) / 2 - k * ls : (n - 1 - k) * ls;
+        noteText(m, s, x0 - Math.sin(rot) * by, y0 + Math.cos(rot) * by, h, rot, col, st.w || 1, 0, 0);
+      });
+    };
+    const notePoly = (m, vs, closed) => {   // tratti dritti e curvi (bulge) di una polilinea
+      const v2 = vs.filter((v, k) => k === 0 || Math.hypot(v.p[0] - vs[k - 1].p[0], v.p[1] - vs[k - 1].p[1]) > 1e-12), n = v2.length;
+      if (n < 2) return;
+      let cur = null;
+      for (let k = 0; k < (closed ? n : n - 1); k++) {
+        const p = v2[k].p, q = v2[(k + 1) % n].p, bu = v2[k].b;
+        if (Math.abs(bu) < 1e-12) { const Q = app(m, q); if (!cur) { const P = app(m, p); cur = { p: [P[0], P[1]] }; notes.push(cur); } cur.p.push(Q[0], Q[1]); continue; }
+        cur = null;
+        const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < 1e-12) continue;
+        const h = (d / 2) * (1 - bu * bu) / (2 * bu), c = [(p[0] + q[0]) / 2 - h * (q[1] - p[1]) / d, (p[1] + q[1]) / 2 + h * (q[0] - p[0]) / d], r = Math.hypot(p[0] - c[0], p[1] - c[1]);
+        const ap = Math.atan2(p[1] - c[1], p[0] - c[0]), aq = Math.atan2(q[1] - c[1], q[0] - c[0]);
+        if (bu > 0) noteArc(m, c, r, ap, unwrapAfter(ap, aq)); else noteArc(m, c, r, aq, unwrapAfter(aq, ap));
+      }
+    };
+    const noteArc = (m, c, r, a0, a1) => {
+      const det = m[0] * m[3] - m[1] * m[2], sc = Math.sqrt(Math.abs(det)), cc = app(m, c), rot = Math.atan2(m[2], m[0]);
+      if (a1 - a0 >= 2 * Math.PI - 1e-9) { notes.push({ c: cc, r: r * sc, a0: 0, a1: 2 * Math.PI }); return; }
+      let b0 = a0 + rot, b1 = a1 + rot;
+      if (det < 0) { const P = t => app(m, [c[0] + r * Math.cos(t), c[1] + r * Math.sin(t)]), p0 = P(a0), p1 = P(a1); b0 = Math.atan2(p1[1] - cc[1], p1[0] - cc[0]); b1 = Math.atan2(p0[1] - cc[1], p0[0] - cc[0]); }
+      notes.push({ c: cc, r: r * sc, a0: b0, a1: unwrapAfter(b0, b1) });
+    };
+    // il disegno di una quota: il blocco anonimo che le ha scritto il programma d'origine (linee, frecce, numero)
+    const walkNote = (list, m, depth) => {
+      for (const e of list) {
+        const g = e.g, o = ocs(g), mm = o ? mmul(m, o) : m;
+        switch (e.type) {
+          case 'LINE': { const a = app(m, [num(g, 10), num(g, 20)]), b = app(m, [num(g, 11), num(g, 21)]); notes.push({ p: [a[0], a[1], b[0], b[1]] }); break; }
+          case 'CIRCLE': if (o && num(g, 40) > 0) noteArc(mm, [num(g, 10), num(g, 20)], num(g, 40), 0, 2 * Math.PI); break;
+          case 'ARC': if (o && num(g, 40) > 0) { const a0 = num(g, 50) * Math.PI / 180; noteArc(mm, [num(g, 10), num(g, 20)], num(g, 40), a0, unwrapAfter(a0, num(g, 51) * Math.PI / 180)); } break;
+          case 'LWPOLYLINE': if (o) { const vs = []; for (const [c, v] of g) { if (c === 10) vs.push({ p: [parseFloat(v), 0], b: 0 }); else if (c === 20 && vs.length) vs[vs.length - 1].p[1] = parseFloat(v); else if (c === 42 && vs.length) vs[vs.length - 1].b = parseFloat(v); } notePoly(mm, vs, (num(g, 70) & 1) === 1); } break;
+          case 'POLYLINE': if (o) notePoly(mm, e.verts.map(vg => ({ p: [num(vg, 10), num(vg, 20)], b: num(vg, 42) })), (num(g, 70) & 1) === 1); break;
+          case 'SOLID': case 'TRACE': if (o) { const f = []; for (const k of [0, 1, 3, 2]) { const q = app(mm, [num(g, 10 + k), num(g, 20 + k)]); f.push(q[0], q[1]); } notes.push({ f }); } break;
+          case 'TEXT': case 'ATTRIB': if (!(num(g, 70) & 1) || e.type === 'TEXT') noteTEXT(e, m); break;
+          case 'MTEXT': noteMTEXT(e, m, false); break;
+          case 'INSERT': {
+            const b = blocks.get(val(g, 2, '')), sx = num(g, 41, 1), sy = num(g, 42, 1), rot = num(g, 50) * Math.PI / 180;
+            if (!b || depth > 8 || !o || Math.abs(Math.abs(sx) - Math.abs(sy)) > 1e-9 * Math.max(1, Math.abs(sx))) break;
+            const cr = Math.cos(rot), sr = Math.sin(rot);
+            walkNote(b.ents, mmul(mm, mmul([cr, -sr, sr, cr, num(g, 10), num(g, 20)], [sx, 0, 0, sy, -sx * b.base[0], -sy * b.base[1]])), depth + 1);
+            break;
+          }
+        }
+      }
+    };
+    const noteDim = (e, m) => {
+      const g = e.g, b = blocks.get(val(g, 2, ''));
+      noteCount.quote++;
+      if (b && b.ents.length) { walkNote(b.ents, mmul(m, [1, 0, 0, 1, num(g, 12), num(g, 22)]), 0); return; }
+      // quota senza blocco: solo il numero, nel punto del testo
+      const o = ocs(g); if (!o) { curves3d++; return; }
+      const T0 = val(g, 1, ''), meas = num(g, 42), mt = String(Math.round(meas * 1e4) / 1e4).replace('.', ',');
+      if (!meas && (!T0 || T0 === '<>')) return;   // nessun numero da mostrare
+      const s = T0 && T0 !== '<>' ? mtextLines(recode(T0).replace('<>', mt), 0, 1).join(' ') : mt;
+      noteText(mmul(m, o), s, num(g, 11), num(g, 21), styleOf(g).h || 2.5, num(g, 53) * Math.PI / 180, 1, 1, 0, 0);
+    };
     const walk = (list, m, depth, inh, inhLy) => {
       for (const e of list) {
         const g = e.g;
@@ -3573,6 +3689,19 @@ self.postMessage({ hello: true });`;
             }
             break;
           }
+          case 'TEXT': case 'ATTRIB': case 'MTEXT': case 'DIMENSION': case 'ARC_DIMENSION': case 'LEADER': {
+            if (!opts.notes) { skip(e.type); break; }
+            if (num(g, 67)) break;   // foglio di layout, non il disegno
+            if (e.type === 'DIMENSION' || e.type === 'ARC_DIMENSION') noteDim(e, m);
+            else if (e.type === 'LEADER') {
+              const o = ocs(g); if (!o) { curves3d++; break; }
+              const vs = []; for (const [c, v] of g) { if (c === 10) vs.push({ p: [parseFloat(v), 0], b: 0 }); else if (c === 20 && vs.length) vs[vs.length - 1].p[1] = parseFloat(v); }
+              notePoly(mmul(m, o), vs, false); noteCount.richiami++;
+            }
+            else if (e.type === 'ATTRIB' && (num(g, 70) & 1)) break;   // attributo nascosto
+            else { const k = notes.length; if (e.type === 'MTEXT') noteMTEXT(e, m, true); else noteTEXT(e, m); if (notes.length > k) noteCount.testi++; }
+            break;
+          }
           default: skip(e.type);
         }
       }
@@ -3587,12 +3716,80 @@ self.postMessage({ hello: true });`;
     const unit = DXF_UNITS[insunits] || null;
     // layerInfo: nome, numero di entità (anche quelle che non si importano), spento o congelato nel file
     const layerInfo = [...layers].sort((a, b) => a.localeCompare(b, 'it', { numeric: true })).map(name => ({ name, count: layerCount.get(name) || 0, off: !!layerOff.get(name) }));
-    return { geo, unit, insunits, skipped, layers: [...layers], layerInfo, curves3d, approx };
+    return { geo, unit, insunits, skipped, layers: [...layers], layerInfo, curves3d, approx, notes, noteCount };
   }
   function normAng(a) { const t = 2 * Math.PI; a %= t; if (a < 0) a += t; return a; }
   function unwrapAfter(a0, a1) { while (a1 <= a0 + 1e-12) a1 += 2 * Math.PI; while (a1 > a0 + 2 * Math.PI + 1e-12) a1 -= 2 * Math.PI; return a1; }
   function num(g, code, def = 0) { for (const [c, v] of g) if (c === code) { const x = parseFloat(v); return Number.isFinite(x) ? x : def; } return def; }
   function val(g, code, def) { for (const [c, v] of g) if (c === code) return v; return def; }
+
+  // codici di un testo DXF: %%c Ø, %%d °, %%p ±, %%% %, %%nnn carattere, %%u %%o %%k sottolineato e simili (si tolgono), \\U+XXXX
+  function dxfText(s) {
+    return String(s).replace(/%%(\d{3}|.)/g, (x, c) => { const k = c.toLowerCase(); return k === 'c' ? 'Ø' : k === 'd' ? '°' : k === 'p' ? '±' : k === '%' ? '%' : c.length === 3 ? String.fromCharCode(+c) : ''; })
+      .replace(/\\U\+([0-9a-fA-F]{4})/g, (x, h) => String.fromCharCode(parseInt(h, 16)));
+  }
+  // righe di un MTEXT senza i codici di formato. width > 0: va a capo tra le parole come il riquadro del file (stima: una lettera ≈ 0,7 volte l'altezza)
+  function mtextLines(s, width, h) {
+    s = String(s);
+    const L = []; let cur = '';
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === '{' || ch === '}') continue;
+      if (ch === '^' && (s[i + 1] === 'J' || s[i + 1] === 'I')) { if (s[i + 1] === 'J') { L.push(cur); cur = ''; } else cur += ' '; i++; continue; }
+      if (ch !== '\\') { cur += ch; continue; }
+      const n = s[++i];
+      if (n === undefined) break;
+      if (n === 'P') { L.push(cur); cur = ''; }
+      else if (n === '\\' || n === '{' || n === '}') cur += n;
+      else if (n === '~') cur += '\u00a0';
+      else if (n === 'U' && s[i + 1] === '+') { const hex = s.substr(i + 2, 4); if (/^[0-9a-fA-F]{4}$/.test(hex)) { cur += String.fromCharCode(parseInt(hex, 16)); i += 5; } }
+      else if (n === 'S') { const e = s.indexOf(';', i); if (e < 0) break; cur += s.slice(i + 1, e).replace(/[\^#]/g, '/'); i = e; }   // frazione impilata: a/b
+      else if ('fFHWQTCcAp'.includes(n)) { const e = s.indexOf(';', i); if (e < 0) break; i = e; }   // carattere, altezza, colore…: non servono
+      // \L \l \O \o \K \k \N e gli altri: si tolgono
+    }
+    L.push(cur);
+    const out = [];
+    for (const raw of L) {
+      const t = dxfText(raw);
+      if (!(width > 0) || t.length * 0.7 * h <= width) { out.push(t); continue; }
+      let line = '';
+      for (const w of t.split(' ')) { if (line && (line.length + 1 + w.length) * 0.7 * h > width) { out.push(line); line = w; } else line = line ? line + ' ' + w : w; }
+      out.push(line);
+    }
+    return out;
+  }
+  // sfondo del file nello schizzo: stessa origine e stessa scala della geometria, numeri arrotondati a 0,0001 mm (il progetto sta nel browser)
+  function notesToBg(notes, T, sc) {
+    const q = x => Math.round(x * 1e4) / 1e4, an = x => Math.round(x * 1e6) / 1e6;
+    const pts = a => { const o = []; for (let i = 0; i + 1 < a.length; i += 2) { const p = T([a[i], a[i + 1]]); o.push(q(p[0]), q(p[1])); } return o; };
+    return notes.map(n => {
+      if (n.p) return { p: pts(n.p) };
+      if (n.f) return { f: pts(n.f) };
+      if (n.c) { const c = T(n.c); return { c: [q(c[0]), q(c[1])], r: q(n.r * sc), a0: an(n.a0), a1: an(n.a1) }; }
+      const p = T([n.x, n.y]), o = { s: n.s, x: q(p[0]), y: q(p[1]), h: q(n.h * sc) };
+      if (n.r) o.r = an(n.r);
+      for (const k of ['ha', 'w', 'fx', 'fy']) if (n[k]) o[k] = n[k];
+      if (n.fw) o.fw = q(n.fw * sc);
+      return o;
+    });
+  }
+
+  // ingombro approssimato dello sfondo, per l'inquadratura: conta solo quello che sta entro 1/4 del disegno intorno alla
+  // geometria (le quote), non un testo lontanissimo. mn, mx = ingombro della geometria; restituisce l'ingombro allargato.
+  function notesBox(notes, mn, mx) {
+    const room = 0.25 * Math.max(mx[0] - mn[0], mx[1] - mn[1]);
+    const a = mn.slice(), b = mx.slice();
+    const P = (x, y) => { if (!(x >= mn[0] - room && x <= mx[0] + room && y >= mn[1] - room && y <= mx[1] + room)) return; a[0] = Math.min(a[0], x); a[1] = Math.min(a[1], y); b[0] = Math.max(b[0], x); b[1] = Math.max(b[1], y); };
+    for (const n of notes) {
+      if (n.p || n.f) { const q = n.p || n.f; for (let i = 0; i + 1 < q.length; i += 2) P(q[i], q[i + 1]); }
+      else if (n.c) { P(n.c[0] - n.r, n.c[1] - n.r); P(n.c[0] + n.r, n.c[1] + n.r); }
+      else {
+        const r = n.r || 0, L = n.fw || n.s.length * 0.7 * n.h * (n.w || 1), d0 = n.ha === 1 ? -L / 2 : n.ha === 2 ? -L : 0;
+        for (const t of [d0, d0 + L]) for (const u of [0, n.h]) P(n.x + t * Math.cos(r) - u * Math.sin(r), n.y + t * Math.sin(r) + u * Math.cos(r));
+      }
+    }
+    return { mn: a, mx: b };
+  }
 
   // dimensioni della geometria (per l'origine e per il messaggio)
   function dxfBox(geo) {
@@ -3686,6 +3883,8 @@ self.postMessage({ hello: true });`;
     for (const p of pts) sk.ents.push(p);
     for (const e of out) sk.ents.push(e);
     sk.next = next;
+    // testi e quote: da guardare, fuori dalle entità (nessuna selezione, aggancio, contorno o grado di libertà)
+    if (opts.notes && opts.notes.length) sk.bg = (sk.bg || []).concat(notesToBg(opts.notes, T, sc));
     const count = { line: 0, arc: 0, circle: 0, center: 0, cons: 0 };
     for (const e of out) { if (e.center) count.center++; else if (e.cons) count.cons++; else count[e.t === 'ln' ? 'line' : e.t === 'ar' ? 'arc' : 'circle']++; }
     return { count, dup, tiny, points: pts.length, box: { mn: T(bb.mn), mx: T(bb.mx) }, ids: out.map(e => e.id) };
@@ -3733,7 +3932,7 @@ self.postMessage({ hello: true });`;
     throw new Error(names.some(x => /\.dwg$/i.test(x)) ? 'Nello zip c\'è un DWG, non un DXF: estrailo e scegli direttamente il file .dwg.' : 'Nello zip non c\'è nessun file .dxf.');
   }
 
-  const api = { unzipDxf, parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS, parseDXF, dxfToSketch, DXF_SCALE, DXF_UNITS, pickBodies, cadWorkerSource, dwgKind, runDwgConvert, dwgWorkerSource, DXF_CURVE_TOL, curveToArcs, nurbsEval, fitSpline, loadOCCT, readCAD, cadKind, CAD_EXT, CAD_LEVELS, CAD_MAX };
+  const api = { dxfText, mtextLines, notesBox, unzipDxf, parseSTL, parseOBJ, weld, pack, unpack, analyze, b64enc, b64dec, UNITS, parseDXF, dxfToSketch, DXF_SCALE, DXF_UNITS, pickBodies, cadWorkerSource, dwgKind, runDwgConvert, dwgWorkerSource, DXF_CURVE_TOL, curveToArcs, nurbsEval, fitSpline, loadOCCT, readCAD, cadKind, CAD_EXT, CAD_LEVELS, CAD_MAX };
   if (typeof module !== 'undefined') module.exports = api; else root.Import = api;
 })(this);
 
@@ -8367,12 +8566,13 @@ self.postMessage({ hello: true });`;
     const inSketch = App.mode === 'sketch';
     if (inSketch && Sketcher.session() && Sketcher.session().opts.hole) { toast('Nello schizzo delle posizioni dei fori non si importano file DXF o DWG.'); return; }
     dwgCancel();
-    modal('Importa un file DXF o DWG', `<p class="note">Linee, archi e cerchi del disegno entrano ${inSketch ? 'nello <b>schizzo aperto</b>' : 'in uno <b>schizzo nuovo</b>'}: poi li estrudi, o li fai ruotare attorno a una linea di mezzeria. <b>Ellissi e spline</b> diventano archi tangenti tra loro, vicinissimi alla curva vera. Testi, quote e tratteggi non si importano.</p>
+    modal('Importa un file DXF o DWG', `<p class="note">Linee, archi e cerchi del disegno entrano ${inSketch ? 'nello <b>schizzo aperto</b>' : 'in uno <b>schizzo nuovo</b>'}: poi li estrudi, o li fai ruotare attorno a una linea di mezzeria. <b>Ellissi e spline</b> diventano archi tangenti tra loro, vicinissimi alla curva vera. Testi e quote possono arrivare come sfondo grigio da guardare; i tratteggi non si importano.</p>
       <p><input type="file" id="dxfFile" accept=".dxf,.dwg,.zip"></p>
       <div class="row" id="dxfZipRow" hidden><label for="dxfZip">Disegno nello zip</label><select id="dxfZip" style="min-width: 14em; max-width: 60%"></select></div>
       <div class="dxf-prev" id="dxfPrev"><span class="ph">Scegli un file: qui vedrai l'anteprima del disegno.</span></div>
       <p class="dxf-cap" id="dxfCap"></p>
       <div class="dxf-layers" id="dxfLayers" hidden></div>
+      <label class="chk" id="dxfNotesRow"><input type="checkbox" id="dxfNotes" checked> Testi e quote come sfondo di riferimento (solo da guardare: non comandano la forma)</label>
       ${inSketch ? '' : '<div class="row"><label for="dxfPlane">Piano dello schizzo</label><select id="dxfPlane"><option value="front">Piano frontale</option><option value="top">Piano superiore</option><option value="right">Piano destro</option></select></div>'}
       <div class="row"><label for="dxfUnit">Unità del file</label><select id="dxfUnit"><option value="file">dal file</option><option value="mm">millimetri</option><option value="cm">centimetri</option><option value="m">metri</option><option value="in">pollici</option></select></div>
       <div class="row"><label for="dxfOrigin">Posizione</label><select id="dxfOrigin"><option value="file">come nel file</option><option value="corner">angolo in basso a sinistra sull'origine</option><option value="center">centro sull'origine</option></select></div>
@@ -8388,7 +8588,7 @@ self.postMessage({ hello: true });`;
           if ($('#modal').hidden || !$('#dxfPrev')) return;   // finestra chiusa nel frattempo
           if (!cur) { err('Scegli prima il file.'); return; }
           if (cur.error) { err(cur.error); return; }
-          const opts = { unit: $('#dxfUnit').value, origin: $('#dxfOrigin').value, plane: $('#dxfPlane') ? $('#dxfPlane').value : null, converted: cur.conv };
+          const opts = { unit: $('#dxfUnit').value, origin: $('#dxfOrigin').value, plane: $('#dxfPlane') ? $('#dxfPlane').value : null, converted: cur.conv, notes: $('#dxfNotes').checked };
           if (cur.layers) opts.layers = chosenLayers();
           try { const r = importDxfData(cur.name, cur.data, opts); closeModal(); toast(r.msg, 8000); }
           catch (e) { err(e.message); }
@@ -8451,7 +8651,7 @@ self.postMessage({ hello: true });`;
         rd.readAsArrayBuffer(file);
       });
     });
-    for (const id of ['dxfUnit', 'dxfOrigin']) $('#' + id).addEventListener('change', () => cur && drawDxfPreview());
+    for (const id of ['dxfUnit', 'dxfOrigin', 'dxfNotes']) $('#' + id).addEventListener('change', () => cur && drawDxfPreview());
     function loadDxfPreview(name, data, conv) {
       const ext = (String(name).split('.').pop() || '').toLowerCase();
       let r;
@@ -8475,10 +8675,10 @@ self.postMessage({ hello: true });`;
       if (!cur || cur.error) return;
       showErr('');
       let r;
-      try { r = Import.parseDXF(cur.data, cur.layers ? { layers: chosenLayers() } : {}); }
+      try { r = Import.parseDXF(cur.data, { ...(cur.layers ? { layers: chosenLayers() } : {}), notes: $('#dxfNotes').checked }); }
       catch (e) { placeholder('Nessuna anteprima'); showErr(e.message); return; }
       const cap = $('#dxfCap'); cap.classList.remove('warn');
-      if (!r.geo.length) { placeholder(cur.layers && !chosenLayers().length ? 'Nessun layer scelto.' : 'Nei layer scelti non ci sono linee, archi o cerchi.'); cap.textContent = ''; return; }
+      if (!r.geo.length) { placeholder(cur.layers && !chosenLayers().length ? 'Nessun layer scelto.' : r.notes.length ? 'Nei layer scelti ci sono solo testi e quote: scegli anche un layer con linee, archi o cerchi.' : 'Nei layer scelti non ci sono linee, archi o cerchi.'); cap.textContent = ''; return; }
       const unit = $('#dxfUnit').value !== 'file' ? $('#dxfUnit').value : (r.unit || 'mm'), k = Import.DXF_SCALE[unit];
       const mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
       const grow = p => { mn[0] = Math.min(mn[0], p[0]); mn[1] = Math.min(mn[1], p[1]); mx[0] = Math.max(mx[0], p[0]); mx[1] = Math.max(mx[1], p[1]); };
@@ -8490,7 +8690,8 @@ self.postMessage({ hello: true });`;
         for (let q = Math.ceil(a0 / (Math.PI / 2)); q * Math.PI / 2 <= a1; q++) grow(arcPt(g, q * Math.PI / 2));
       }
       const w = Math.max(mx[0] - mn[0], 1e-9), h = Math.max(mx[1] - mn[1], 1e-9), pad = 0.06 * Math.max(w, h);
-      const vb = [mn[0] - pad, -(mx[1] + pad), w + 2 * pad, h + 2 * pad];
+      const nb = Import.notesBox(r.notes, mn, mx);   // cornice con le quote intorno al pezzo
+      const vb = [nb.mn[0] - pad, -(nb.mx[1] + pad), nb.mx[0] - nb.mn[0] + 2 * pad, nb.mx[1] - nb.mn[1] + 2 * pad];
       const f = x => +x.toPrecision(9);
       const P = p => f(p[0]) + ' ' + f(-p[1]);
       const paths = { n: [], center: [], cons: [] };
@@ -8504,27 +8705,48 @@ self.postMessage({ hello: true });`;
       const o = $('#dxfOrigin').value, O = o === 'corner' ? [mn[0], mn[1]] : o === 'center' ? [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2] : [0, 0];
       const cs = 0.04 * Math.max(vb[2], vb[3]);
       const stroke = (d, col, dash) => d.length ? `<path d="${d.join('')}" fill="none" stroke="${col}" stroke-width="1.3" vector-effect="non-scaling-stroke"${dash ? ` stroke-dasharray="${dash}"` : ''}/>` : '';
-      $('#dxfPrev').innerHTML = `<svg viewBox="${vb.map(f).join(' ')}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Anteprima del disegno DXF">` +
+      // sfondo: in grigio sotto al disegno
+      const noteD = [], noteF = [], noteT = [];
+      for (const q of r.notes) {
+        if (q.p) { let d = ''; for (let i = 0; i + 1 < q.p.length; i += 2) d += (i ? 'L' : 'M') + P([q.p[i], q.p[i + 1]]); noteD.push(d); }
+        else if (q.f) { let d = ''; for (let i = 0; i + 1 < q.f.length; i += 2) d += (i ? 'L' : 'M') + P([q.f[i], q.f[i + 1]]); noteF.push(d + 'Z'); }
+        else if (q.c) {
+          const sw = q.a1 - q.a0, a = arcPt(q, q.a0), mid = arcPt(q, q.a0 + sw / 2), b = arcPt(q, q.a1), rr = f(q.r), ar = (p, big) => `A${rr} ${rr} 0 ${big} 0 ` + P(p);
+          noteD.push('M' + P(a) + ar(mid, 0) + ar(b, 0));
+        }
+        else {
+          const fs = q.h / 0.7, kx = (q.w || 1) * (q.fx ? -1 : 1), ky = q.fy ? -1 : 1;
+          noteT.push(`<text transform="translate(${P([q.x, q.y])}) rotate(${f(-(q.r || 0) * 180 / Math.PI)}) scale(${f(kx)} ${f(ky)})" font-size="${f(fs)}" text-anchor="${q.ha === 1 ? 'middle' : q.ha === 2 ? 'end' : 'start'}"${q.fw ? ` textLength="${f(q.fw)}" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(q.s)}</text>`);
+        }
+      }
+      const noteSvg = r.notes.length ? `<g class="dxf-notes" fill="var(--ink-3)">${noteD.length ? `<path d="${noteD.join('')}" fill="none" stroke="var(--ink-3)" stroke-width="0.8" vector-effect="non-scaling-stroke"/>` : ''}${noteF.length ? `<path d="${noteF.join('')}"/>` : ''}${noteT.join('')}</g>` : '';
+      $('#dxfPrev').innerHTML = `<svg viewBox="${vb.map(f).join(' ')}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Anteprima del disegno DXF">` + noteSvg +
         stroke(paths.cons, 'var(--ink-3)', '5 4') + stroke(paths.center, 'var(--accent)', '10 3 2 3') + stroke(paths.n, 'var(--ink)') +
         `<path d="M${P([O[0] - cs, O[1]])}L${P([O[0] + cs, O[1]])}M${P([O[0], O[1] - cs])}L${P([O[0], O[1] + cs])}" stroke="#d92d20" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
       const n = r.geo.length, fmtN = x => (Math.round(x * k * 100) / 100).toLocaleString('it-IT');
-      cap.textContent = `${cur.conv ? cur.conv.kind.name + ' · ' : ''}${n.toLocaleString('it-IT')} tra linee, archi e cerchi (polilinee e blocchi divisi nei loro tratti) · ingombro ${fmtN(w)} × ${fmtN(h)} mm (unità: ${DXF_UNIT_NAMES[unit] || unit}${r.unit || $('#dxfUnit').value !== 'file' ? '' : ', il file non la dice'})`;
+      cap.textContent = `${cur.conv ? cur.conv.kind.name + ' · ' : ''}${n.toLocaleString('it-IT')} tra linee, archi e cerchi (polilinee e blocchi divisi nei loro tratti) · ingombro ${fmtN(w)} × ${fmtN(h)} mm (unità: ${DXF_UNIT_NAMES[unit] || unit}${r.unit || $('#dxfUnit').value !== 'file' ? '' : ', il file non la dice'})${noteWords(r.noteCount) ? ' · sullo sfondo: ' + noteWords(r.noteCount) : ''}`;
     }
+  }
+  function noteWords(c) {
+    const w = [], a = (n, one, many) => { if (n) w.push(n.toLocaleString('it-IT') + ' ' + (n === 1 ? one : many)); };
+    a(c.testi, 'testo', 'testi'); a(c.quote, 'quota', 'quote'); a(c.richiami, 'richiamo', 'richiami');
+    return w.join(', ');
   }
   function importDxfData(name, data, opts = {}) {
     const ext = (String(name).split('.').pop() || '').toLowerCase();
     if (ext !== 'dxf' && !opts.converted) throw new Error('Qui si importano file .dxf (anche dentro uno .zip) e .dwg. Per i pezzi 3D usa «Importa STL o OBJ».');
-    const r = Import.parseDXF(data, opts.layers ? { layers: opts.layers } : {});
+    const r = Import.parseDXF(data, { ...(opts.layers ? { layers: opts.layers } : {}), notes: !!opts.notes });
     if (opts.layers && !opts.layers.length) throw new Error('Scegli almeno un layer da importare.');
     const unit = opts.unit && opts.unit !== 'file' ? opts.unit : (r.unit || 'mm');
     const scale = Import.DXF_SCALE[unit];
+    if (!r.geo.length && r.notes.length) throw new Error('Nei layer scelti ci sono solo testi e quote: scegli anche un layer con linee, archi o cerchi.');
     if (!r.geo.length) throw new Error('Nel file non ci sono linee, archi o cerchi da importare' + (Object.keys(r.skipped).length ? ' (solo ' + Object.keys(r.skipped).join(', ') + ').' : '.'));
     if (App.mode === 'drawing') App.setCmdTab('features');
     if (App.mode !== 'sketch') {
       if (App.pm) App.closePM(false);
       Sketcher.start({ kind: 'std', id: Model.STD_PLANES[opts.plane] ? opts.plane : 'front' });
     }
-    const info = Sketcher.insertDXF(r.geo, { scale, origin: opts.origin || 'file' });
+    const info = Sketcher.insertDXF(r.geo, { scale, origin: opts.origin || 'file', notes: r.notes });
     const c = info.count, parts = [];
     const n = (k, one, many) => { if (c[k]) parts.push(c[k] + ' ' + (c[k] === 1 ? one : many)); };
     n('line', 'linea', 'linee'); n('arc', 'arco', 'archi'); n('circle', 'cerchio', 'cerchi'); n('center', 'linea di mezzeria', 'linee di mezzeria'); n('cons', 'entità di costruzione', 'entità di costruzione');
@@ -8532,6 +8754,7 @@ self.postMessage({ hello: true });`;
     let msg = `Importato «${name}»: ${parts.join(', ')}. Ingombro ${fmt(info.box.mx[0] - info.box.mn[0])} × ${fmt(info.box.mx[1] - info.box.mn[1])} mm (unità: ${DXF_UNIT_NAMES[unit] || unit}${r.unit || (opts.unit && opts.unit !== 'file') ? '' : ', il file non la dice'}).`;
     const ONE = { testi: 'testo', quote: 'quota', tratteggi: 'tratteggio', riempimenti: 'riempimento', punti: 'punto', ellissi: 'ellisse', 'curve spline': 'curva spline', richiami: 'richiamo', 'facce 3D': 'faccia 3D', attributi: 'attributo', immagini: 'immagine', finestre: 'finestra', mascherature: 'mascheratura', semirette: 'semiretta', 'rette infinite': 'retta infinita', tolleranze: 'tolleranza', blocchi: 'blocco', regioni: 'regione', 'solidi 3D': 'solido 3D', 'corpi 3D': 'corpo 3D', superfici: 'superficie', tabelle: 'tabella', multilinee: 'multilinea', luci: 'luce', tracce: 'traccia', forme: 'forma', 'oggetti OLE': 'oggetto OLE', eliche: 'elica' };
     const sk = Object.entries(r.skipped).map(([k, v]) => v + ' ' + (v === 1 && ONE[k] ? ONE[k] : k));
+    if (noteWords(r.noteCount)) msg += ' Sullo sfondo: ' + noteWords(r.noteCount) + '.';
     if (sk.length) msg += ' Non importati: ' + sk.join(', ') + '.';
     const ap = r.approx;
     if (ap && (ap.ellipses || ap.splines)) {
@@ -8691,7 +8914,8 @@ self.postMessage({ hello: true });`;
     // inquadra lo schizzo con la geometria nuova
     const b3 = { mn: [Infinity, Infinity, Infinity], mx: [-Infinity, -Infinity, -Infinity] };
     for (const p of ss.sk.ents) if (p.t === 'pt' && !p.ext && !p.hc) { const q = Geom.to3(ss.F, [p.x, p.y]); for (let k = 0; k < 3; k++) { b3.mn[k] = Math.min(b3.mn[k], q[k]); b3.mx[k] = Math.max(b3.mx[k], q[k]); } }
-    for (const k of [0, 1]) { const q = Geom.to3(ss.F, k ? info.box.mx : info.box.mn); for (let j = 0; j < 3; j++) { b3.mn[j] = Math.min(b3.mn[j], q[j]); b3.mx[j] = Math.max(b3.mx[j], q[j]); } }
+    const nb = window.Import.notesBox(ss.sk.bg || [], info.box.mn, info.box.mx);   // anche le quote intorno al pezzo
+    for (const k of [0, 1]) { const q = Geom.to3(ss.F, k ? nb.mx : nb.mn); for (let j = 0; j < 3; j++) { b3.mn[j] = Math.min(b3.mn[j], q[j]); b3.mx[j] = Math.max(b3.mx[j], q[j]); } }
     App.r.targetQ = GLView.Renderer.normalQ(ss.F);
     App.r.fit(true, App.st.body.length ? { mn: b3.mn.map((v, k) => Math.min(v, App.r.bbox.mn[k])), mx: b3.mx.map((v, k) => Math.max(v, App.r.bbox.mx[k])) } : b3);
     showProps();
@@ -8889,6 +9113,7 @@ self.postMessage({ hello: true });`;
   function restore(s) {
     const o = JSON.parse(s);
     ss.sk.ents = o.ents; ss.sk.cons = o.cons; ss.sk.next = o.next;
+    if (o.bg) ss.sk.bg = o.bg; else delete ss.sk.bg;
     ss.sel.clear(); ss.ts = null;
     solveAndAnalyze();
   }
@@ -9813,6 +10038,13 @@ self.postMessage({ hello: true });`;
     if (ss.tool === 'sfillet') body.append(group('Raccordo di schizzo', numRow('Raggio', ss.filletR || 5, v => { ss.filletR = v; }, 'mm')));
     if (ss.tool === 'schamfer') body.append(group('Smusso di schizzo', numRow('Distanza', ss.chamferD || 2, v => { ss.chamferD = v; }, 'mm')));
     const ng = numericGroup(); if (ng) body.append(ng);
+    if (ss.sk.bg && ss.sk.bg.length) {
+      const bgG = el('div', { class: 'grp', id: 'skBg' }, el('h3', {}, 'Sfondo del disegno'));
+      bgG.append(el('p', { class: 'note' }, 'Testi e quote del file DXF o DWG, in grigio, solo da guardare: non si selezionano e non contano per il pezzo.'));
+      bgG.append(el('label', { class: 'chk' }, Object.assign(el('input', { type: 'checkbox' }), { checked: !ss.sk.bgOff, onchange: e => { if (e.target.checked) delete ss.sk.bgOff; else ss.sk.bgOff = true; App.redraw(); } }), 'Mostra lo sfondo'));
+      bgG.append(el('button', { class: 'btn', type: 'button', onclick: () => edit(() => { delete ss.sk.bg; delete ss.sk.bgOff; }) }, 'Togli lo sfondo'));
+      body.append(bgG);
+    }
     const sel = [...ss.sel].map(id => m.get(id) || ss.sk.cons.find(c => c.id === id)).filter(Boolean);
     if (!sel.length) {
       const g = el('div', { class: 'grp' }, el('h3', {}, 'Schizzo'));
@@ -10204,6 +10436,7 @@ self.postMessage({ hello: true });`;
     // assi dello schizzo attraverso l'origine (tratteggiati, come riferimento)
     c.save();
     c.lineWidth = 1;
+    if (!c.isPDF) drawBg(c, font);   // sotto a tutto; solo a video: non è nel PDF
     // entità e punti raggruppati per aspetto (colore, spessore, tratteggio): un solo comando di disegno per gruppo invece
     // di uno per entità (una tavola DXF ne ha migliaia). Il tratteggio riparte all'inizio di ogni entità come prima.
     // Si disegnano per ultimi i gruppi in evidenza (selezione, sotto il mouse), così restano sopra.
@@ -10271,6 +10504,80 @@ self.postMessage({ hello: true });`;
     }
     c.restore();
   };
+  // sfondo del disegno (testi e quote del file): la vista è ortogonale, quindi dallo schizzo allo schermo la trasformazione è
+  // una sola (G); le linee stanno in un percorso preparato una volta per ogni versione dello sfondo.
+  const bgCache = new WeakMap();
+  function bgPaths(bg) {
+    let o = bgCache.get(bg);
+    if (o) return o;
+    o = { lines: new Path2D(), fills: new Path2D(), texts: bg.filter(n => n.s !== undefined) };
+    for (const n of bg) {
+      if (n.p) { o.lines.moveTo(n.p[0], n.p[1]); for (let i = 2; i + 1 < n.p.length; i += 2) o.lines.lineTo(n.p[i], n.p[i + 1]); }
+      else if (n.f) { o.fills.moveTo(n.f[0], n.f[1]); for (let i = 2; i + 1 < n.f.length; i += 2) o.fills.lineTo(n.f[i], n.f[i + 1]); o.fills.closePath(); }
+      else if (n.c) { o.lines.moveTo(n.c[0] + n.r * Math.cos(n.a0), n.c[1] + n.r * Math.sin(n.a0)); o.lines.arc(n.c[0], n.c[1], n.r, n.a0, n.a1); }
+    }
+    bgCache.set(bg, o);
+    return o;
+  }
+  // altezza del carattere: nel DXF è l'altezza delle maiuscole, che nel carattere dell'interfaccia sono circa 0,7 della sua grandezza
+  const BG_CAP = 0.7, BG_MIN_PX = 3, BG_MS = 40;
+  // Lo sfondo si disegna su un foglio a parte, rifatto solo quando cambia la vista: muovendo il mouse sullo schizzo (il caso
+  // più frequente) si incolla il foglio già pronto. Mentre la vista si muove i testi hanno un limite di tempo per fotogramma;
+  // appena si ferma si ridisegna tutto.
+  let bgSheet = null, bgTimer = 0;
+  function drawBg(c, font) {
+    const bg = ss.sk.bg, App = A();
+    if (!bg || !bg.length || ss.sk.bgOff) return;
+    const O = scr(0, 0), X = scr(1000, 0), Y = scr(0, 1000);
+    const G = [(X[0] - O[0]) / 1000, (X[1] - O[1]) / 1000, (Y[0] - O[0]) / 1000, (Y[1] - O[1]) / 1000, O[0], O[1]];
+    const isDark = dark(), cv = c.canvas, key = G.map(v => v.toFixed(4)).join() + '|' + cv.width + 'x' + cv.height + '|' + isDark;
+    const b = c.getTransform();
+    const paste = () => { c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(bgSheet.cv, 0, 0); c.restore(); };
+    if (bgSheet && bgSheet.key === key && bgSheet.bg === bg && bgSheet.done) { paste(); return; }
+    const moving = !!bgSheet && bgSheet.bg === bg && bgSheet.key !== key;
+    if (!bgSheet) bgSheet = { cv: document.createElement('canvas') };
+    const sh = bgSheet.cv;
+    if (sh.width !== cv.width || sh.height !== cv.height) { sh.width = cv.width; sh.height = cv.height; }
+    const x = sh.getContext('2d');
+    x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, sh.width, sh.height); x.setTransform(b);
+    const col = isDark ? '#7c8791' : '#8f98a1', tcol = isDark ? '#98a2ab' : '#6f7882';
+    const P = bgPaths(bg), M = new DOMMatrix(G);
+    const lines = new Path2D(); lines.addPath(P.lines, M);
+    const fills = new Path2D(); fills.addPath(P.fills, M);
+    x.strokeStyle = col; x.fillStyle = col; x.lineWidth = 1;
+    x.stroke(lines); x.fill(fills);
+    x.fillStyle = tcol; x.textBaseline = 'alphabetic';
+    const F = 100; x.font = F + 'px ' + font;
+    const W = App.r.cssW, H = App.r.cssH, ky = Math.hypot(G[2], G[3]), kx = Math.hypot(G[0], G[1]);
+    const t0 = performance.now();
+    let drawn = 0, cut = false, k = 0;
+    for (const n of P.texts) {
+      if (n.h * ky < BG_MIN_PX) continue;   // troppo piccolo per leggerlo: si vede ingrandendo
+      const px = G[0] * n.x + G[2] * n.y + G[4], py = G[1] * n.x + G[3] * n.y + G[5];
+      const reach = (n.fw ? n.fw * kx : n.s.length * n.h * 1.2 * (n.w || 1) * kx) + n.h * ky;
+      if (px < -reach || px > W + reach || py < -reach || py > H + reach) continue;
+      if (moving && (++k & 31) === 0 && performance.now() - t0 > BG_MS) { cut = true; break; }
+      const q = n.h / BG_CAP / F;
+      let sx = q * (n.w || 1) * (n.fx ? -1 : 1);
+      const sy = -q * (n.fy ? -1 : 1);
+      x.textAlign = n.ha === 1 ? 'center' : n.ha === 2 ? 'right' : 'left';
+      if (n.fw) { const mw = x.measureText(n.s).width; if (mw > 0) sx = n.fw / mw * (n.fx ? -1 : 1); }
+      const cr = Math.cos(n.r || 0), sr = Math.sin(n.r || 0);
+      // schermo = b · G · traslazione · rotazione · scala
+      const a1 = cr * sx, b1 = sr * sx, c1 = -sr * sy, d1 = cr * sy;
+      const a2 = G[0] * a1 + G[2] * b1, b2 = G[1] * a1 + G[3] * b1, c2 = G[0] * c1 + G[2] * d1, d2 = G[1] * c1 + G[3] * d1;
+      x.setTransform(b.a * a2 + b.c * b2, b.b * a2 + b.d * b2, b.a * c2 + b.c * d2, b.b * c2 + b.d * d2, b.a * px + b.c * py + b.e, b.b * px + b.d * py + b.f);
+      x.fillText(n.s, 0, 0);
+      drawn++;
+    }
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    Object.assign(bgSheet, { key, bg, done: !cut });
+    ss.bgDrawn = drawn;   // per le prove
+    paste();
+    clearTimeout(bgTimer);
+    // testi rimasti fuori: si ridisegna a vista ferma (bg diverso = nessun limite di tempo)
+    if (cut) bgTimer = setTimeout(() => { if (bgSheet) bgSheet.bg = null; A().redraw(); }, 150);
+  }
   // schizzo nel PDF (vettoriale): vista normale allo schizzo, scala normalizzata (UNI EN ISO 5455) che fa entrare tutto
   // nel riquadro box (mm della pagina), colori dello schermo chiaro, senza selezione, anteprime e righelli. Le linee e i
   // testi hanno lo spessore e la grandezza che hanno sullo schermo (1 pixel = 25,4/96 mm).
@@ -13212,9 +13519,10 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Importazione', 'Asse Z del file verso l\'alto', ['z verso l\'alto', 'asse z'], 'Nel Banco CAD (come in SolidWorks) la verticale è l\'asse Y; molti programmi per la stampa 3D usano invece la Z. Con questa casella la Z del file diventa la verticale e il pezzo non arriva coricato.'],
     ['Importazione', 'Opzioni di importazione', [], 'Le scelte che servono per leggere bene il file: l\'unità di misura e quale asse è verso l\'alto. Si possono cambiare in ogni momento con doppio clic su «Importato» nell\'albero.'],
     ['Importazione', 'Corpo chiuso', ['corpo non chiuso', 'lati liberi'], 'Un corpo a faccette è chiuso quando ogni lato di triangolo è in comune con esattamente un altro triangolo: allora racchiude un volume. Se ci sono lati liberi (buchi nella superficie) volume e massa non sono attendibili e le funzioni aggiunte sopra possono fallire.'],
-    ['Importazione', 'Inserisci DXF o DWG', ['inserisci dxf', 'inserisci dwg', 'importa dxf', 'importa dwg', 'importa dxf (schizzo)', 'importa dxf o dwg (schizzo)', 'importare un dxf', 'importare un dwg'], 'Porta in uno schizzo le linee, gli archi e i cerchi di un disegno 2D fatto con un altro programma (AutoCAD, DraftSight, LibreCAD, la messa in tavola di SolidWorks…). Fuori da uno schizzo, o da Progetto › Importa DXF o DWG (schizzo), crea uno schizzo nuovo sul piano scelto; dentro uno schizzo aggiunge la geometria a quello aperto. Le entità arrivano senza quote, quindi blu (sotto definite): si possono estrudere o far ruotare subito, oppure quotare.'],
+    ['Importazione', 'Inserisci DXF o DWG', ['inserisci dxf', 'inserisci dwg', 'importa dxf', 'importa dwg', 'importa dxf (schizzo)', 'importa dxf o dwg (schizzo)', 'importare un dxf', 'importare un dwg'], 'Porta in uno schizzo le linee, gli archi e i cerchi di un disegno 2D fatto con un altro programma (AutoCAD, DraftSight, LibreCAD, la messa in tavola di SolidWorks…). Fuori da uno schizzo, o da Progetto › Importa DXF o DWG (schizzo), crea uno schizzo nuovo sul piano scelto; dentro uno schizzo aggiunge la geometria a quello aperto. Le entità arrivano senza quote, quindi blu (sotto definite): si possono estrudere o far ruotare subito, oppure quotare. Testi e quote del file possono arrivare come Sfondo del disegno.'],
+    ['Importazione', 'Sfondo del disegno', ['sfondo', 'sfondo di riferimento', 'testi e quote del file', 'togli lo sfondo', 'mostra lo sfondo'], 'I testi, le quote e i richiami di un file DXF o DWG, mostrati in grigio sotto lo schizzo, solo da guardare: servono per leggere le misure e le note mentre si quota. Non sono entità: non si selezionano, non ci si aggancia, non cambiano i contorni né lo stato dello schizzo. Le quote del file non comandano la forma: la misura va rimessa con la Quota intelligente. Si vede solo mentre si modifica lo schizzo, non nel PDF, nel pezzo 3D o nello STEP. Nel pannello dello schizzo: casella Mostra lo sfondo e pulsante Togli lo sfondo. I testi più bassi di 3 pixel sullo schermo non si disegnano: compaiono ingrandendo. I tratteggi, le tolleranze geometriche, le tabelle e i richiami multipli (MULTILEADER) non ci sono. I testi usano il carattere del programma, quindi la loro larghezza può differire un po\' da quella di AutoCAD.'],
     ['Importazione', 'File DXF', ['.dxf', 'formato dxf'], 'Formato di scambio dei disegni 2D, nato con AutoCAD e letto da quasi tutti i CAD. Qui si leggono i file DXF di testo (ASCII): linee, archi, cerchi, polilinee (anche con tratti curvi), ellissi, spline e blocchi. Ellissi e spline diventano archi tangenti tra loro (biarchi). Testi, quote e tratteggi si saltano. Si può scegliere anche uno .zip con il DXF dentro. Vedi anche File DWG.'],
-    ['Importazione', 'File DWG', ['dwg', '.dwg', 'formato dwg', 'libredwg'], 'Il formato dei disegni di AutoCAD, dalla versione R1.4 alla 2018 (le più nuove usano ancora il formato 2018; se cambierà, si prova lo stesso). Si apre direttamente: il lettore libero LibreDWG lo trasforma in un DXF dentro la pagina, senza mandare il file da nessuna parte, poi il disegno segue la stessa strada di un File DXF, con anteprima e layer. Testi, quote e tratteggi si saltano perché uno schizzo contiene solo geometria: il messaggio finale dice quanti sono. Le spline arrivano con i soli punti di passaggio: la curva ricostruita qui può scostarsi da quella di AutoCAD di qualche decimo di millimetro per metro (nelle prove 0,1 e 0,3 mm/m). La prima lettura richiede qualche istante, intanto la pagina resta libera.'],
+    ['Importazione', 'File DWG', ['dwg', '.dwg', 'formato dwg', 'libredwg'], 'Il formato dei disegni di AutoCAD, dalla versione R1.4 alla 2018 (le più nuove usano ancora il formato 2018; se cambierà, si prova lo stesso). Si apre direttamente: il lettore libero LibreDWG lo trasforma in un DXF dentro la pagina, senza mandare il file da nessuna parte, poi il disegno segue la stessa strada di un File DXF, con anteprima e layer. Testi e quote possono arrivare come Sfondo del disegno; i tratteggi si saltano, e il messaggio finale dice quanti sono. Le spline arrivano con i soli punti di passaggio: la curva ricostruita qui può scostarsi da quella di AutoCAD di qualche decimo di millimetro per metro (nelle prove 0,1 e 0,3 mm/m). La prima lettura richiede qualche istante, intanto la pagina resta libera.'],
     ['Importazione', 'Convertitore DWG → DXF', ['convertitore', 'convertire un dwg', 'salvare un dxf'], 'Pagina a parte, gratuita, che trasforma i disegni di AutoCAD (.dwg) in file DXF da salvare: serve per passarli ad altri programmi o per convertirne molti insieme. Per aprire un DWG qui non serve: si sceglie direttamente (vedi File DWG). Usa lo stesso lettore libero, LibreDWG, e lavora nel browser, senza mandare il file da nessuna parte. Mostra l\'anteprima di ogni disegno con l\'ingombro (quello che il Banco CAD leggerà) e può salvare tutti i DXF in un solo .zip, da cui il Banco CAD fa scegliere il disegno. Parte con poca memoria (16 MB) e ne prende di più solo per i disegni grandi, quindi va anche sui tablet.'],
     ['Importazione', 'Ellisse', ['ellissi', 'ellipse'], 'Curva chiusa «schiacciata», come un cerchio visto di sbieco: ha un semiasse maggiore a e uno minore b; l\'area è π·a·b. Nei file DXF può essere intera o solo un tratto (arco di ellisse). Nel Banco CAD, come in molti CAD, l\'ellisse importata diventa una catena di archi tangenti (biarchi) molto vicina alla curva vera.'],
     ['Importazione', 'Spline', ['spline', 'nurbs', 'curva spline', 'b-spline'], 'Curva libera e morbida definita da pochi punti: i punti di controllo la «tirano» verso di sé (spline NURBS, con eventuali pesi), oppure la curva passa esattamente per i punti di passaggio. Serve per profili che non sono fatti di rette e archi (carrozzerie, camme, sagome). Importata da un DXF diventa una catena di archi tangenti (biarchi).'],
@@ -14378,6 +14686,97 @@ SK.push(['PDF: foglio A3 = 1190,55 × 841,89 punti; «Ø20» centrato su x = 100
 }]);
 
 /* ---------- esecuzione ---------- */
+// ---- sfondo di riferimento: testi e quote di DXF e DWG (valori calcolati a mano) ----
+const near = (a, b, e = 1e-9) => Math.abs(a - b) <= e ? 1 : 0;
+const noteOf = (ents, o = {}) => MI.parseDXF(dxfFile(ents, o), { notes: true });
+const textsOf = r => r.notes.filter(n => n.s !== undefined);
+SK.push(['Sfondo DXF: TEXT con codici, rotazione e allineamenti', () => {
+  const t = (...kv) => ['0', 'TEXT', '8', '0', ...kv];
+  const r = noteOf([
+    t('10', 10, '20', 20, '40', 3.5, '50', 30, '1', '%%c20 %%p0,1 45%%d %%uX%%u 100%%%'),
+    t('10', 0, '20', 0, '11', 50, '21', 40, '40', 2, '72', 1, '73', 3, '1', 'centro sopra'),   // base 2 più in basso del punto
+    t('10', 0, '20', 0, '11', 50, '21', 40, '40', 4, '72', 2, '73', 1, '1', 'destra sotto'),   // base 0,25·4 = 1 più in alto
+    t('10', 0, '20', 0, '11', 30, '21', 40, '40', 2, '72', 3, '1', 'allineato'),               // da (0,0) a (30,40): larghezza 50
+    t('10', 0, '20', 0, '11', 50, '21', 40, '40', 6, '72', 4, '1', 'in mezzo'),                // base 3 più in basso
+  ]), T = textsOf(r);
+  return { ok: true, exp: [5, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    got: [r.noteCount.testi, T[0].s === 'Ø20 ±0,1 45° X 100%' ? 1 : 0, near(T[0].x, 10) * near(T[0].y, 20) * near(T[0].h, 3.5) * near(T[0].r, Math.PI / 6),
+      near(T[1].x, 50) * near(T[1].y, 38) * (T[1].ha === 1 ? 1 : 0), near(T[2].x, 50) * near(T[2].y, 41) * (T[2].ha === 2 ? 1 : 0),
+      near(T[3].fw, 50), near(T[3].r, Math.atan2(40, 30)), near(T[3].x, 0) * near(T[3].y, 0), near(T[4].y, 37) * (T[4].ha === 1 ? 1 : 0), r.geo.length === 0 ? 1 : 0] };
+}]);
+SK.push(['Sfondo DXF: testo dentro un blocco spostato, ruotato, scalato e specchiato', () => {
+  const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'B', '10', 5, '20', 5, '0', 'TEXT', '8', '0', '10', 15, '20', 5, '40', 2, '1', 'T', '0', 'ENDBLK', '0', 'ENDSEC'];
+  const r = noteOf([['0', 'INSERT', '8', '0', '2', 'B', '10', 100, '20', 100, '41', 2, '42', 2, '50', 90], ['0', 'INSERT', '8', '0', '2', 'B', '10', 0, '20', 0, '41', -1, '42', 1]], { blocks }), T = textsOf(r);
+  // (15,5) − base (5,5) = (10,0); ·2 = (20,0); ruotato di 90° = (0,20); + (100,100) = (100,120). Altezza 2·2 = 4.
+  // Specchio: (−10,0), direzione (−1,0) = 180°, testo capovolto rispetto alla sua direzione.
+  return { ok: true, exp: [2, 1, 1, 1, 1], got: [T.length, near(T[0].x, 100) * near(T[0].y, 120) * near(T[0].h, 4), near(T[0].r, Math.PI / 2) * (T[0].fy ? 0 : 1), near(T[1].x, -10) * near(T[1].y, 0) * near(T[1].h, 2), near(Math.abs(T[1].r), Math.PI) * (T[1].fy ? 1 : 0)] };
+}]);
+SK.push(['Sfondo DXF: MTEXT su più righe, punto di attacco, codici, pezzi, a capo', () => {
+  const m = (...kv) => ['0', 'MTEXT', '8', '0', ...kv];
+  const a = textsOf(noteOf([m('10', 100, '20', 200, '40', 10, '71', 5, '1', 'A\\PB\\PC')]));
+  // righe distanti 10·5/3; altezza del blocco H = 10 + 2·10·5/3; prima base = centro + H/2 − 10
+  const ls = 50 / 3, H = 10 + 2 * ls, y0 = 200 + H / 2 - 10;
+  const b = textsOf(noteOf([m('10', 0, '20', 0, '40', 3, '71', 7, '44', 2, '1', 'A\\PB')]));   // sotto: ultima base sul punto; righe distanti 3·5/3·2 = 10
+  const c = textsOf(noteOf([m('10', 0, '20', 0, '40', 3, '71', 1, '11', 0, '21', 2, '1', 'Q')]));   // attacco in alto a sinistra, testo verso +Y: base 3 più a destra
+  const d = textsOf(noteOf([m('10', 0, '20', 0, '40', 3, '3', 'uno ', '1', 'due')]));
+  const e = MI.mtextLines('{\\fArial|b1;Ø\\H0.7x;20}\\~mm \\S1^2;\\U+00B1\\\\ %%c', 0, 1)[0];
+  const f = MI.mtextLines('uno due tre quattro', 40, 5);   // una lettera ≈ 0,7·5 = 3,5: 11 lettere per riga
+  return { ok: true, exp: [3, 1, 1, 1, 1, 1, 1, 1, 1], got: [a.length, near(a[0].y, y0) * near(a[1].y, y0 - ls) * near(a[2].y, y0 - 2 * ls), a.every(t => t.ha === 1 && near(t.x, 100)) ? 1 : 0,
+    near(b[0].y, 10) * near(b[1].y, 0), near(c[0].x, -(-3)) * near(c[0].y, 0) * near(c[0].r, Math.PI / 2), d[0].s === 'uno due' ? 1 : 0, e === 'Ø20 mm 1/2±\\ Ø' ? 1 : 0, f.join('|') === 'uno due tre|quattro' ? 1 : 0, MI.mtextLines('{\\C1;rosso}', 0, 1)[0] === 'rosso' ? 1 : 0] };
+}]);
+SK.push(['Sfondo DXF: la quota si disegna dal suo blocco, nel posto giusto', () => {
+  const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', '*D1', '10', 0, '20', 0,
+    '0', 'LINE', '8', '0', '10', 0, '20', 0, '11', 10, '21', 0,
+    '0', 'SOLID', '8', '0', '10', 0, '20', 0, '11', 2, '21', 1, '12', 2, '22', -1, '13', 2, '23', -1,
+    '0', 'ARC', '8', '0', '10', 5, '20', 5, '40', 2, '50', 0, '51', 90,
+    '0', 'POINT', '8', 'Defpoints', '10', 0, '20', 0,
+    '0', 'MTEXT', '8', '0', '10', 5, '20', 1, '40', 2.5, '71', 8, '1', '\\A1;%%c10', '0', 'ENDBLK', '0', 'ENDSEC'];
+  const r = noteOf([['0', 'DIMENSION', '8', '0', '2', '*D1', '12', 100, '22', 50, '42', 10]], { blocks });
+  const ln = r.notes.find(n => n.p), fi = r.notes.find(n => n.f), ar = r.notes.find(n => n.c), T = textsOf(r);
+  // senza blocco: il numero misurato (42) nel punto del testo; «<>» è il numero misurato
+  const r2 = noteOf([['0', 'DIMENSION', '8', '0', '2', '*X', '11', 3, '21', 4, '42', 12.5, '53', 90, '1', 'L=<>']]), t2 = textsOf(r2)[0];
+  const r3 = noteOf([['0', 'DIMENSION', '8', '0']]);
+  return { ok: true, exp: [1, 1, 1, 1, 1, 1, 1, 1, 0, 1], got: [r.noteCount.quote, r.geo.length === 0 ? 1 : 0, ln.p.join() === '100,50,110,50' ? 1 : 0, fi.f.join() === '100,50,102,51,102,49,102,49' ? 1 : 0,
+    near(ar.c[0], 105) * near(ar.c[1], 55) * near(ar.r, 2) * near(ar.a0, 0) * near(ar.a1, Math.PI / 2), T.length === 1 && T[0].s === 'Ø10' && near(T[0].x, 105) * near(T[0].y, 51) * near(T[0].h, 2.5) && T[0].ha === 1 ? 1 : 0, t2.s === 'L=12,5' && near(t2.x, 3) * near(t2.y, 4) * near(t2.r, Math.PI / 2) ? 1 : 0, r3.noteCount.quote, r3.notes.length, r2.noteCount.quote] };
+}]);
+SK.push(['Sfondo DXF: layer scelti, attributi nascosti, fogli di layout; senza richiesta restano saltati', () => {
+  const ents = [['0', 'TEXT', '8', 'QUOTE', '10', 0, '20', 0, '40', 1, '1', 'a'], ['0', 'TEXT', '8', 'PEZZO', '10', 0, '20', 0, '40', 1, '1', 'b'], ['0', 'TEXT', '8', 'PEZZO', '67', 1, '10', 0, '20', 0, '40', 1, '1', 'foglio'],
+    ['0', 'ATTRIB', '8', 'PEZZO', '70', 1, '10', 0, '20', 0, '40', 1, '1', 'nascosto'], ['0', 'ATTRIB', '8', 'PEZZO', '70', 0, '10', 0, '20', 0, '40', 1, '1', 'c'], ['0', 'TEXT', '8', 'PEZZO', '10', 0, '20', 0, '40', 1, '1', '  '],
+    ['0', 'LEADER', '8', 'PEZZO', '10', 0, '20', 0, '10', 5, '20', 5, '10', 9, '20', 5]];
+  const r = MI.parseDXF(dxfFile(ents), { notes: true, layers: ['PEZZO'] }), old = MI.parseDXF(dxfFile(ents));
+  return { ok: true, exp: [1, 1, 3, 2, 1, 0, 1, 1], got: [textsOf(r).map(t => t.s).join() === 'b,c' ? 1 : 0, r.noteCount.richiami, old.skipped.testi - 1, r.noteCount.testi, r.notes.find(n => n.p).p.join() === '0,0,5,5,9,5' ? 1 : 0, old.notes.length, old.skipped.quote === undefined ? 1 : 0, old.skipped.richiami] };
+}]);
+SK.push(['Sfondo DXF: accenti nei file UTF-8 (dal 2007) e Windows-1252 (prima)', () => {
+  const head = (ver, cp) => ['0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', ver, '9', '$DWGCODEPAGE', '3', cp, '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES', '0', 'TEXT', '8', '0', '10', 0, '20', 0, '40', 1, '1'].join('\r\n') + '\r\n';
+  const tail = '\r\n0\r\nENDSEC\r\n0\r\nEOF';
+  const utf = new TextEncoder().encode(head('AC1027', 'ANSI_1252') + 'Perché €' + tail);
+  const win = Uint8Array.from(head('AC1018', 'ANSI_1252') + 'Perché \u0080' + tail, ch => ch.charCodeAt(0));
+  const bad = Uint8Array.from(head('AC1027', 'ANSI_1252') + 'Perché' + tail, ch => ch.charCodeAt(0));   // dichiarato UTF-8 ma non lo è: non si perde il testo
+  const s = u => textsOf(MI.parseDXF(u, { notes: true }))[0].s;
+  return { ok: true, exp: [1, 1, 1], got: [s(utf) === 'Perché €' ? 1 : 0, s(win) === 'Perché €' ? 1 : 0, s(bad) === 'Perché' ? 1 : 0] };
+}]);
+SK.push(['Sfondo DXF: l\'inquadratura comprende le quote intorno al pezzo, non un testo lontanissimo', () => {
+  const near1 = MI.notesBox([{ p: [0, -15, 100, -15] }, { s: 'AB', x: 110, y: 10, h: 2 }], [0, 0], [100, 60]);    // AB: lungo 2·0,7·2 = 2,8
+  const far = MI.notesBox([{ s: 'A', x: 972635, y: -320368, h: 184349 }, { p: [0, -26, 100, -26] }], [0, 0], [100, 60]);   // oltre 25 dalla geometria: non contano
+  return { ok: true, exp: [1, 1, 1], got: [near(near1.mn[1], -15) * near(near1.mn[0], 0), near(near1.mx[0], 112.8) * near(near1.mx[1], 60), near(far.mx[0], 100) * near(far.mn[1], 0) * near(far.mx[1], 60) * near(far.mn[0], 0)] };
+}]);
+SK.push(['Sfondo DXF nello schizzo: stessa origine e scala; geometria, stato e contorni identici a quelli senza sfondo', () => {
+  const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', '*D1', '10', 0, '20', 0, '0', 'LINE', '8', '0', '10', 50, '20', 18, '11', 60, '21', 18, '0', 'CIRCLE', '8', '0', '10', 52, '20', 23, '40', 1, '0', 'ENDBLK', '0', 'ENDSEC'];
+  // piastra 10 × 6 cm con l'angolo in (50,20) cm
+  const file = dxfFile([dLine(50, 20, 60, 20), dLine(60, 20, 60, 26), dLine(60, 26, 50, 26), dLine(50, 26, 50, 20), ['0', 'TEXT', '8', '0', '10', 52, '20', 23, '40', 0.5, '41', 0.8, '1', 'PIASTRA'], ['0', 'DIMENSION', '8', '0', '2', '*D1']], { units: 5, blocks });
+  const r = MI.parseDXF(file, { notes: true }), r0 = MI.parseDXF(file), a = SB(), b = SB();
+  const o = { scale: MI.DXF_SCALE.cm, origin: 'corner' };
+  MI.dxfToSketch(a.s, r.geo, { ...o, notes: r.notes }); MI.dxfToSketch(b.s, r0.geo, o);
+  const bg = a.s.bg, t = bg.find(n => n.s), l = bg.find(n => n.p), c = bg.find(n => n.c);
+  const same = JSON.stringify(a.s.ents) === JSON.stringify(b.s.ents) && JSON.stringify(a.s.cons) === JSON.stringify(b.s.cons) && a.s.next === b.s.next;
+  const an = Sketch.analyze(a.s), an0 = Sketch.analyze(b.s), pr = Sketch.profiles(a.s), pr0 = Sketch.profiles(b.s);
+  // un secondo disegno nello stesso schizzo si aggiunge; il progetto salvato e riletto lo conserva
+  const nBg = bg.length; MI.dxfToSketch(a.s, r.geo, { ...o, notes: r.notes });
+  const back = JSON.parse(JSON.stringify(a.s));
+  return { ok: true, exp: [1, 1, 1, 1, 1, 1, 1, 6000, 1, 1], got: [same ? 1 : 0, near(t.x, 20) * near(t.y, 30), near(t.h, 5) * near(t.w, 0.8), l.p.join() === '0,-20,100,-20' ? 1 : 0, c.c.join() === '20,30' && near(c.r, 10) ? 1 : 0,
+    an.dof === an0.dof && an.status === an0.status ? 1 : 0, b.s.bg === undefined ? 1 : 0, pr.regions.reduce((s, x) => s + x.area, 0), pr.regions.length === pr0.regions.length ? 1 : 0, back.bg.length === 2 * nBg ? 1 : 0] };
+}]);
+
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
   const rows = [];
@@ -14637,15 +15036,16 @@ if (isNode) {
     why: 'Usare il contorno di un pezzo disegnato con un altro programma (AutoCAD, DraftSight, LibreCAD, la tavola di SolidWorks…) senza ridisegnarlo.',
     cmd: { tab: 'sketch', id: 'dxf' },
     steps: [
-      'Prendi il disegno come [[File DXF]] o [[File DWG]], meglio se con il solo contorno del pezzo (senza cartiglio, quote e tratteggi).',
+      'Prendi il disegno come [[File DXF]] o [[File DWG]]. Se ha cartiglio, squadratura o tratteggi, potrai togliere i loro layer nella finestra.',
       'Scheda **Schizzo › Inserisci DXF o DWG** (oppure **Progetto › Importa DXF o DWG (schizzo)**). Fuori da uno schizzo scegli il **piano**; dentro uno schizzo la geometria va in quello aperto.',
       'Scegli il file: nella finestra compare l\'**anteprima** del disegno, con una crocetta rossa sul punto che andrà nell\'origine. Se il disegno ha più [[Layer|layer]], togli la spunta a quelli che non servono (cartiglio, quote, squadratura): l\'anteprima si aggiorna.',
-      'Scegli l\'[[Unità del file]] (di solito «dal file») e la **posizione**: come nel file, oppure con l\'angolo in basso a sinistra o il centro sull\'origine. Premi **Importa**.',
+      'Scegli l\'[[Unità del file]] (di solito «dal file») e la **posizione**: come nel file, oppure con l\'angolo in basso a sinistra o il centro sull\'origine. La casella **Testi e quote come sfondo di riferimento** li porta sotto lo schizzo, in grigio ([[Sfondo del disegno]]). Premi **Importa**.',
       'Le entità arrivano selezionate e blu ([[Sotto definito]]): controlla che i contorni siano chiusi, poi premi ✓. Le [[Ellisse|ellissi]] e le [[Spline|spline]] arrivano come catene di archi tangenti ([[Biarco|biarchi]]).',
+      'Se hai lo sfondo, leggi le misure in grigio e rimettile con la **Quota intelligente**: quelle del file non comandano la forma. Nel pannello dello schizzo puoi nasconderlo (**Mostra lo sfondo**) o toglierlo (**Togli lo sfondo**).',
       'Seleziona lo schizzo e usa **Estrusione base**, oppure **Rivoluzione base** se c\'è una [[Linea di mezzeria]].',
     ],
     tips: ['Le linee tratto-punto del file diventano linee di mezzeria, quelle tratteggiate di costruzione (vedi [[Tipo di linea]]).', 'Gli estremi molto vicini vengono uniti e le linee doppie tolte, così i contorni si chiudono.', 'Se il pezzo arriva 10 o 25,4 volte più grande o più piccolo, cambia l\'unità e ripeti.', 'Il messaggio finale dice in quanti archi è stata divisa ogni ellisse o spline e lo [[Scostamento dalla curva]]: di solito pochi millesimi di millimetro.', 'Si importano anche tavole intere, con migliaia di entità; per avere solo il pezzo togli la spunta ai layer che non servono (cartiglio, squadratura, quote).', 'I layer spenti o congelati nel file partono senza spunta.', 'Puoi scegliere anche uno **.zip** con il DXF dentro: è così che il Convertitore DWG → DXF salva i file nella pagina pubblicata. Se nello zip ci sono più disegni (il pulsante «Salva tutti i DXF» del convertitore), scegli quale in **Disegno nello zip**.', 'Un **DWG** ci mette qualche istante in più, perché prima si trasforma in DXF: intanto la pagina resta libera e con Annulla interrompi la lettura.', 'Per salvare i DXF, per altri programmi o per molti disegni insieme, c\'è il [[Convertitore DWG → DXF]].'],
-    terms: ['Inserisci DXF o DWG', 'File DXF', 'File DWG', 'Convertitore DWG → DXF', 'Layer', 'Tipo di linea', 'Unità del file', 'Ellisse', 'Spline', 'Biarco', 'Scostamento dalla curva'],
+    terms: ['Inserisci DXF o DWG', 'File DXF', 'File DWG', 'Sfondo del disegno', 'Convertitore DWG → DXF', 'Layer', 'Tipo di linea', 'Unità del file', 'Ellisse', 'Spline', 'Biarco', 'Scostamento dalla curva'],
   });
   add('Schizzo', 'sk-converti', 'Converti entità', {
     why: 'Usare gli spigoli del pezzo nello schizzo (per esempio per una borchia sul bordo).',
