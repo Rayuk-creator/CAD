@@ -915,11 +915,11 @@ SK.push(['STEP vero: serie lineare di 4 fori (i tagli spezzano le faccette degli
   const c = CASES.find(x => /^Serie lineare 4 fori/.test(x.name)), r = stepX(c.build());
   return { ok: true, got: [cntE(r.text, /CYLINDRICAL_SURFACE\('',#\d+,4\.\)/g), r.stats.fallback, r.stats.badEdges + r.stats.openLoops, r.stats.faces], exp: [4, 0, 0, 10] };
 }]);
-SK.push(['STEP: cilindro R10 forato di traverso da un foro R4 (bordo tra i due cilindri = curva 3D) → i due cilindri restano a facce piane, le due basi vere; solido chiuso', () => {
+SK.push(['STEP: cilindro R10 forato di traverso da un foro R4 (bordo tra i due cilindri = curva 3D) → B-spline: 2 cilindri veri, 2 bordi B-spline, nessuna faccia a faccette; solido chiuso', () => {
   const d = D0('perno'); const b = SB(); b.circle(0, 0, 10); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 30 });
   const h = SB(); h.circle(0, 15, 4); feat(d, { type: 'cut', sketch: sketch(d, STD('front'), h), end: 'mid', depth: 40 });
   const r = stepX(d);
-  return { ok: true, got: [r.stats.fallback, cntE(r.text, /CYLINDRICAL_SURFACE/g), r.stats.badEdges + r.stats.openLoops, r.stats.solids, r.stats.verts - r.stats.edges + r.stats.faces - r.stats.holes], exp: [2, 0, 0, 1, 0] };
+  return { ok: true, got: [r.stats.fallback, cntE(r.text, /CYLINDRICAL_SURFACE/g), r.stats.bsplines, cntE(r.text, /B_SPLINE_CURVE_WITH_KNOTS/g), r.stats.badEdges + r.stats.openLoops, r.stats.solids, r.stats.verts - r.stats.edges + r.stats.faces - r.stats.holes], exp: [0, 2, 2, 2, 0, 1, 0] };
 }]);
 // PDF: un quarto di cerchio con una curva di Bézier (punti di controllo a 4/3·tan(22,5°) = 0,55228 del raggio) si scosta
 // dal cerchio al massimo di 2,7253·10⁻⁴ del raggio (valore noto)

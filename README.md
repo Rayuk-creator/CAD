@@ -40,7 +40,7 @@ Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo
 
 Il lavoro si salva da solo nel browser. Per portarlo su un altro computer usa **Progetto › Esporta il progetto** e poi **Importa un progetto**.
 
-Con **Progetto › Esporta STEP** il pezzo si apre in un altro programma CAD (SolidWorks, Inventor, Fusion, FreeCAD…): cilindri, coni, sfere e tori arrivano come **superfici vere**, con i bordi a cerchio o a ellisse, come li avrebbe scritti SolidWorks; solo le superfici che non si possono scrivere esatte (per esempio due cilindri che si incrociano) arrivano a facce piane. Con **Salva PDF** si salvano la tavola, lo schizzo o la vista 3D.
+Con **Progetto › Esporta STEP** il pezzo si apre in un altro programma CAD (SolidWorks, Inventor, Fusion, FreeCAD…): cilindri, coni, sfere e tori arrivano come **superfici vere**, con i bordi a cerchio, a ellisse o a B-spline (per esempio dove due cilindri si incrociano), come li avrebbe scritti SolidWorks. Con **Salva PDF** si salvano la tavola, lo schizzo o la vista 3D.
 
 Con **Progetto › Importa STEP o IGES** si apre un pezzo (o un piccolo assieme) fatto con un altro programma CAD (SolidWorks, Inventor, Fusion, FreeCAD… salvato in STEP o IGES): arriva con le sue facce vere e l'unità del file, si misura, si mette in tavola, se ne calcolano volume e massa con un errore molto sotto l'1 %, e sopra si aggiungono schizzi e funzioni. Se il file contiene più corpi si sceglie quali importare, e ognuno arriva nella sua funzione «Importato» (oppure tutti insieme in una); i colori delle facce scritti nel file si vedono sul pezzo. Il lettore è OpenCascade, compresso dentro la pagina: funziona anche senza internet, e legge il file a parte, così la pagina non si blocca (la lettura si può annullare).
 

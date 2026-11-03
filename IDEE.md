@@ -12,7 +12,7 @@ Il 20 ottobre 2026 abbiamo valutato l'importazione di altri formati. Il 21 ottob
 | DXF | Sì, medio | Linee, archi e cerchi importati in uno schizzo, poi estrusione o rivoluzione | **Fatto** il 21 ottobre 2026 (polilinee con tratti curvi, blocchi, unità, assi tratto-punto → mezzerie; ellissi e spline come archi tangenti); dal 22 ottobre **senza limite di entità** (tavole intere, decine di migliaia di elementi) |
 | STEP (.stp, .step), IGES (.igs, .iges) | Sì, impegnativo | Solido con le facce vere, diviso in triangoli fitti (errore su volume e massa molto sotto l'1 %) | **Fatto** il 21 ottobre 2026 con occt-import-js (OpenCascade in WebAssembly, LGPL 2.1), compresso dentro `index.html`: la pagina passa da ~0,8 MB a ~5 MB |
 | DWG | Difficile | DXF da importare negli schizzi | **Fatto** il 22 ottobre 2026 come **pagina separata** (Convertitore DWG → DXF, cartella `convertitore-dwg/`, LibreDWG, licenza GPL 3 solo per quella pagina); il Banco CAD rimanda alla pagina e apre anche lo .zip che la pagina salva |
-| Esportare STEP (per gli altri CAD) | Sì | Solido in mm con le superfici vere | **Fatto** il 28 ottobre 2026 (Progetto › Esporta STEP); dal 29 ottobre piani, cilindri, coni, sfere e tori sono superfici vere (bordi a cerchio o ellisse); restano a facce piane solo le superfici con bordi più complicati |
+| Esportare STEP (per gli altri CAD) | Sì | Solido in mm con le superfici vere | **Fatto** il 28 ottobre 2026 (Progetto › Esporta STEP); dal 29 ottobre piani, cilindri, coni, sfere e tori sono superfici vere (bordi a cerchio o ellisse); dal 3 novembre i bordi più complicati sono B-spline |
 | SolidWorks (.sldprt, .sldasm, .slddrw), Inventor (.ipt, .iam, .idw, .ipn) | No | — | Formati proprietari senza specifiche pubbliche; consigliare di esportare in STEP (parti, assiemi) o DXF (tavole) dal programma d'origine |
 
 Limite comune: i pezzi importati arrivano **senza la storia delle funzioni** (le quote originali non si modificano); si possono aggiungere funzioni nuove sopra. Gli schizzi DXF arrivano senza quote (blu): si possono quotare.
@@ -78,5 +78,4 @@ Cose ancora da fare:
 ## Altro ancora da fare
 
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
-- STEP esportato, se servirà: bordi B-spline per le intersezioni tra cilindri diversi (oggi quelle superfici restano a facce piane).
 - Le pagine pubblicate su claude.ai («Banco CAD» e «Convertitore DWG → DXF») sono aggiornate al 3 novembre. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.

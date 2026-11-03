@@ -147,6 +147,20 @@ const CASES = [
       const b2 = SB(); b2.rect(10, 10, 30, 30); feat(d, { type: 'extrude', sketch: skf(d, 'top', b2), end: 'blind', depth: 25 }); return d; }, 24000 + 6000],
     ['tubo di rivoluzione R 20/12, alto 30 (superfici curve divise in facce)', () => { const d = D0('tubo'); const b = SB(); b.center(0, -100, 0, 100); b.rect(12, 0, 20, 30);
       feat(d, { type: 'revolve', sketch: skf(d, 'front', b), angle: 360 }); return d; }, PI * (400 - 144) * 30],
+    // cilindro R10 alto 30, foro R4 di traverso: volume del foro = ∫∫ 2√(R² − x²) sul cerchio r = 4 (integrale numerico fine)
+    ['cilindro R10 forato di traverso da R4 (bordi B-spline)', () => { const d = D0('perno'); const b = SB(); b.circle(0, 0, 10); feat(d, { type: 'extrude', sketch: skf(d, 'top', b), end: 'blind', depth: 30 });
+      const h = SB(); h.circle(0, 15, 4); feat(d, { type: 'cut', sketch: skf(d, 'front', h), end: 'mid', depth: 40 }); return d; },
+      PI * 100 * 30 - (() => { let s = 0; const N = 2000, r = 4, R = 10; for (let i = 0; i < N; i++) { const x = -r + (i + 0.5) * 2 * r / N; s += 2 * Math.sqrt(R * R - x * x) * 2 * Math.sqrt(r * r - x * x) * 2 * r / N; } return s; })()],
+    // due cilindri diversi che si incrociano con un'estremità: R6 alto 30 sopra un cilindro R10 lungo 40, assi che si incontrano; il
+    // tratto R6 sporge di 30 dall'asse: V = π100·40 + π36·30 − (metà foro R6 in R10) − … (volume del pezzo di R6 dentro R10, numerico)
+    ['cilindro R10 con braccio R6 ad angolo retto (bordo B-spline aperto o chiuso)', () => { const d = D0('t'); const b = SB(); b.circle(0, 0, 10); feat(d, { type: 'extrude', sketch: skf(d, 'top', b), end: 'mid', depth: 40 });
+      const h = SB(); h.circle(0, 0, 6); feat(d, { type: 'extrude', sketch: skf(d, 'front', h), end: 'blind', depth: 30 }); return d; },
+      PI * 100 * 40 + PI * 36 * 30 - (() => { let s = 0; const N = 2000, r = 6, R = 10; for (let i = 0; i < N; i++) { const x = -r + (i + 0.5) * 2 * r / N; s += Math.sqrt(R * R - x * x) * 2 * Math.sqrt(r * r - x * x) * 2 * r / N; } return s; })()],
+    // foro R4 con il centro a 2 mm dalla base: esce dalla base, quindi i bordi tra i due cilindri sono aperti e finiscono su un piano.
+    // Volume tolto = ∫∫ 2√(R² − x²) sulla parte del cerchio r = 4 con y > 0 (integrale numerico fine)
+    ['cilindro R10 con foro R4 che esce dalla base (B-spline aperte, vertici su tre superfici)', () => { const d = D0('p3'); const b = SB(); b.circle(0, 0, 10); feat(d, { type: 'extrude', sketch: skf(d, 'top', b), end: 'blind', depth: 30 });
+      const h = SB(); h.circle(0, 2, 4); feat(d, { type: 'cut', sketch: skf(d, 'front', h), end: 'mid', depth: 40 }); return d; },
+      PI * 100 * 30 - (() => { let s = 0; const N = 1500, r = 4, R = 10; for (let i = 0; i < N; i++) { const x = -r + (i + 0.5) * 2 * r / N, c = Math.sqrt(r * r - x * x), y1 = 2 + c, y0 = Math.max(0, 2 - c); s += 2 * Math.sqrt(R * R - x * x) * (y1 - y0) * 2 * r / N; } return s; })()],
     ['due blocchi 10 × 10 × 10 staccati (due solidi)', () => { const d = D0('due'); const b = SB(); b.rect(0, 0, 10, 10); b.rect(20, 0, 30, 10); feat(d, { type: 'extrude', sketch: skf(d, 'top', b), end: 'blind', depth: 10 }); return d; }, 2000],
     ['sfera R10 (rivoluzione di un mezzo cerchio)', () => { const d = D0('sfera'); const b = SB(); b.center(0, -100, 0, 100); const c = b.pt(0, 0), a = b.pt(0, -10), e = b.pt(0, 10); b.arc(c, a, e); b.line(e, a);
       feat(d, { type: 'revolve', sketch: skf(d, 'front', b), angle: 360 }); return d; }, 4000 * PI / 3],
