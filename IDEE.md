@@ -79,4 +79,4 @@ Cose ancora da fare:
 
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
 - STEP esportato, se servirà: bordi B-spline per le intersezioni tra cilindri diversi (oggi quelle superfici restano a facce piane).
-- Le pagine pubblicate su claude.ai («Banco CAD» e «Convertitore DWG → DXF») sono ferme al 29 ottobre: hanno ancora le esercitazioni e i caratteri da Google, finché non si ripubblicano. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
+- Le pagine pubblicate su claude.ai («Banco CAD» e «Convertitore DWG → DXF») sono aggiornate al 3 novembre. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
