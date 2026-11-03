@@ -2,7 +2,7 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 3 novembre 2026 (più corpi solidi e Combina; bordi B-spline nello STEP; sweep senza schegge; spigolo tra facce vere complanari; licenza GPL 3, finestra «Informazioni e licenze», caratteri dentro la pagina; tolte le 8 esercitazioni; 1° novembre: controllo delle licenze per AlternativeTo, segnato in `IDEE.md`; 29 ottobre: sito su GitHub Pages; spigoli nascosti che uscivano davanti alle facce; operazioni booleane segnate in `IDEE.md`; STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
+Ultimo aggiornamento: 3 novembre 2026, notte (cancellato il disegno 2D libero; Banco CAD 19 su claude.ai; proposto il lettore DWG dentro il Banco CAD; prima: più corpi solidi e Combina; bordi B-spline nello STEP; sweep senza schegge; spigolo tra facce vere complanari; licenza GPL 3, finestra «Informazioni e licenze», caratteri dentro la pagina; tolte le 8 esercitazioni; 1° novembre: controllo delle licenze per AlternativeTo, segnato in `IDEE.md`; 29 ottobre: sito su GitHub Pages; spigoli nascosti che uscivano davanti alle facce; operazioni booleane segnate in `IDEE.md`; STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
 
 **Stato attuale:** ultima modifica al programma su `main` = corpi solidi e Combina, 3 novembre (vedi `git log`). Tutte le prove superate: 170/170 di calcolo, 35/35 STEP/IGES (comprese 21 di STEP esportati e riletti), 15/15 del convertitore DWG, 57/57 dell'interfaccia, Autoverifica 170/170. Nessun lavoro lasciato a metà.
 
@@ -77,8 +77,8 @@ tools/incorpora-occt.js  inserisce/aggiorna il lettore STEP/IGES in index.html
 tools/incorpora-caratteri.js  mette i caratteri IBM Plex nelle due pagine
 tools/sync-selftest.py   ricopia tests/kernel.test.js nel blocco Autoverifica di index.html
 tests/extract.js      estrae i moduli di calcolo da index.html per Node
-tests/kernel.test.js  111 casi geometrici + 41 di controllo = 152 prove (usate anche dall'Autoverifica)
-tests/step.test.js    35 prove del lettore STEP/IGES vero (prende il lettore da index.html), di cui 14 su STEP esportati dal Banco CAD e riletti (7 pezzi, a facce piane e con le superfici vere)
+tests/kernel.test.js  170 prove, tra casi geometrici e di controllo (usate anche dall'Autoverifica)
+tests/step.test.js    35 prove del lettore STEP/IGES vero (prende il lettore da index.html), di cui 21 su STEP esportati dal Banco CAD e riletti (7 pezzi, a facce piane e con le superfici vere)
 tests/stepgen.js      scrive file STEP di prova (blocco, cilindro, piastra con foro, due blocchi, due blocchi colorati, unità mm/cm/m)
 tests/igesgen.js      scrive file IGES di prova (blocco fatto di superfici piane tagliate)
 tests/dwg.test.js     15 prove del convertitore (prende il lettore dalla sua pagina; confronto con i DXF di riferimento; memoria, anteprima, zip di più disegni; codifica UTF-8 dichiarata nelle due pagine)
@@ -173,7 +173,8 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 
 ## 6. Cose aperte
 
-- **Da fare per primo: il fork di occt-import-js 0.0.24.** Lo fa l'utente dal suo account GitHub (ha detto il 3 novembre che lo fa il giorno dopo), togliendo la spunta «Copy the main branch only». Quando dà l'indirizzo, aggiornare `licenze/LEGGIMI.md`, la finestra «Informazioni e licenze» (`aboutDialog` in `index.html`; la prova dell'interfaccia conta 7 testi collegati) e il commento nel lettore.
+- **Da chiedere per primo: lettore DWG dentro il Banco CAD.** L'utente ha chiesto il 3 novembre se i DWG si aprono direttamente: oggi no, serve il Convertitore. Proposto di inserire LibreDWG nella pagina (la GPL 3 ora lo permette; pagina da ≈ 5 a ≈ 8 MB; resta un'importazione negli schizzi come il DXF, senza testi, quote e tratteggi). **Risposta non ancora data: chiedere prima di farlo.**
+- **Da fare: il fork di occt-import-js 0.0.24.** Lo fa l'utente dal suo account GitHub (ha detto il 3 novembre che lo fa il giorno dopo), togliendo la spunta «Copy the main branch only». Quando dà l'indirizzo, aggiornare `licenze/LEGGIMI.md`, la finestra «Informazioni e licenze» (`aboutDialog` in `index.html`; la prova dell'interfaccia conta 7 testi collegati) e il commento nel lettore.
 - Ripubblicare su claude.ai: la lettura con `path` non basta, l'Artifact tool chiede anche quella senza `path`, che mette molto testo nella chat. Dopo, avvisare l'utente che la chat è diventata pesante.
 
 - Corpi solidi, limiti: un taglio lavora sempre su tutti i corpi (in SolidWorks si può scegliere con «Ambito funzione»); i corpi si scelgono nel pannello o nella vista, non nell'albero mentre il pannello è aperto (l'albero è nascosto); serie e specchio lavorano sulle funzioni, non sui corpi.

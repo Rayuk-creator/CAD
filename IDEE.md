@@ -32,7 +32,7 @@ Versione **semi-automatica** fattibile (il lettore DXF ora c'è: `Import.parseDX
 3. Il programma fa scorrere un cerchio lungo ogni fascio con l'**estrusione con percorso** già esistente, unendo le diramazioni.
 4. Ai capi mette dei blocchetti al posto dei connettori.
 
-Risultato: il cablaggio 3D steso in piano. Ellissi e spline del DXF sono pronte: è il prossimo lavoro grande, da confermare con l'utente.
+Risultato: il cablaggio 3D steso in piano. Ellissi e spline del DXF sono pronte.
 
 ## Assiemi con gli accoppiamenti (come SolidWorks)
 
@@ -56,5 +56,6 @@ Cose ancora da fare:
 
 ## Altro ancora da fare
 
+- **Lettore DWG dentro il Banco CAD** (proposto il 3 novembre, da confermare con l'utente): si sceglie il DWG e si apre senza passare dal Convertitore. Pagina da ≈ 5 a ≈ 8 MB; il disegno entra negli schizzi come un DXF, senza testi, quote e tratteggi.
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
 - Le pagine pubblicate su claude.ai: «Banco CAD» è aggiornata al 3 novembre notte (versione 19), «Convertitore DWG → DXF» al 3 novembre pomeriggio. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
