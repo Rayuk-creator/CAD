@@ -1243,6 +1243,34 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
       `sito: Banco CAD → ${g1.href}; Convertitore → ${g2} (e da index.html → ${g3}); da disco: ${g4} e ${g5}${gerr.length ? '; errori: ' + gerr.join(' | ') : ''}`);
   } catch (e) { rec('Sito GitHub Pages: Banco CAD e Convertitore si collegano tra loro sullo stesso sito', false, e.message.split('\n')[0]); }
 
+  // licenza: finestra «Informazioni e licenze» dal menu, ogni testo collegato esiste nel repository
+  try {
+    await fresh();
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="about"]');
+    const ab = await page.evaluate(() => ({ title: document.querySelector('#modalTitle').textContent, text: document.querySelector('#modalBody').textContent, links: [...document.querySelectorAll('#modalBody a')].map(a => a.href) }));
+    const need = ['Copyright © 2026 Rayuk-creator', 'GNU GPL versione 3', 'senza alcuna garanzia', 'non raccoglie dati', 'occt-import-js', 'LGPL 2.1', 'csg.js', 'Evan Wallace', 'Adobe', 'IBM Plex', 'SIL OFL 1.1', 'Dassault', 'Autodesk'].filter(t => !ab.text.toLowerCase().includes(t.toLowerCase()));
+    const base = 'https://github.com/Rayuk-creator/CAD/blob/main/';
+    const local = ab.links.filter(l => l.startsWith(base)).map(l => l.slice(base.length));
+    const noFile = local.filter(l => !require('fs').existsSync(path.join(__dirname, '..', l)));
+    await page.evaluate(() => App.closeModal());
+    const gpl3 = /GNU GENERAL PUBLIC LICENSE\s+Version 3, 29 June 2007/.test(require('fs').readFileSync(path.join(__dirname, '..', 'LICENSE'), 'utf8'));
+    rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', ab.title === 'Informazioni e licenze' && !need.length && local.length === 7 && !noFile.length && gpl3, `mancano: ${need.join(', ') || 'nulla'}; ${local.length} testi, senza file: ${noFile.join(', ') || 'nessuno'}; LICENSE GPL 3: ${gpl3}`);
+  } catch (e) { rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', false, e.message.split('\n')[0]); await page.evaluate(() => App.closeModal && App.closeModal()).catch(() => {}); }
+  // privacy: le due pagine non chiedono nulla ad altri siti e usano davvero IBM Plex da dentro la pagina
+  try {
+    const nctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    const reqs = []; nctx.on('request', r => { if (/^https?:/.test(r.url())) reqs.push(r.url()); });
+    const res = [];
+    for (const f of [page_, path.join(__dirname, '..', 'convertitore-dwg', 'index.html')]) {
+      const np = await nctx.newPage(); await np.goto('file://' + f); await np.waitForTimeout(800);
+      res.push(await np.evaluate(async () => { await document.fonts.ready; await Promise.all(['400 14px "IBM Plex Sans"', '600 14px "IBM Plex Sans"', '500 14px "IBM Plex Sans Condensed"', '400 14px "IBM Plex Mono"'].map(x => document.fonts.load(x, 'Aø'))); return { loaded: [...document.fonts].filter(x => x.status === 'loaded').map(x => x.family.replace(/"/g, '') + ' ' + x.weight).sort(), google: !!document.querySelector('link[href*="fonts.g"]') }; }));
+      await np.close();
+    }
+    await nctx.close();
+    const ok = res.every(r => !r.google && ['IBM Plex Sans 400', 'IBM Plex Sans 600', 'IBM Plex Sans Condensed 500', 'IBM Plex Mono 400'].every(n => r.loaded.includes(n)));
+    rec('Privacy: nessuna richiesta ad altri siti; caratteri IBM Plex dentro le due pagine', !reqs.length && ok, `richieste: ${reqs.join(', ') || 'nessuna'}; caratteri caricati: ${res.map(r => r.loaded.length).join(' e ')}`);
+  } catch (e) { rec('Privacy: nessuna richiesta ad altri siti; caratteri IBM Plex dentro le due pagine', false, e.message.split('\n')[0]); }
+
   await browser.close();
   const f = results.filter(r => !r.ok).length;
   console.log(`\n${results.length - f}/${results.length} superati`);

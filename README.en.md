@@ -21,6 +21,7 @@ Designed for technical secondary schools (mechanical and mechatronic engineering
 5. [Guide and glossary](#guide-and-glossary)
 6. [Verified calculations](#verified-calculations)
 7. [For developers](#for-developers)
+8. [Licence](#licence)
 
 ---
 
@@ -163,8 +164,17 @@ tests/step.test.js    tests of the real STEP/IGES reader and of exported STEP fi
 tests/stepgen.js      writes small STEP test files (igesgen.js: IGES)
 tests/dwg.test.js     tests of the DWG → DXF converter (DWG from R11 to 2018, compared with reference DXF files)
 tools/incorpora-occt.js  inserts or updates the STEP/IGES reader in the page
-licenze/              licences of the STEP/IGES reader (LGPL 2.1)
+LICENSE               GPL 3 licence of Banco CAD
+licenze/              licences of parts by other authors, and LEGGIMI (readme)
 convertitore-dwg/     DWG → DXF converter, a separate GPL 3 program (LibreDWG): page, LEGGIMI (readme), tests
 ```
 
 The interface tests use the program the way a student would: they draw with the mouse, type dimensions, press buttons, simulate fingers on a tablet and reload the page. They also check that every command is explained in the Guide and the Glossary.
+
+## Licence
+
+Banco CAD, Copyright © 2026 Rayuk-creator. It is free software under the [GNU GPL 3](LICENSE) (or later versions), with **no warranty**. Parts by other authors (STEP/IGES reader, csg.js, Adobe metrics, IBM Plex fonts) are listed in [`licenze/LEGGIMI.md`](licenze/LEGGIMI.md) and inside the program, under **Progetto › Informazioni e licenze**.
+
+The program **collects no data**: everything stays in the browser, and not even the fonts are downloaded from other sites.
+
+SolidWorks is a trademark of Dassault Systèmes, AutoCAD of Autodesk; Banco CAD is not affiliated with them.

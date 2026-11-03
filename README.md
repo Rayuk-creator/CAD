@@ -19,6 +19,7 @@ Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo
 5. [Guida e glossario](#guida-e-glossario)
 6. [Calcoli verificati](#calcoli-verificati)
 7. [Per chi sviluppa](#per-chi-sviluppa)
+8. [Licenza](#licenza)
 
 ---
 
@@ -138,7 +139,7 @@ Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifi
 
 ## Per chi sviluppa
 
-Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScript insieme, senza compilazione. L'unica parte non scritta qui è il lettore STEP/IGES (occt-import-js con OpenCascade, licenza LGPL 2.1), compresso in fondo alla pagina: licenze e istruzioni per sostituirlo sono in `licenze/`. I test usano Node.js e Playwright.
+Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScript insieme, senza compilazione. Il lettore STEP/IGES (occt-import-js con OpenCascade, licenza LGPL 2.1) è compresso in fondo alla pagina, i caratteri IBM Plex in cima: licenze e istruzioni per sostituirli sono in `licenze/`. I test usano Node.js e Playwright.
 
 ```bash
 npm install
@@ -161,8 +162,18 @@ tests/step.test.js    prove del lettore STEP/IGES vero e degli STEP esportati (r
 tests/stepgen.js      scrive piccoli file STEP di prova (igesgen.js: IGES)
 tests/dwg.test.js     prove del Convertitore DWG → DXF (DWG da R11 a 2018, confronto con DXF di riferimento)
 tools/incorpora-occt.js  inserisce o aggiorna il lettore STEP/IGES nella pagina
-licenze/              licenze del lettore STEP/IGES (LGPL 2.1)
+tools/incorpora-caratteri.js  inserisce o aggiorna i caratteri IBM Plex nelle due pagine
+LICENSE               licenza GPL 3 del Banco CAD
+licenze/              licenze delle parti di altri autori e LEGGIMI
 convertitore-dwg/     Convertitore DWG → DXF, programma separato con licenza GPL 3 (LibreDWG): pagina, LEGGIMI, prove
 ```
 
 Le prove dell'interfaccia usano il programma come farebbe uno studente: disegnano con il mouse, scrivono le quote, premono i pulsanti, simulano le dita sul tablet e ricaricano la pagina. Controllano anche che ogni comando abbia la sua spiegazione nella Guida e nel Glossario.
+
+## Licenza
+
+Banco CAD, Copyright © 2026 Rayuk-creator. È un programma libero con licenza [GNU GPL 3](LICENSE) (o versioni successive), **senza alcuna garanzia**. Le parti di altri autori (lettore STEP/IGES, csg.js, metriche Adobe, caratteri IBM Plex) sono elencate in [`licenze/LEGGIMI.md`](licenze/LEGGIMI.md) e nel programma, in **Progetto › Informazioni e licenze**.
+
+Il programma **non raccoglie dati**: tutto resta nel browser, e nemmeno i caratteri vengono scaricati da altri siti.
+
+SolidWorks è un marchio di Dassault Systèmes, AutoCAD di Autodesk; il Banco CAD non è collegato a loro.

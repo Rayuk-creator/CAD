@@ -1,6 +1,6 @@
 # Licenze dei componenti esterni
 
-Il Banco CAD è scritto da zero, senza dipendenze, con **una sola eccezione**: il lettore dei file **STEP e IGES**.
+Il Banco CAD ha licenza **GNU GPL 3** (Copyright © 2026 Rayuk-creator, testo in `../LICENSE`). Le parti di altri autori sono queste.
 
 ## Lettore STEP/IGES
 
@@ -23,3 +23,15 @@ Il codice sorgente è disponibile ai due indirizzi sopra. Chiunque può sostitui
 ```
 node tools/incorpora-occt.js <cartella dist di occt-import-js>
 ```
+
+## csg.js
+
+Il modulo `CSG` di `index.html` è riscritto seguendo l'algoritmo di **csg.js** di Evan Wallace, <https://github.com/evanw/csg.js>. Licenza MIT: `csg.js-MIT.txt`.
+
+## Metriche di Helvetica
+
+Le tabelle `HELV` e `HELVB`, usate per scrivere i PDF, contengono le larghezze dei file AFM di Adobe. Avviso e licenza: `adobe-core14-afm.txt`.
+
+## Caratteri IBM Plex
+
+IBM Plex Sans (400, 500, 600), Sans Condensed (500, 600) e Mono (400, 500), parti Latin1 e Pi in WOFF2, sono dentro le due pagine in base64, tra i commenti «CARATTERI», **senza modifiche** (dal repository <https://github.com/IBM/plex>, commit `71f5589`). Licenza SIL OFL 1.1: `ibm-plex-OFL-1.1.txt`. Per aggiornarli: `node tools/incorpora-caratteri.js <cartella packages di IBM/plex>`.

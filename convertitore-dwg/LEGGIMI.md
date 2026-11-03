@@ -20,7 +20,7 @@ Pagina a parte del Banco CAD: trasforma i disegni di AutoCAD (`.dwg`) in file DX
 
 ## Licenza: GNU GPL 3 (solo questa cartella)
 
-Il convertitore usa **LibreDWG**, che ha licenza GNU GPL 3. Per questo il convertitore è un **programma separato** dal Banco CAD, con la stessa licenza GPL 3 (testo completo in `COPYING`). Il Banco CAD (`../index.html`) non contiene LibreDWG e non lo carica: rimanda solo, con un collegamento, alla pagina del convertitore.
+Il convertitore usa **LibreDWG**, che ha licenza GNU GPL 3. Il convertitore è un **programma separato** dal Banco CAD, che dal 3 novembre 2026 ha la stessa licenza GPL 3 (testo completo in `COPYING`). I caratteri IBM Plex sono dentro la pagina (licenza OFL 1.1, `../licenze/ibm-plex-OFL-1.1.txt`). Il Banco CAD (`../index.html`) non contiene LibreDWG e non lo carica: rimanda solo, con un collegamento, alla pagina del convertitore.
 
 Tutto quello che c'è in questa cartella (`index.html`, `incorpora-libredwg.js`, i file di prova) è distribuito con licenza GPL 3.
 
