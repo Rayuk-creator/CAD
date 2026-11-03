@@ -4179,7 +4179,23 @@ self.onmessage = async ev => {
   // (CIRCLE). Una superficie che non si può scrivere esatta (un vertice non sta sulla superficie vera, un bordo che non è
   // né retta né cerchio, per esempio due fori che si incrociano) resta a facce piane, come le sue vicine che lo richiedono:
   // il solido è sempre chiuso.
+  // più corpi (o.bodies = [{ name, polys, topo }]): un solido per corpo, ognuno con la sua topologia
   function toSTEP(polys, topo, o = {}) {
+    if (!o.bodies || o.bodies.length < 2) return stepOne(polys, topo, o);
+    const W = {}, sum = {};
+    let res = null;
+    o.bodies.forEach((b, i) => {
+      res = stepOne(b.polys, b.topo, { ...o, _w: W, _last: i === o.bodies.length - 1, _solid: b.name });
+      for (const k in res.stats) {
+        if (typeof res.stats[k] === 'number') sum[k] = (sum[k] || 0) + res.stats[k];
+        else if (k === 'surfaces') { sum.surfaces = sum.surfaces || {}; for (const t in res.stats.surfaces) sum.surfaces[t] = (sum.surfaces[t] || 0) + res.stats.surfaces[t]; }
+        else sum[k] = res.stats[k];
+      }
+    });
+    res.stats = sum;
+    return res;
+  }
+  function stepOne(polys, topo, o = {}) {
     const V = topo.verts.slice();   // copia: le sfere e i tori interi aggiungono i vertici dei cerchi di divisione
     const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
     const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -4644,27 +4660,31 @@ self.onmessage = async ev => {
     // 6) scrittura (ISO 10303-21, AP214)
     const R = x => { if (!isFinite(x) || Math.abs(x) < 1e-12) return '0.'; let s = String(+x.toPrecision(15)); if (/e/i.test(s)) { const [m, ex2] = s.split(/e/i); s = (m.includes('.') ? m : m + '.') + 'E' + ex2; } else if (!s.includes('.')) s += '.'; return s; };
     const S = s => "'" + [...String(s)].map(ch => { const c = ch.codePointAt(0); if (ch === "'") return "''"; if (ch === '\\') return '\\\\'; if (c >= 32 && c < 127) return ch; return '\\X2\\' + c.toString(16).toUpperCase().padStart(4, '0') + '\\X0\\'; }).join('') + "'";
-    const L = []; let id = 0;
-    const E = s => { L.push(`#${++id}=${s};`); return '#' + id; };
+    const W = o._w || {};
+    if (!W.L) { W.L = []; W.id = 0; W.solids = []; W.si = 0; W.E = s => { W.L.push(`#${++W.id}=${s};`); return '#' + W.id; }; }
+    const L = W.L, E = W.E;
     const name = o.name || 'Parte';
-    const ctx = E("APPLICATION_CONTEXT('automotive design')");
-    E(`APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,${ctx})`);
-    const pctx = E(`PRODUCT_CONTEXT('',${ctx},'mechanical')`);
-    const prod = E(`PRODUCT(${S(name)},${S(name)},'',(${pctx}))`);
-    E(`PRODUCT_RELATED_PRODUCT_CATEGORY('part',$,(${prod}))`);
-    const pdf = E(`PRODUCT_DEFINITION_FORMATION('','',${prod})`);
-    const pdc = E(`PRODUCT_DEFINITION_CONTEXT('part definition',${ctx},'design')`);
-    const pd = E(`PRODUCT_DEFINITION('design','',${pdf},${pdc})`);
-    const pds = E(`PRODUCT_DEFINITION_SHAPE('','',${pd})`);
-    const lu = E('( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) )');
-    const au = E('( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) )');
-    const su = E('( NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT() )');
-    const unc = E(`UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-05),${lu},'distance_accuracy_value','confusion accuracy')`);
-    const gctx = E(`( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((${unc})) GLOBAL_UNIT_ASSIGNED_CONTEXT((${lu},${au},${su})) REPRESENTATION_CONTEXT('Context3D','3D') )`);
     const pt3 = p => E(`CARTESIAN_POINT('',(${R(p[0])},${R(p[1])},${R(p[2])}))`);
     const dir3 = u => E(`DIRECTION('',(${R(u[0])},${R(u[1])},${R(u[2])}))`);
     const ax3 = (p, z, x) => E(`AXIS2_PLACEMENT_3D('',${pt3(p)},${dir3(z)},${dir3(x)})`);
-    const origin = ax3([0, 0, 0], [0, 0, 1], [1, 0, 0]);
+    if (!W.ctx) {
+      const ctx = E("APPLICATION_CONTEXT('automotive design')");
+      E(`APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,${ctx})`);
+      const pctx = E(`PRODUCT_CONTEXT('',${ctx},'mechanical')`);
+      const prod = E(`PRODUCT(${S(name)},${S(name)},'',(${pctx}))`);
+      E(`PRODUCT_RELATED_PRODUCT_CATEGORY('part',$,(${prod}))`);
+      const pdf = E(`PRODUCT_DEFINITION_FORMATION('','',${prod})`);
+      const pdc = E(`PRODUCT_DEFINITION_CONTEXT('part definition',${ctx},'design')`);
+      const pd = E(`PRODUCT_DEFINITION('design','',${pdf},${pdc})`);
+      const pds = E(`PRODUCT_DEFINITION_SHAPE('','',${pd})`);
+      const lu = E('( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) )');
+      const au = E('( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) )');
+      const su = E('( NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT() )');
+      const unc = E(`UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-05),${lu},'distance_accuracy_value','confusion accuracy')`);
+      const gctx = E(`( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((${unc})) GLOBAL_UNIT_ASSIGNED_CONTEXT((${lu},${au},${su})) REPRESENTATION_CONTEXT('Context3D','3D') )`);
+      W.ctx = ctx; W.pds = pds; W.gctx = gctx; W.origin = ax3([0, 0, 0], [0, 0, 1], [1, 0, 0]);
+    }
+    const pds = W.pds, gctx = W.gctx, origin = W.origin;
     const vref = new Map(), cpref = new Map();
     const cp = i => { if (!cpref.has(i)) cpref.set(i, pt3(V[i])); return cpref.get(i); };
     const vx = i => { if (!vref.has(i)) vref.set(i, E(`VERTEX_POINT('',${cp(i)})`)); return vref.get(i); };
@@ -4698,16 +4718,19 @@ self.onmessage = async ev => {
       }
       return E(`ADVANCED_FACE('',(${bounds.join(',')}),${surf},${f.curved && !f.sense ? '.F.' : '.T.'})`);
     });
-    const solids = [];
-    let si = 0;
+    const solids = W.solids;
     for (const list of comps.values()) {
       const shell = E(`CLOSED_SHELL('',(${list.map(i => fref[i]).join(',')}))`);
-      solids.push(E(`MANIFOLD_SOLID_BREP(${S(comps.size > 1 ? name + ' ' + (++si) : name)},${shell})`));
+      const sn = o._solid ? (comps.size > 1 ? o._solid + ' ' + (++W.si) : o._solid) : comps.size > 1 ? name + ' ' + (++W.si) : name;
+      solids.push(E(`MANIFOLD_SOLID_BREP(${S(sn)},${shell})`));
     }
-    const rep = E(`ADVANCED_BREP_SHAPE_REPRESENTATION(${S(name)},(${[origin, ...solids].join(',')}),${gctx})`);
-    E(`SHAPE_DEFINITION_REPRESENTATION(${pds},${rep})`);
+    const statsOnly = o._w && !o._last;
+    if (!statsOnly) {
+      const rep = E(`ADVANCED_BREP_SHAPE_REPRESENTATION(${S(name)},(${[origin, ...solids].join(',')}),${gctx})`);
+      E(`SHAPE_DEFINITION_REPRESENTATION(${pds},${rep})`);
+    }
     // colore grigio del pezzo (come nel Banco CAD), letto da SolidWorks, FreeCAD e OpenCascade
-    if (o.color) {
+    if (o.color && !statsOnly) {
       const c = o.color;
       const col = E(`COLOUR_RGB('',${R(c[0])},${R(c[1])},${R(c[2])})`);
       const fsa = E(`FILL_AREA_STYLE_COLOUR('',${col})`), fas = E(`FILL_AREA_STYLE('',(${fsa}))`), ssa = E(`SURFACE_STYLE_FILL_AREA(${fas})`);
@@ -4796,7 +4819,7 @@ self.onmessage = async ev => {
   function uid(doc, p) { return p + (doc.next++); }
 
   // nome predefinito delle funzioni
-  const FEAT_LABEL = { sketch: 'Schizzo', extrude: 'Estrusione', cut: 'Taglio-Estrusione', revolve: 'Rivoluzione', revcut: 'Taglio-Rivoluzione', hole: 'Foro', fillet: 'Raccordo', chamfer: 'Smusso', lpattern: 'Serie lineare', cpattern: 'Serie circolare', mirror: 'Specchio', plane: 'Piano', sweep: 'Estrusione con percorso', sweepcut: 'Taglio con percorso', rib: 'Nervatura', import: 'Importato' };
+  const FEAT_LABEL = { sketch: 'Schizzo', extrude: 'Estrusione', cut: 'Taglio-Estrusione', revolve: 'Rivoluzione', revcut: 'Taglio-Rivoluzione', hole: 'Foro', fillet: 'Raccordo', chamfer: 'Smusso', lpattern: 'Serie lineare', cpattern: 'Serie circolare', mirror: 'Specchio', plane: 'Piano', sweep: 'Estrusione con percorso', sweepcut: 'Taglio con percorso', rib: 'Nervatura', import: 'Importato', combine: 'Combina', movebody: 'Sposta/Copia corpo', delbody: 'Elimina/Mantieni corpo' };
   function defaultName(doc, type) {
     const base = FEAT_LABEL[type] || type;
     let k = 1;
@@ -4808,7 +4831,7 @@ self.onmessage = async ev => {
   /* ---------------- rigenerazione ---------------- */
   function regen(doc, opts = {}) {
     const tags = new G.Tags();
-    const st = { body: [], tags, frames: new Map(), errors: new Map(), warn: new Map(), info: new Map(), holes: [], tools: new Map(), topo: null, planes: new Map() };
+    const st = { body: [], bodies: [], bodySeq: 0, tags, frames: new Map(), errors: new Map(), warn: new Map(), info: new Map(), holes: [], tools: new Map(), topo: null, planes: new Map() };
     const stopAt = opts.stopAt !== undefined ? opts.stopAt : (doc.rollback !== null && doc.rollback !== undefined ? doc.rollback : doc.features.length);
     for (let i = 0; i < doc.features.length && i < stopAt; i++) {
       const f = doc.features[i];
@@ -5091,8 +5114,15 @@ self.onmessage = async ev => {
         // vertici dove si incontrano tre raccordi convessi ad angolo retto: angolo sferico (come in SolidWorks)
         if (f.type === 'fillet') for (const c of filletCorners(convexLines, +f.r || 1, st, f)) tools.push(c);
         // prima il materiale aggiunto (spigoli concavi), poi quello tolto
-        for (const t of tools) if (t.op === 'add') applyOp(st, t.polys, 'add', f);
-        for (const t of tools) if (t.op === 'sub') applyOp(st, t.polys, 'sub', f);
+        // con più corpi si lavora solo quello che ha gli spigoli
+        let owners = null;
+        if (st.bodies.length > 1) {
+          const ts = new Set(); for (const ed of eds) for (const g of ed.kind === 'curve' ? ed.parts.map(q => q.group) : [ed.group]) if (g) { ts.add(g.t1); ts.add(g.t2); }
+          owners = new Set(st.bodies.filter(b => b.polys.some(p => ts.has(p.t))).map(b => b.id));
+          if (!owners.size) owners = null;
+        }
+        for (const t of tools) if (t.op === 'add') applyOp(st, t.polys, 'add', { id: f.id }, owners);
+        for (const t of tools) if (t.op === 'sub') applyOp(st, t.polys, 'sub', f, owners);
         return;
       }
       case 'lpattern': case 'cpattern': case 'mirror': {
@@ -5102,10 +5132,14 @@ self.onmessage = async ev => {
         mats.forEach((m, k) => { for (const s of srcs) {
           const tp = transformTool(s.polys, m, st, '*' + f.id + ':' + (k + 1));
           if (s.holes) for (const h of s.holes) st.holes.push({ ...h, o: xf(m, h.o), dir: xd(m, h.dir), f: f.id });
-          applyOp(st, tp, s.op, f);
+          const src = doc.features.find(x => st.tools.get(x.id) === s);
+          applyOp(st, tp, s.op, { id: f.id + ':' + (k + 1), merge: src ? src.merge : undefined });
         } });
         return;
       }
+      case 'combine': combineBodies(f, st); return;
+      case 'movebody': moveBodies(f, st); return;
+      case 'delbody': deleteBodies(f, st); return;
     }
   }
   // copia trasformata di un utensile, con le superfici (tag) trasformate di conseguenza
@@ -5310,14 +5344,105 @@ self.onmessage = async ev => {
     return [...groups.values()];
   }
 
-  function applyOp(st, tool, op, f) {
-    if (op === 'add') st.body = st.body.length ? CSG.union(st.body, tool) : tool.map(p => ({ v: p.v.map(v => v.slice()), p: p.p, t: p.t }));
-    else {
-      if (!st.body.length) throw userErr('Non c\'è materiale da togliere: prima crea un solido');
-      const before = st.body.length;
-      st.body = CSG.subtract(st.body, tool);
-    }
+  /* ---------------- corpi solidi ---------------- */
+  // st.bodies = [{ id, name, polys, start }]: l'id è quello della funzione che ha creato il corpo. st.body resta l'elenco piatto di
+  // tutti i poligoni, usato da vista, selezione, misure e tavola; start dice dove comincia ogni corpo.
+  function syncBodies(st) {
+    st.bodies = st.bodies.filter(b => b.polys.length);
+    let n = 0; for (const b of st.bodies) { b.start = n; n += b.polys.length; }
+    st.body = st.bodies.length === 1 ? st.bodies[0].polys : [].concat(...st.bodies.map(b => b.polys));
   }
+  function newBody(st, id, polys) {
+    let bid = String(id), k = 1; while (st.bodies.some(b => b.id === bid)) bid = id + ':' + (++k);
+    st.bodies.push({ id: bid, name: 'Corpo' + (++st.bodySeq), polys, start: 0 });
+    return bid;
+  }
+  const clonePolys = tool => tool.map(p => ({ v: p.v.map(v => v.slice()), p: p.p, t: p.t }));
+  const polysArea = polys => { let a = 0; for (const p of polys) for (let i = 2; i < p.v.length; i++) a += len(cross(sub(p.v[i - 1], p.v[0]), sub(p.v[i], p.v[0]))) / 2; return a; };
+  // only: corpi su cui lavorare (raccordi e smussi: il corpo che ha lo spigolo); senza, tutti.
+  function applyOp(st, tool, op, f, only) {
+    const list = only ? st.bodies.filter(b => only.has(b.id)) : st.bodies;
+    if (op === 'add') {
+      if (f.merge === false || !st.bodies.length) newBody(st, f.id, clonePolys(tool));
+      else if (st.bodies.length === 1) st.bodies[0].polys = CSG.union(st.bodies[0].polys, tool);   // una parte con un corpo: si unisce sempre
+      else {
+        // con più corpi si unisce a quelli che tocca (anche solo con una faccia: l'unione ha meno superficie della somma), come SolidWorks
+        const At = polysArea(tool), hit = [];
+        for (const b of list) { const u = CSG.union(b.polys, tool); if (polysArea(u) < polysArea(b.polys) + At - 1e-6 * (1 + At)) hit.push(b); }
+        if (!hit.length) newBody(st, f.id, clonePolys(tool));
+        else {
+          let u = CSG.union(hit[0].polys, tool);
+          for (const b of hit.slice(1)) u = CSG.union(u, b.polys);
+          hit[0].polys = u;
+          const gone = new Set(hit.slice(1)); st.bodies = st.bodies.filter(b => !gone.has(b));
+        }
+      }
+    } else {
+      if (!st.body.length) throw userErr('Non c\'è materiale da togliere: prima crea un solido');
+      for (const b of list) b.polys = CSG.subtract(b.polys, tool);
+    }
+    syncBodies(st);
+  }
+  const bodyById = (st, id, what) => { const b = st.bodies.find(x => x.id === id); if (!b) throw userErr((what || 'Un corpo scelto') + ' non esiste più: controlla la funzione'); return b; };
+  // Combina (come in SolidWorks): Aggiungi, Sottrai, Comune. Il primo corpo resta con il suo nome, gli altri spariscono.
+  function combineBodies(f, st) {
+    const op = f.op || 'add';
+    if (!f.main) throw userErr(op === 'sub' ? 'Scegli il corpo principale' : 'Scegli i corpi da combinare');
+    const tools = (f.tools || []).filter(id => id !== f.main);
+    if (!tools.length) throw userErr(op === 'sub' ? 'Scegli i corpi da sottrarre' : 'Scegli almeno due corpi');
+    const main = bodyById(st, f.main, 'Il corpo principale'), others = tools.map(id => bodyById(st, id));
+    let r = main.polys;
+    if (op === 'add') {
+      for (const b of others) { const u = CSG.union(r, b.polys); if (polysArea(u) >= polysArea(r) + polysArea(b.polys) - 1e-6) st.warn.set(f.id, 'Alcuni corpi non si toccano: restano staccati dentro lo stesso corpo'); r = u; }
+    } else if (op === 'sub') {
+      for (const b of others) r = CSG.subtract(r, b.polys);
+      if (!r.length) throw userErr('Sottraendo questi corpi non resta materiale');
+    } else {
+      for (const b of others) r = CSG.intersect(r, b.polys);
+      if (!r.length) throw userErr('Questi corpi non hanno materiale in comune');
+    }
+    main.polys = r;
+    const gone = new Set(others); st.bodies = st.bodies.filter(b => !gone.has(b));
+    syncBodies(st);
+  }
+  // Sposta/Copia corpo: prima la rotazione attorno all'asse X, Y o Z che passa per l'origine, poi lo spostamento
+  function moveBodies(f, st) {
+    if (!f.bodies || !f.bodies.length) throw userErr('Scegli i corpi da spostare');
+    const a = (+f.angle || 0) * Math.PI / 180, ax = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] }[f.axis || 'y'];
+    const R = a ? rotMatrix([0, 0, 0], ax, a) : [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+    const m = R.slice(); m[3] += +f.dx || 0; m[7] += +f.dy || 0; m[11] += +f.dz || 0;
+    const n = Math.max(1, Math.round(+f.copies || 1));
+    for (const id of f.bodies) {
+      const b = bodyById(st, id);
+      if (!f.copy) { b.polys = transformTool(b.polys, m, st, '*' + f.id); continue; }
+      let cur = b.polys;
+      for (let k = 1; k <= n; k++) {
+        cur = transformTool(cur, m, st, '*' + f.id + ':' + k);
+        // una copia è un'altra faccia anche se finisce nello stesso piano o sulla stessa curva dell'originale
+        const seen = new Set(); for (const p of cur) { if (seen.has(p.t)) continue; seen.add(p.t); const tg = st.tags.get(p.t); const mark = '^' + f.id + ':' + k; if (tg.feature) tg.feature += mark; if (tg.cg) tg.cg += mark; if (tg.scg) tg.scg += mark; if (tg.pcg) tg.pcg += mark; }
+        newBody(st, f.id + ':' + id + ':' + k, cur.map(p => ({ v: p.v.map(v => v.slice()), p: p.p, t: p.t })));
+      }
+    }
+    syncBodies(st);
+  }
+  // Elimina/Mantieni corpo
+  function deleteBodies(f, st) {
+    if (!f.bodies || !f.bodies.length) throw userErr(f.keep ? 'Scegli i corpi da mantenere' : 'Scegli i corpi da eliminare');
+    const set = new Set(f.bodies); for (const id of set) bodyById(st, id);
+    st.bodies = st.bodies.filter(b => f.keep ? set.has(b.id) : !set.has(b.id));
+    syncBodies(st);
+  }
+  const bodyOfPoly = (st, i) => { for (let k = st.bodies.length - 1; k >= 0; k--) if (i >= st.bodies[k].start) return st.bodies[k]; return null; };
+  // proprietà di massa di ogni corpo
+  function bodyProps(st, doc) {
+    const mat = MATERIALS.find(x => x.id === doc.material) || MATERIALS[0];
+    return st.bodies.map(b => {
+      const topo = G.topology(b.polys, st.tags), m = G.massProps(b.polys, st.tags), bb = CSG.bbox(b.polys);
+      return { id: b.id, name: b.name, volume: m.volume, area: m.areaMesh + m.areaRev + G.planarAreaCorrection(b.polys, st.tags, topo), centroid: m.centroid, mass: m.volume * mat.rho / 1000, bbox: bb };
+    });
+  }
+  // per Esporta STEP: ogni corpo con la sua topologia, così due corpi che si toccano restano due solidi chiusi
+  const stepBodies = st => st.bodies.length > 1 ? st.bodies.map(b => ({ name: b.name, polys: b.polys, topo: G.topology(b.polys, st.tags) })) : null;
 
   /* ---------------- fori ---------------- */
   function holeProfile(f, st) {
@@ -6024,7 +6149,7 @@ self.onmessage = async ev => {
 
   // schizzi usati da una funzione (lo sweep ne usa due: profilo e percorso)
   const sketchesOf = f => [f.sketch, f.path].filter(Boolean);
-  const api = { sketchesOf, STD_PLANES, MATERIALS, HOLE, newDoc, uid, defaultName, regen, resolvePlane, findFaceTag, frameFromPlane, edgeGroups, edgeGeometry, resolveEdge, massProperties, FEAT_LABEL, rotMatrix, Import: IM, importInfo };
+  const api = { bodyProps, bodyOfPoly, stepBodies, sketchesOf, STD_PLANES, MATERIALS, HOLE, newDoc, uid, defaultName, regen, resolvePlane, findFaceTag, frameFromPlane, edgeGroups, edgeGeometry, resolveEdge, massProperties, FEAT_LABEL, rotMatrix, Import: IM, importInfo };
   if (isNode) module.exports = api; else root.Model = api;
 })(this);
 
@@ -6641,6 +6766,9 @@ self.onmessage = async ev => {
     chamfer: I('<path d="M4 20V10l6-6h10"/><path d="M4 4h6M4 4v6" stroke-dasharray="1.5 1.5"/>'),
     lpattern: I('<rect x="3" y="9" width="5" height="5"/><rect x="10" y="9" width="5" height="5" stroke-dasharray="1.5 1.5"/><rect x="17" y="9" width="4" height="5" stroke-dasharray="1.5 1.5"/><path d="M3 18h18M18 16l3 2-3 2"/>'),
     cpattern: I('<circle cx="12" cy="12" r="7" stroke-dasharray="2 2"/><circle cx="12" cy="5" r="2"/><circle cx="18" cy="15.5" r="2" stroke-dasharray="1.2 1.2"/><circle cx="6" cy="15.5" r="2" stroke-dasharray="1.2 1.2"/>'),
+    combine: I('<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>'),
+    movebody: I('<path d="M4 9l6-3 6 3v6l-6 3-6-3z"/><path d="M17 5h4v4M21 5l-4 4"/>'),
+    delbody: I('<path d="M4 9l6-3 6 3v6l-6 3-6-3z"/><path d="M17 5l4 4M21 5l-4 4"/>'),
     mirror: I('<path d="M12 3v18" stroke-dasharray="2 2"/><path d="M9 7L4 12l5 5z"/><path d="M15 7l5 5-5 5z" stroke-dasharray="1.5 1.5"/>'),
     sweep: I('<path d="M4 19h6a8 8 0 008-8V4"/><path d="M4 15.5v7" stroke-width="2.6"/><circle cx="18" cy="4" r="1.4" fill="currentColor"/>'),
     sweepcut: I('<path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M6 13h4a5 5 0 005-5V6" stroke-width="2.4" opacity=".7"/>'),
@@ -6792,11 +6920,13 @@ self.onmessage = async ev => {
     const addFace = (set, it) => { if (it && it.kind === 'face') set.add(it.key); };
     const addEdge = (set, it) => { if (it && it.kind === 'edge') set.add(it.gkey); };
     App.sel.forEach(s => { addFace(faceSel, s); addEdge(edgeSel, s); });
+    const bodySel = new Set(App.sel.filter(s => s.kind === 'body').map(s => s.id));
+    if (App.pm && App.pm.bodiesPicked) for (const id of App.pm.bodiesPicked()) bodySel.add(id);
     if (App.pm && App.pm.highlight) App.pm.highlight().forEach(s => { addFace(faceSel, s); addEdge(edgeSel, s); });
     addFace(faceHov, App.hover); addEdge(edgeHov, App.hover);
     const groups = App.edgeGroupKeys || [];
     return {
-      faceCol: pi => { const k = keyOfPoly(pi); return faceHov.has(k) ? C_HOV : faceSel.has(k) ? C_SEL : null; },
+      faceCol: pi => { const k = keyOfPoly(pi); if (faceHov.has(k)) return C_HOV; if (faceSel.has(k)) return C_SEL; if (bodySel.size) { const b = Model.bodyOfPoly(st, pi); if (b && bodySel.has(b.id)) return C_SEL; } return null; },
       edgeCol: i => { const k = groups[i]; return edgeHov.has(k) ? C_HOV : edgeSel.has(k) ? C_SEL : null; },
     };
   }
@@ -7262,7 +7392,7 @@ self.onmessage = async ev => {
   }
 
   /* ================= albero di progettazione ================= */
-  const FICON = { sketch: 'sketch', extrude: 'extrude', cut: 'cut', revolve: 'revolve', revcut: 'revcut', hole: 'hole', fillet: 'fillet', chamfer: 'chamfer', lpattern: 'lpattern', cpattern: 'cpattern', mirror: 'mirror', plane: 'plane', sweep: 'sweep', sweepcut: 'sweepcut', rib: 'rib', import: 'import' };
+  const FICON = { sketch: 'sketch', extrude: 'extrude', cut: 'cut', revolve: 'revolve', revcut: 'revcut', hole: 'hole', fillet: 'fillet', chamfer: 'chamfer', lpattern: 'lpattern', cpattern: 'cpattern', mirror: 'mirror', plane: 'plane', sweep: 'sweep', sweepcut: 'sweepcut', rib: 'rib', import: 'import', combine: 'combine', movebody: 'movebody', delbody: 'delbody' };
   App.renderTree = function () {
     const t = $('#tree');
     const doc = App.doc, st = App.st;
@@ -7283,6 +7413,14 @@ self.onmessage = async ev => {
       t.append(node('plane', Model.STD_PLANES[id].name, { cls: sel ? 'sel' : '', on: e => { const it = { kind: 'plane', id, label: Model.STD_PLANES[id].name }; if (App.pm && App.pm.pick && App.pm.filter && App.pm.filter.includes('plane')) { App.pm.pick(it, e); return; } App.select(it, e.ctrlKey || e.metaKey); }, ctx: e => planeMenu(e, id) }));
     }
     t.append(node('point', 'Origine'));
+    // cartella dei corpi solidi (si vede dal primo solido in poi)
+    if (st && st.bodies && st.bodies.length) {
+      t.append(node('combine', 'Corpi solidi (' + st.bodies.length + ')', { title: 'I corpi solidi della parte' }));
+      for (const b of st.bodies) {
+        const on = App.sel.some(s => s.kind === 'body' && s.id === b.id);
+        t.append(node('extrude', b.name, { cls: 'tchild tbody' + (on ? ' sel' : ''), title: 'Clic per evidenziare il corpo', on: e => { const it = { kind: 'body', id: b.id, label: b.name }; if (App.pm && App.pm.pick) App.pm.pick(it, e); else App.select(it, e.ctrlKey || e.metaKey); } }));
+      }
+    }
     // funzioni: gli schizzi usati da una funzione stanno sotto di essa
     const consumed = new Map();
     for (const f of doc.features) for (const id of Model.sketchesOf(f)) consumed.set(id, f.id);
@@ -7410,6 +7548,10 @@ self.onmessage = async ev => {
       ['cpattern', 'Serie circolare', 'Ripete funzioni attorno a un asse'],
       ['mirror', 'Specchio', 'Copia funzioni simmetriche rispetto a un piano'],
       '-',
+      ['combine', 'Combina', 'Unisce due o più corpi, ne sottrae uno da un altro o tiene solo la parte in comune'],
+      ['movebody', 'Sposta/Copia corpo', 'Sposta, ruota o copia un corpo solido'],
+      ['delbody', 'Elimina/Mantieni corpo', 'Toglie dei corpi, oppure tiene solo quelli scelti'],
+      '-',
       ['plane', 'Piano di riferimento', 'Piano parallelo a un piano o a una faccia, a una certa distanza'],
       ['sketch', 'Schizzo', 'Nuovo schizzo sul piano o sulla faccia selezionati'],
     ],
@@ -7464,7 +7606,7 @@ self.onmessage = async ev => {
         App.pickPlaneFor('Scegli il piano o la faccia piana su cui disegnare lo schizzo', ref => Sketcher.start(ref));
         return;
       }
-      case 'extrude': case 'cut': case 'revolve': case 'revcut': case 'hole': case 'fillet': case 'chamfer': case 'lpattern': case 'cpattern': case 'mirror': case 'plane': case 'sweep': case 'sweepcut': case 'rib':
+      case 'extrude': case 'cut': case 'revolve': case 'revcut': case 'hole': case 'fillet': case 'chamfer': case 'lpattern': case 'cpattern': case 'mirror': case 'plane': case 'sweep': case 'sweepcut': case 'rib': case 'combine': case 'movebody': case 'delbody':
         Features.create(id); return;
       case 'material': return materialDialog();
       case 'mass': return massDialog();
@@ -7558,6 +7700,7 @@ self.onmessage = async ev => {
       <dt>Baricentro Z</dt><dd>${fmt(m.centroid[2], 3)} mm</dd>
       <dt>Ingombro X × Y × Z</dt><dd>${fmt(bb.mx[0] - bb.mn[0])} × ${fmt(bb.mx[1] - bb.mn[1])} × ${fmt(bb.mx[2] - bb.mn[2])} mm</dd>
     </dl>
+    ${st.bodies.length > 1 ? `<h3>Per ogni corpo</h3><table class="st-table" id="massBodies"><thead><tr><th>Corpo</th><th class="num">Volume (mm³)</th><th class="num">Area (mm²)</th><th class="num">Massa (g)</th></tr></thead><tbody>${Model.bodyProps(st, App.doc).map(b => `<tr><td style="width:auto;color:inherit">${esc(b.name)}</td><td class="num">${fmt(b.volume, 2)}</td><td class="num">${fmt(b.area, 2)}</td><td class="num">${fmt(b.mass, 2)}</td></tr>`).join('')}</tbody></table><p class="note">Il volume totale è la somma dei corpi: se due corpi si sovrappongono, la parte in comune conta due volte finché non li combini.</p>` : ''}
     ${App.doc.material === 'none' ? '<p class="note">Il materiale non è specificato: la massa è calcolata con densità 1 g/cm³. Scegli il materiale per avere la massa vera.</p>' : ''}
     <p class="note">Volume, area e baricentro sono calcolati sulle superfici esatte (cilindri, coni, sfere, tori), non sull'approssimazione a faccette della vista.</p>`;
     modal('Proprietà di massa', html, [{ label: 'Materiale…', fn: () => setTimeout(materialDialog, 50) }, { label: 'Chiudi', primary: true }]);
@@ -7856,7 +7999,7 @@ self.onmessage = async ev => {
     if (!st || !st.body.length) return null;
     const name = App.doc.name || 'parte';
     const topo = Geom.topology(st.body, st.tags);
-    return Export.toSTEP(st.body, topo, { name, file: name + '.step', color: [0.66, 0.7, 0.74], tags: st.tags });
+    return Export.toSTEP(st.body, topo, { name, file: name + '.step', color: [0.66, 0.7, 0.74], tags: st.tags, bodies: Model.stepBodies(st) });
   };
   function exportSTEP() {
     const r = App.stepText();
@@ -10411,6 +10554,14 @@ self.onmessage = async ev => {
       if (type === 'mirror') Object.assign(f, { plane: { kind: 'std', id: 'right' } });
       return open(f, true);
     }
+    if (type === 'combine' || type === 'movebody' || type === 'delbody') {
+      const doc = App.doc, have = Model.regen(doc).bodies;
+      if (have.length < (type === 'combine' ? 2 : 1)) { App.toast(type === 'combine' ? 'Servono almeno due corpi: togli la spunta da «Unisci risultato» quando crei una funzione.' : 'Non c\'è ancora nessun corpo solido.'); return; }
+      const picked = App.sel.filter(s => s.kind === 'body').map(s => s.id);
+      if (type === 'combine') return open({ type, op: 'add', main: picked[0] || null, tools: picked.slice(1) }, true);
+      if (type === 'movebody') return open({ type, bodies: picked, dx: 0, dy: 0, dz: 0, axis: 'y', angle: 0, copy: false, copies: 1 }, true);
+      return open({ type, bodies: picked, keep: false }, true);
+    }
     if (type === 'plane') {
       const s = App.sel[0];
       const f = { type: 'plane', base: { kind: 'std', id: 'front' }, offset: 20 };
@@ -10441,7 +10592,8 @@ self.onmessage = async ev => {
       icon: f.type === 'plane' ? 'plane' : f.type,
       get filter() { return pickFilter(pickMode, f); },
       planes: () => (pickMode === 'base' || pickMode === 'mirrorPlane') ? ['front', 'top', 'right'] : [],
-      build(body) { buildBody(body, f, pm, ctx); },
+      build(body) { buildBody(body, f, pm, ctx); appendMerge(body, f, pm); },
+      bodiesPicked: () => pickedBodies(f),
       pick(it, e) { onPick(it, e, f, pm); },
       highlight() { return highlights(f); },
       preview() { return previewGeom(f); },
@@ -10499,7 +10651,32 @@ self.onmessage = async ev => {
     if (f.type === 'hole' && ctx.face && isNew) startHolePositions(f, ctx.face, pm);
     return pm;
   }
+  /* ---------------- corpi solidi: «Unisci risultato», scelta dei corpi ---------------- */
+  const BODY_FEATS = ['combine', 'movebody', 'delbody'];
+  const pickedBodies = f => f.type === 'combine' ? [f.main, ...(f.tools || [])].filter(Boolean) : BODY_FEATS.includes(f.type) ? (f.bodies || []) : [];
+  function toggleBody(f, id) {
+    if (f.type === 'combine') {
+      if (f.op === 'sub') {
+        if (f.main === id) f.main = null;
+        else if (!f.main) { f.main = id; f.tools = (f.tools || []).filter(x => x !== id); }
+        else { const i = f.tools.indexOf(id); if (i >= 0) f.tools.splice(i, 1); else f.tools.push(id); }
+      } else {
+        const l = pickedBodies(f), i = l.indexOf(id); if (i >= 0) l.splice(i, 1); else l.push(id);
+        f.main = l[0] || null; f.tools = l.slice(1);
+      }
+    } else { const i = f.bodies.indexOf(id); if (i >= 0) f.bodies.splice(i, 1); else f.bodies.push(id); }
+  }
+  // casella «Unisci risultato» (come in SolidWorks), quando c'è già un solido
+  function appendMerge(body, f, pm) {
+    if (!['extrude', 'revolve', 'sweep', 'import'].includes(f.type)) return;
+    const App = A(), idx = App.doc.features.indexOf(f);
+    if (!Model.regen(App.doc, { stopAt: idx }).body.length) return;
+    const i = App.el('input', { type: 'checkbox', id: 'pmMerge' }); i.checked = f.merge !== false;
+    i.addEventListener('change', () => { if (i.checked) delete f.merge; else f.merge = false; pm.update(); });
+    body.append(App.el('div', { class: 'grp' }, App.el('h3', {}, 'Risultato'), App.el('label', { class: 'chk' }, i, 'Unisci risultato')));
+  }
   function defaultPick(f) {
+    if (BODY_FEATS.includes(f.type)) return 'bodies';
     switch (f.type) {
       case 'fillet': case 'chamfer': return 'edges';
       case 'hole': return f.sketch ? null : 'face';
@@ -10515,6 +10692,7 @@ self.onmessage = async ev => {
     switch (mode) {
       case 'edges': return ['edge'];
       case 'face': return ['face'];
+      case 'bodies': return ['face'];
       case 'feats': return ['face'];
       case 'dir': return ['edge'];
       case 'axis': return ['face', 'edge'];
@@ -10685,6 +10863,33 @@ self.onmessage = async ev => {
         if (f.type === 'mirror') body.append(grp('Piano di simmetria', planeRow(f, 'plane', pm, 'mirrorPlane')));
         break;
       }
+      case 'combine': case 'movebody': case 'delbody': {
+        const bodies = Model.regen(doc, { stopAt: doc.features.indexOf(f) }).bodies;
+        const list = (isOn, off) => el('div', { class: 'bodylist' }, ...bodies.filter(b => !off || b.id !== off).map(b => {
+          const i = el('input', { type: 'checkbox', 'data-body': b.id }); i.checked = isOn(b.id);
+          i.addEventListener('change', () => { toggleBody(f, b.id); A().refreshPM(); pm.update(); A().recolor(); });
+          return el('label', { class: 'chk' }, i, b.name);
+        }));
+        if (f.type === 'combine') {
+          body.append(grp('Tipo di operazione', sel('Operazione', 'op', [['add', 'Aggiungi'], ['sub', 'Sottrai'], ['common', 'Comune']], () => { if (f.op !== 'sub') { const l = pickedBodies(f); f.main = l[0] || null; f.tools = l.slice(1); } A().refreshPM(); pm.update(); })));
+          if (f.op === 'sub') {
+            const s = el('select', { id: 'pm_main' }); s.append(el('option', { value: '' }, 'Scegli…')); for (const b of bodies) s.append(el('option', { value: b.id }, b.name)); s.value = f.main || '';
+            s.addEventListener('change', () => { f.main = s.value || null; f.tools = (f.tools || []).filter(x => x !== f.main); A().refreshPM(); pm.update(); A().recolor(); });
+            body.append(grp('Corpo principale', el('div', { class: 'row' }, el('label', { for: 'pm_main' }, 'Corpo'), s)), grp('Corpi da sottrarre', list(id => f.tools.includes(id), f.main)));
+          } else body.append(grp('Corpi da combinare', list(id => pickedBodies(f).includes(id))));
+        } else if (f.type === 'movebody') {
+          body.append(grp('Corpi', list(id => f.bodies.includes(id))));
+          body.append(grp('Copia', chk('Copia il corpo', 'copy', () => A().refreshPM()), ...(f.copy ? [num('Numero di copie', 'copies', '')] : [])));
+          body.append(grp('Rotazione', sel('Asse per l\'origine', 'axis', [['x', 'Asse X'], ['y', 'Asse Y'], ['z', 'Asse Z']]), num('Angolo', 'angle', '°')));
+          body.append(grp('Spostamento', num('Spostamento X', 'dx', 'mm'), num('Spostamento Y', 'dy', 'mm'), num('Spostamento Z', 'dz', 'mm')));
+        } else {
+          body.append(grp('Operazione', sel('Corpi scelti', 'keepMode', [['del', 'Da eliminare'], ['keep', 'Da mantenere']], () => { f.keep = f.keepMode === 'keep'; pm.update(); })));
+          f.keepMode = f.keep ? 'keep' : 'del';
+          body.append(grp('Corpi', list(id => f.bodies.includes(id))));
+        }
+        body.append(el('p', { class: 'note' }, 'Spunta i corpi qui, oppure fai clic su di loro nella vista.'));
+        break;
+      }
       case 'plane': {
         body.append(grp('Riferimento', planeRow(f, 'base', pm, 'base')));
         body.append(grp('Distanza', num('Distanza', 'offset', 'mm'), chk('Inverti la direzione', 'flip')));
@@ -10819,6 +11024,11 @@ self.onmessage = async ev => {
     const App = A();
     const mode = pm.getPick();
     if (!it) return;
+    if (BODY_FEATS.includes(f.type)) {
+      const id = it.kind === 'body' ? it.id : it.kind === 'face' && it.poly !== undefined ? (Model.bodyOfPoly(App.st, it.poly) || {}).id : null;
+      if (id) { toggleBody(f, id); App.refreshPM(); pm.update(); App.recolor(); App.renderTree(); }
+      return;
+    }
     if (it.kind === 'feature' && it.sketch && ['extrude', 'cut', 'revolve', 'revcut', 'rib'].includes(f.type)) { setSketch(f, it.id, pm); return; }
     if (it.kind === 'feature' && it.sketch && (f.type === 'sweep' || f.type === 'sweepcut')) {
       const key = mode === 'path' ? 'path' : mode === 'profile' ? 'sketch' : (!f.sketch ? 'sketch' : 'path');
@@ -10900,6 +11110,8 @@ self.onmessage = async ev => {
     if (['extrude', 'cut', 'revolve', 'revcut', 'hole', 'sweep', 'sweepcut', 'rib', 'import'].includes(f.type)) {
       const t = st.tools.get(f.id);
       if (t) out.faces.push(App.polyFaces(t.polys, t.op === 'sub' ? CUTCOL : AMBER, 0.5));
+    } else if (BODY_FEATS.includes(f.type)) {
+      if (st.body.length) out.faces.push(App.polyFaces(st.body, AMBER, 0.45));
     } else if (['fillet', 'chamfer', 'lpattern', 'cpattern', 'mirror'].includes(f.type)) {
       const polys = st.body.filter(p => { const tg = st.tags.get(p.t); return tg && (String(tg.name).startsWith(f.id + '#') || String(tg.name).includes('*' + f.id + ':')); });
       out.faces.push(App.polyFaces(polys, AMBER, 0.7));
@@ -12698,6 +12910,11 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
   // [categoria, termine, alias (altri modi in cui compare nell'interfaccia), spiegazione]
   const E = [
     // ---------- interfaccia ----------
+    ['Funzioni', 'Corpi solidi', ['corpi', 'corpo solido', 'corpi solidi'], 'I solidi separati di una parte, elencati nella cartella «Corpi solidi» dell\'albero. Una parte può averne più di uno: si possono tenere staccati e poi unire, sottrarre, spostare o eliminare.'],
+    ['Funzioni', 'Unisci risultato', ['unisci', 'risultato'], 'Casella delle funzioni che aggiungono materiale. Spuntata, il materiale si unisce ai corpi che tocca; senza spunta nasce un corpo nuovo, anche se tocca gli altri.'],
+    ['Funzioni', 'Combina', ['aggiungi', 'sottrai', 'comune', 'tipo di operazione', 'operazione', 'corpi da combinare', 'corpi da sottrarre', 'corpo principale', 'corpo'], 'Lavora su corpi che ci sono già. Aggiungi li unisce in uno solo; Sottrai toglie dal corpo principale il materiale degli altri; Comune tiene solo il materiale che hanno tutti in comune. I corpi usati spariscono e ne resta uno.'],
+    ['Funzioni', 'Sposta/Copia corpo', ['sposta corpo', 'copia corpo', 'copia il corpo', 'spostamento', 'spostamento x', 'spostamento y', 'spostamento z', 'rotazione', 'numero di copie', 'asse per l\'origine', 'copia'], 'Ruota un corpo attorno a un asse che passa per l\'origine e poi lo sposta. Con «Copia il corpo» l\'originale resta e nascono delle copie, ognuna spostata rispetto alla precedente.'],
+    ['Funzioni', 'Elimina/Mantieni corpo', ['elimina corpo', 'mantieni corpo', 'corpi scelti'], 'Toglie i corpi scelti, oppure tiene solo quelli. Come ogni funzione si può sopprimere o cancellare: i corpi tornano.'],
     ['Interfaccia', 'Informazioni e licenze', ['informazioni', 'licenze'], 'Progetto › Informazioni e licenze: chi ha scritto il programma, la sua licenza, le parti di altri autori e i marchi citati.'],
     ['Interfaccia', 'GNU GPL 3', ['gpl', 'gpl 3', 'licenza gpl'], 'La licenza del Banco CAD. Permette a chiunque di usare, studiare, modificare e ridistribuire il programma, purché le versioni distribuite restino con la stessa licenza e con i sorgenti disponibili.'],
     ['Interfaccia', 'CommandManager', ['barra dei comandi'], 'La barra in alto con le schede Funzioni, Schizzo, Valuta e Messa in tavola. Ogni scheda mostra i comandi di quel gruppo, come in SolidWorks.'],
@@ -13368,6 +13585,23 @@ T('Cubo importato + estrusione unita sopra (10 × 10 × 5)', () => {
   feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 5 }); return d;
 }, { V: 8500, A: 2400 + 200, bb: [[0, 0, 0], [20, 25, 20]] });
 
+/* ---------- corpi solidi: Unisci risultato, Combina, Sposta/Copia, Elimina/Mantieni ---------- */
+// blocco x0..x1, z −y1..−y0 (sketch sul piano superiore), alto h, y da 0 a h; merge false = corpo nuovo
+const blk = (d, x0, y0, x1, y1, h, merge) => { const b = SB(); b.rect(x0, y0, x1, y1); const f = { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: h }; if (merge !== undefined) f.merge = merge; return feat(d, f); };
+// A = 40 × 40 × 10; B = 20 × 20 × 30 con x 30..50, z −50..−30: hanno in comune un cubetto 10 × 10 × 10 (x 30..40, y 0..10, z −40..−30)
+const twoB = () => { const d = D0('c'); const a = blk(d, 0, 0, 40, 40, 10), b = blk(d, 30, 30, 50, 50, 30, false); return { d, a, b }; };
+T('Corpi: Unisci risultato spento: due corpi, il volume è la somma (la parte in comune conta due volte, come in SolidWorks)', () => twoB().d, { V: 16000 + 12000, A: 4800 + 3200 });
+T('Combina › Aggiungi: 16000 + 12000 − 1000; area 4800 + 3200 − 600', () => { const { d, a, b } = twoB(); feat(d, { type: 'combine', op: 'add', main: a, tools: [b] }); return d; }, { V: 27000, A: 7400 });
+T('Combina › Sottrai: A meno B = lastra con un angolo tolto', () => { const { d, a, b } = twoB(); feat(d, { type: 'combine', op: 'sub', main: a, tools: [b] }); return d; }, { V: 15000, A: 2 * 1500 + 160 * 10 });
+T('Combina › Sottrai: B meno A', () => { const { d, a, b } = twoB(); feat(d, { type: 'combine', op: 'sub', main: b, tools: [a] }); return d; }, { V: 11000 });
+T('Combina › Comune: il cubetto 10 × 10 × 10 in comune', () => { const { d, a, b } = twoB(); feat(d, { type: 'combine', op: 'common', main: a, tools: [b] }); return d; }, { V: 1000, A: 600, C: [35, 5, -35], bb: [[30, 0, -40], [40, 10, -30]] });
+T('Corpi: un taglio passante lavora tutti i corpi', () => { const d = D0('c'); blk(d, 0, 0, 10, 10, 10); blk(d, 20, 0, 30, 10, 10, false); const b = SB(); b.rect(5, 0, 25, 10); feat(d, { type: 'cut', sketch: sketch(d, STD('top'), b), end: 'through', both: true }); return d; }, { V: 1000 });
+T('Sposta corpo: cilindro R5 h20 spostato di (100, 0, 0): volume e area esatti', () => { const d = D0('c'); const b = SB(); b.circle(0, 0, 5); const a = feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 20 }); feat(d, { type: 'movebody', bodies: [a], dx: 100 }); return d; }, { V: 500 * PI, A: 200 * PI + 50 * PI, C: [100, 10, 0] });
+T('Sposta corpo: blocco ruotato di +90° attorno a Y e poi spostato', () => { const d = D0('c'); const a = blk(d, 0, 0, 10, 10, 10); feat(d, { type: 'movebody', bodies: [a], axis: 'y', angle: 90, dy: 5 }); return d; }, { V: 1000, bb: [[-10, 5, -10], [0, 15, 0]] });
+T('Copia corpo: 2 copie di un blocco a passo 20: tre corpi', () => { const d = D0('c'); const a = blk(d, 0, 0, 10, 10, 10); feat(d, { type: 'movebody', bodies: [a], copy: true, copies: 2, dx: 20 }); return d; }, { V: 3000, A: 1800, C: [25, 5, -5], bb: [[0, 0, -10], [50, 10, 0]] });
+T('Elimina corpo', () => { const { d, b } = twoB(); feat(d, { type: 'delbody', bodies: [b] }); return d; }, { V: 16000, A: 4800 });
+T('Mantieni corpo', () => { const { d, b } = twoB(); feat(d, { type: 'delbody', keep: true, bodies: [b] }); return d; }, { V: 12000, A: 3200 });
+
 /* ---------- corpi importati da STEP e IGES (risultato di OpenCascade simulato) ---------- */
 // OpenCascade restituisce, per ogni solido, triangoli con i vertici ripetuti faccia per faccia e l'elenco delle facce vere
 // (brep_faces: primo e ultimo triangolo di ogni faccia). Qui lo si costruisce a mano; il lettore vero è provato in step.test.js.
@@ -13824,6 +14058,45 @@ SK.push(['STEP: facce vere conservate nel salvataggio (pack/unpack)', () => {
   const u = MI.unpack(JSON.parse(JSON.stringify(MI.pack(m))));
   const a = MI.analyze(u);
   return { ok: true, got: [u.f.length, u.f[0], u.f[u.f.length - 1], a.brepFaces, a.open], exp: [24, 0, 2, 3, 0] };
+}]);
+SK.push(['Corpi: quanti corpi dopo ogni operazione; Unisci risultato acceso si unisce solo ai corpi che tocca, anche con una faccia sola', () => {
+  const n = d => Model.regen(d).bodies.length;
+  const base = () => { const d = D0('c'); blk(d, 0, 0, 10, 10, 10); blk(d, 20, 0, 30, 10, 10, false); return d; };
+  const legacy = D0('c'); blk(legacy, 0, 0, 10, 10, 10); blk(legacy, 50, 0, 60, 10, 10);                  // progetti vecchi: una parte, un corpo
+  const hit1 = base(); blk(hit1, 8, 0, 12, 10, 10);                                                        // tocca il primo: 1000 + 200, 1000
+  const hit2 = base(); blk(hit2, 10, 0, 20, 10, 10);                                                       // tocca i due con le facce: uno solo
+  const none = base(); blk(none, 40, 0, 50, 10, 10);                                                       // non tocca nulla: corpo nuovo
+  const v = d => Model.bodyProps(Model.regen(d), d).map(b => Math.round(b.volume)).join();
+  const c = twoB(); feat(c.d, { type: 'combine', op: 'add', main: c.a, tools: [c.b] });
+  const cp = D0('c'); const a0 = blk(cp, 0, 0, 10, 10, 10); feat(cp, { type: 'movebody', bodies: [a0], copy: true, copies: 2, dx: 20 });
+  const k = twoB(); feat(k.d, { type: 'delbody', keep: true, bodies: [k.b] });
+  const got = [n(legacy), n(hit1), n(hit2), n(none), n(c.d), n(cp), n(k.d), v(hit1) === '1200,1000' ? 1 : 0, v(hit2) === '3000' ? 1 : 0, v(none) === '1000,1000,1000' ? 1 : 0];
+  return { ok: true, got, exp: [1, 2, 1, 3, 1, 3, 1, 1, 1, 1] };
+}]);
+SK.push(['Corpi: proprietà di massa per corpo (acciaio 7,85 g/cm³) e messaggi di errore di Combina', () => {
+  const { d, a, b } = twoB(); d.material = (Model.MATERIALS.find(m => Math.abs(m.rho - 7850) < 1) || Model.MATERIALS.find(m => /C40/.test(m.name))).id;
+  const rho = Model.MATERIALS.find(m => m.id === d.material).rho / 1000;
+  const p = Model.bodyProps(Model.regen(d), d);
+  const err = (o) => { const x = twoB(); feat(x.d, { type: 'combine', ...o(x) }); const st = Model.regen(x.d); return [...st.errors.values()][0] || ''; };
+  const far = D0('c'); const f1 = blk(far, 0, 0, 10, 10, 10), f2 = blk(far, 50, 0, 60, 10, 10, false); feat(far, { type: 'combine', id: 'X', op: 'common', main: f1, tools: [f2] });
+  const e3 = [...Model.regen(far).errors.values()][0] || '';
+  return { ok: true, got: [p.length, p[0].volume, p[1].volume, p[0].mass, p[1].mass, p[0].area, p[1].centroid[1], /almeno due/.test(err(x => ({ op: 'add', main: x.a }))) ? 1 : 0, /non esiste/.test(err(x => ({ op: 'add', main: x.a, tools: ['nessuno'] }))) ? 1 : 0, /in comune/.test(e3) ? 1 : 0],
+    exp: [2, 16000, 12000, 16000 * rho, 12000 * rho, 4800, 15, 1, 1, 1] };
+}]);
+SK.push(['Raccordo con due corpi: lavora solo il corpo dello spigolo, anche se l\'altro gli passa sopra', () => {
+  // blocco 40×40×10 e, sopra lo spigolo x = 40, y = 10, un blocco che lo attraversa. Raccordo R2 sullo spigolo lungo z (convesso): togli (1 − π/4)·4 × lunghezza 40
+  const d = D0('c'); blk(d, 0, 0, 40, 40, 10); const b = blk(d, 35, 10, 45, 30, 20, false);
+  const r0 = Model.regen(d), v0 = Model.bodyProps(r0, d).map(x => x.volume);
+  feat(d, { type: 'fillet', r: 2, edges: [edge(d, [40, 10, -5], 'line')] });
+  const r1 = Model.regen(d), v1 = Model.bodyProps(r1, d).map(x => x.volume);
+  return { ok: !r1.errors.size, got: [r1.bodies.length, v1[0], v1[1]], exp: [2, v0[0] - (1 - PI / 4) * 4 * 40, v0[1]] };
+}]);
+SK.push(['STEP di più corpi: due blocchi che si toccano con una faccia restano due solidi chiusi, 12 facce', () => {
+  const d = D0('c'); blk(d, 0, 0, 10, 10, 10); blk(d, 10, 0, 20, 10, 10, false);
+  const st = Model.regen(d);
+  const r = Export.toSTEP(st.body, Geom.topology(st.body, st.tags), { name: 'c', tags: st.tags, bodies: Model.stepBodies(st), date: new Date(2026, 10, 3) });
+  const c = (r.text.match(/MANIFOLD_SOLID_BREP/g) || []).length, rp = (r.text.match(/ADVANCED_BREP_SHAPE_REPRESENTATION/g) || []).length, nm = /MANIFOLD_SOLID_BREP\('Corpo2'/.test(r.text) ? 1 : 0;
+  return { ok: true, got: [r.stats.solids, r.stats.faces, r.stats.badEdges + r.stats.openLoops, c, rp, nm], exp: [2, 12, 0, 2, 1, 1] };
 }]);
 SK.push(['STEP: due facce vere nello stesso piano restano due facce, con lo spigolo in mezzo', () => {
   // cubo 20: la faccia z = 20 è divisa in due rettangoli (x 0..8 e 8..20). Facce 6 + 1. Spigoli: i 2 lati y = 0 e y = 20 di quella
@@ -14363,6 +14636,49 @@ if (isNode) {
     ],
     tips: ['La profondità dei fori ciechi si misura fino all\'inizio della [[Punta a 118°]].', 'Per cambiare le posizioni: doppio clic sul foro › «Modifica le posizioni».'],
     terms: ['Creazione guidata fori', 'Tipo di foro', 'Passante per vite', 'Lamatura', 'Svasatura', 'Filettato', 'Valori di norma'],
+  });
+  add('Funzioni', 'corpi', 'Lavorare con più corpi solidi', {
+    why: 'Tenere dei solidi separati dentro la stessa parte, per poi combinarli.',
+    cmd: { tab: 'features', id: 'extrude' },
+    steps: [
+      'Crea il primo solido, poi una nuova funzione che aggiunge materiale (**Estrusione base**, **Rivoluzione base**, **Estrusione con percorso** o un corpo importato).',
+      'Nel pannello togli la spunta da **Unisci risultato**: nasce un corpo nuovo, che compare nella cartella **Corpi solidi** dell\'albero.',
+      'I tagli lavorano su tutti i corpi; **raccordi e smussi** solo sul corpo dello spigolo.',
+      'In **Valuta › Proprietà di massa** trovi i dati di ogni corpo; **Esporta STEP** scrive un solido per ogni corpo.',
+    ],
+    tips: ['Con «Unisci risultato» spuntata il materiale si unisce ai corpi che tocca; se ce n\'è più di uno e non ne tocca nessuno nasce un corpo nuovo.'],
+    terms: ['Corpi solidi', 'Unisci risultato', 'Combina'],
+  });
+  add('Funzioni', 'combina', 'Combinare i corpi: Aggiungi, Sottrai, Comune', {
+    why: 'Fare un pezzo unendo, sottraendo o intersecando dei corpi, come «Combina» di SolidWorks.',
+    cmd: { tab: 'features', id: 'combine' },
+    steps: [
+      'Premi **Combina** e scegli l\'operazione: **Aggiungi**, **Sottrai** o **Comune**.',
+      'Spunta i corpi nel pannello, oppure fai clic su di loro nella vista (puoi anche sceglierli nell\'albero con Ctrl + clic prima di premere **Combina**). Per **Sottrai** scegli prima il **corpo principale**, poi quelli da togliergli.',
+      'Conferma con ✓: resta un corpo solo.',
+    ],
+    tips: ['Se i corpi non hanno materiale in comune, Comune dà errore: controlla la posizione.'],
+    terms: ['Combina', 'Corpi solidi'],
+  });
+  add('Funzioni', 'spostacorpo', 'Spostare, ruotare o copiare un corpo', {
+    why: 'Mettere un corpo al suo posto o farne delle copie, senza rifare gli schizzi.',
+    cmd: { tab: 'features', id: 'movebody' },
+    steps: [
+      'Premi **Sposta/Copia corpo** e spunta i corpi.',
+      'Scrivi la **rotazione** (asse X, Y o Z per l\'origine e angolo) e lo **spostamento** in X, Y e Z. Prima si ruota, poi si sposta.',
+      'Per le copie spunta **Copia il corpo** e scrivi il **numero di copie**: ognuna è spostata rispetto alla precedente.',
+    ],
+    terms: ['Sposta/Copia corpo', 'Corpi solidi'],
+  });
+  add('Funzioni', 'eliminacorpo', 'Eliminare o mantenere dei corpi', {
+    why: 'Togliere i corpi che non servono più, per esempio quelli usati per costruire.',
+    cmd: { tab: 'features', id: 'delbody' },
+    steps: [
+      'Premi **Elimina/Mantieni corpo** e scegli se i corpi scelti sono **da eliminare** o **da mantenere**.',
+      'Spunta i corpi e conferma con ✓.',
+    ],
+    tips: ['È una funzione nell\'albero: se la sopprimi o la cancelli, i corpi tornano.'],
+    terms: ['Elimina/Mantieni corpo', 'Corpi solidi'],
   });
   add('Funzioni', 'raccordo', 'Raccordo e smusso degli spigoli', {
     why: 'Arrotondare o smussare gli spigoli del solido.',

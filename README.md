@@ -110,6 +110,7 @@ Linea, rettangolo e rettangolo centrale, cerchio, archi (centro-estremi, 3 punti
 - **Creazione guidata fori** secondo le norme: passanti per vite (ISO 273), lamati (DIN 974-1), svasati (ISO 15065), filettati (foro di preparazione), da M3 a M20.
 - **Raccordo** e **Smusso** degli spigoli, lavorati **tutti insieme** come in SolidWorks: dove due raccordi si incontrano si raccordano tra loro, dove se ne incontrano tre ad angolo retto l'angolo diventa una porzione di sfera. Si raccordano anche gli archi (asole) e il bordo di un'ellisse o di una spline importata, che con un clic si sceglie tutto. Con la **propagazione tangente** (come in SolidWorks) un clic su uno spigolo lavora anche quelli che lo continuano senza angolo, per esempio tutto il bordo di un'asola.
 - **Serie lineare** (anche a griglia), **Serie circolare**, **Specchio**, **Piano di riferimento**.
+- **Corpi solidi**: casella **Unisci risultato**, cartella nell'albero, **Combina** (Aggiungi, Sottrai, Comune), **Sposta/Copia corpo**, **Elimina/Mantieni corpo**; massa per ogni corpo, un solido per corpo nello STEP.
 - Albero di progettazione con modifica, soppressione, barra di ripristino, annulla e ripeti.
 
 ### Valuta
@@ -126,16 +127,16 @@ Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nasc
 
 ![Guida «Come si fa»: raccordo e smusso degli spigoli](docs/img/guida.png)
 
-- **Guida** (pulsante in alto): 45 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
-- **Glossario**: oltre 160 termini spiegati in parole semplici (comandi, relazioni, opzioni, norme). La piccola **ⓘ** accanto ai titoli dei pannelli apre la spiegazione della voce.
+- **Guida** (pulsante in alto): 50 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
+- **Glossario**: oltre 170 termini spiegati in parole semplici (comandi, relazioni, opzioni, norme). La piccola **ⓘ** accanto ai titoli dei pannelli apre la spiegazione della voce.
 
 ## Calcoli verificati
 
-Ogni calcolo del programma è controllato da prove automatiche: 111 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, su archi, sul bordo di ellissi e spline e con la propagazione tangente, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 14 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, assiemi con colori, file danneggiati), e 14 rileggono gli STEP esportati dal Banco CAD: con le superfici vere il volume riletto è quello esatto (sfera, cono, tubo, piastra forata).
+Ogni calcolo del programma è controllato da prove automatiche: oltre 120 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, su archi, sul bordo di ellissi e spline e con la propagazione tangente, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 14 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, assiemi con colori, file danneggiati), e 14 rileggono gli STEP esportati dal Banco CAD: con le superfici vere il volume riletto è quello esatto (sfera, cono, tubo, piastra forata).
 
 Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifica**.
 
-![Autoverifica: 152 prove superate](docs/img/autoverifica.png)
+![Autoverifica: tutte le prove superate](docs/img/autoverifica.png)
 
 ## Per chi sviluppa
 
@@ -145,7 +146,7 @@ Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScr
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (152 + 28 prove STEP/IGES e STEP esportati + 15 del convertitore DWG, circa un minuto)
+npm run test:kernel               # solo i calcoli (170 + 35 prove STEP/IGES e STEP esportati + 15 del convertitore DWG, circa un minuto)
 npm run test:ui                   # solo l'interfaccia in Chromium (52 prove)
 ```
 

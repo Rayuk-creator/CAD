@@ -56,14 +56,6 @@ Chiesto dall'utente il 28 ottobre 2026 («l'opzione per montare gli assiemi con 
 - Albero dell'assieme (parti e accoppiamenti), interferenze, vista esplosa, distinta base nella tavola dell'assieme.
 - Prove con valori calcolati a mano (posizioni dopo gli accoppiamenti, gradi di libertà rimasti), Guida e Glossario per ogni comando.
 
-## Operazioni booleane tra corpi (come «Combina» di SolidWorks)
-
-Chiesto dall'utente il 29 ottobre 2026 («quanto ci andrebbe per aggiungere tutta la parte di operazioni booleane?»): **lavoro grande da fare in una chat nuova**; l'ordine rispetto al disegno 2D libero e agli assiemi è da decidere con l'utente. Il motore `CSG` fa già unione, sottrazione e intersezione; manca tutto il resto, perché oggi una parte è **un corpo solo**.
-
-- **Prima sessione (circa una sessione lunga):** casella **«Unisci risultato»** su estrusione, rivoluzione, sweep e importazione (senza spunta nasce un corpo nuovo); cartella **«Corpi solidi»** nell'albero; funzione **Combina** con **Aggiungi**, **Sottrai** e **Comune** (corpo principale e corpi da combinare); misure, proprietà di massa (anche per corpo), messa in tavola ed Esporta STEP (un solido per corpo) che tengono conto dei corpi separati.
-- **Seconda sessione:** **Sposta/Copia corpo** ed **Elimina/Mantieni corpo**.
-- Prove con valori calcolati a mano (volumi dopo Aggiungi/Sottrai/Comune, numero di corpi), una prova con il mouse per ogni comando, Guida e Glossario; i progetti già salvati devono restare uguali (una parte = un corpo, «Unisci risultato» spuntata).
-
 ## Licenza e pubblicazione su AlternativeTo (controllo del 1° novembre 2026)
 
 L'utente vuole inserire il Banco CAD su **AlternativeTo**. Controllo fatto su tutto il repository (non è un parere legale). **Licenza consigliata e accettata dall'utente: GNU GPL 3** (resta libero; stessa licenza del Convertitore; permetterebbe di rimettere il lettore DWG dentro il Banco CAD; la LGPL 2.1 di OpenCascade è compatibile). **Decisioni del 3 novembre:** copyright a nome **Rayuk-creator**; le 8 esercitazioni sono state **tolte**.
@@ -73,9 +65,9 @@ L'utente vuole inserire il Banco CAD su **AlternativeTo**. Controllo fatto su tu
 Cose ancora da fare:
 
 5. **Sorgenti di occt-import-js «nello stesso posto»** (LGPL 2.1, punto 6d): l'utente fa un **fork su GitHub di occt-import-js alla versione 0.0.24** (con OpenCascade); poi si aggiornano `licenze/LEGGIMI.md` e il commento in `index.html`. Facoltativo lo stesso per libredwg-web 0.8.2 (la GPL 3 permette già i sorgenti su un altro server).
-9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 46 argomenti, Glossario 168 termini), da decidere con l'utente.
+9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 50 argomenti, Glossario 174 termini), da decidere con l'utente.
 
 ## Altro ancora da fare
 
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
-- Le pagine pubblicate su claude.ai («Banco CAD» e «Convertitore DWG → DXF») sono aggiornate al 3 novembre. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
+- Le pagine pubblicate su claude.ai («Banco CAD» e «Convertitore DWG → DXF») sono aggiornate al 3 novembre pomeriggio, senza i corpi solidi e gli altri lavori della sera. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.

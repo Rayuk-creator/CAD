@@ -1243,6 +1243,84 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
       `sito: Banco CAD → ${g1.href}; Convertitore → ${g2} (e da index.html → ${g3}); da disco: ${g4} e ${g5}${gerr.length ? '; errori: ' + gerr.join(' | ') : ''}`);
   } catch (e) { rec('Sito GitHub Pages: Banco CAD e Convertitore si collegano tra loro sullo stesso sito', false, e.message.split('\n')[0]); }
 
+  // corpi solidi: «Unisci risultato» con il mouse, cartella nell'albero, Combina, Sposta/Copia, Elimina/Mantieni, massa, tavola, STEP
+  try {
+    await fresh();
+    // lo schizzo si fa nel codice; i comandi sono veri clic. A = 40×40×10 (x 0..40), B = 20×20×30 (x 30..50): in comune 10×10×10
+    await page.evaluate(() => {
+      const box = (x0, y0, x1, y1) => { const s = Sketch.newSketch(); const pt = (x, y) => { const id = 'p' + (s.next++); s.ents.push({ id, t: 'pt', x, y }); return id; }; const P = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => pt(x, y)); P.forEach((a, i) => s.ents.push({ id: 'l' + (s.next++), t: 'ln', a, b: P[(i + 1) % 4] })); return s; };
+      App.change(() => { const d = App.doc; const add = f => { f.id = Model.uid(d, 'F'); f.name = Model.defaultName(d, f.type); d.features.push(f); return f.id; };
+        add({ type: 'extrude', sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(0, 0, 40, 40) }), end: 'blind', depth: 10 });
+        window.__s2 = add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(30, 30, 50, 50) }); App.sel = []; });
+    });
+    await page.waitForTimeout(200);
+    const tool = async id => { await page.click(`#cmdBar [data-cmd="${id}"]`); await page.waitForTimeout(200); };
+    const ok = async () => { await page.click('.pm-ok'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(150); };
+    const bodies = () => page.evaluate(() => ({ n: App.st.bodies.length, V: Model.massProperties(App.st, App.doc) ? Model.massProperties(App.st, App.doc).volume : 0, tree: [...document.querySelectorAll('#tree .tnode .tl')].map(x => x.textContent).filter(x => /^Corp/.test(x)), err: [...App.st.errors.values()] }));
+    await page.evaluate(() => App.select({ kind: 'feature', id: window.__s2, sketch: true, label: 'Schizzo' }));
+    await tool('extrude');
+    await page.locator('#pm_depth').fill('30'); await page.locator('#pm_depth').press('Tab');
+    const hadBox = await page.locator('#pmMerge').count();
+    await page.locator('#pmMerge').uncheck();
+    await ok();
+    const b1 = await bodies();
+    await page.click('#btnFile'); await page.waitForTimeout(50); await page.keyboard.press('Escape'); await page.click('#view', { position: { x: 5, y: 5 } }).catch(() => {});
+    await page.evaluate(() => App.cmd('mass')); await page.waitForTimeout(150);
+    const massRows = await page.locator('#massBodies tbody tr').count(); await page.evaluate(() => App.closeModal());
+    await page.evaluate(() => App.setCmdTab('drawing')); await page.waitForTimeout(300);
+    const svgLines = await page.evaluate(() => document.querySelectorAll('#sheetHolder svg line, #sheetHolder svg path').length);
+    await page.evaluate(() => App.setCmdTab('features')); await page.waitForTimeout(150);
+    const st2 = await page.evaluate(() => { const r = App.stepText(); return { solids: r.stats.solids, bad: r.stats.badEdges + r.stats.openLoops, faces: r.stats.faces }; });
+    // Combina › Sottrai con la tendina e le caselle; Annulla; Combina › Comune con i clic nell'albero
+    await tool('combine');
+    await page.selectOption('#pm_op', 'sub'); await page.waitForTimeout(150);
+    const ids = await page.evaluate(() => App.st.bodies.map(b => b.id));
+    await page.selectOption('#pm_main', ids[0]); await page.waitForTimeout(150);
+    await page.locator(`#pm [data-body="${ids[1]}"]`).check();
+    await ok();
+    const b2 = await bodies();
+    await page.evaluate(() => App.undo()); await page.waitForTimeout(250);
+    // i corpi scelti nell'albero prima del comando (clic e Ctrl + clic) arrivano già spuntati
+    await page.locator('#tree .tnode', { hasText: 'Corpo1' }).click(); await page.waitForTimeout(100);
+    await page.locator('#tree .tnode', { hasText: 'Corpo2' }).click({ modifiers: ['Control'] }); await page.waitForTimeout(100);
+    await tool('combine');
+    await page.selectOption('#pm_op', 'common'); await page.waitForTimeout(150);
+    const pre = await page.evaluate(() => [...document.querySelectorAll('#pm [data-body]')].filter(i => i.checked).length);
+    await ok();
+    const b3 = await bodies();
+    await page.evaluate(() => App.undo()); await page.waitForTimeout(250);
+    // Sposta/Copia: una copia del corpo 1 spostata di 100 in X
+    await page.evaluate(() => { App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false); }); await page.waitForTimeout(200);
+    await tool('movebody');
+    // scelta con un clic sulla faccia superiore del corpo 1, nella vista
+    const [cx, cy] = await page.evaluate(() => { const p = App.r.project([8, 10, -8]); const c = document.querySelector('.view canvas').getBoundingClientRect(); return [c.left + p[0], c.top + p[1]]; });
+    await page.mouse.move(cx, cy); await page.waitForTimeout(80); await page.mouse.click(cx, cy); await page.waitForTimeout(200);
+    const pick3d = await page.locator(`#pm [data-body="${ids[0]}"]`).isChecked();
+    await page.locator('#pm label.chk', { hasText: 'Copia il corpo' }).locator('input').check(); await page.waitForTimeout(150);
+    await page.locator('#pm_dx').fill('100'); await page.locator('#pm_dx').press('Tab');
+    await ok();
+    const b4 = await bodies();
+    // ogni titolo e voce dei tre pannelli ha la sua spiegazione nel Glossario
+    const glossMiss = [];
+    for (const t of ['combine', 'movebody', 'delbody']) {
+      await tool(t);
+      if (t === 'combine') { await page.selectOption('#pm_op', 'sub'); await page.waitForTimeout(150); }
+      if (t === 'movebody') { await page.locator('#pm label.chk', { hasText: 'Copia il corpo' }).locator('input').check(); await page.waitForTimeout(150); }
+      glossMiss.push(...await page.evaluate(() => [...document.querySelectorAll('#pm .grp > h3, #pm .row > label')].map(x => x.childNodes[0].textContent.trim()).filter(x => x && x !== 'Nome' && !Glossary.find(x))));
+      await page.evaluate(() => App.closePM(false)); await page.waitForTimeout(150);
+    }
+    await page.evaluate(() => App.undo()); await page.waitForTimeout(250);
+    // Elimina il corpo 2
+    await tool('delbody');
+    await page.locator(`#pm [data-body="${ids[1]}"]`).check();
+    await ok();
+    const b5 = await bodies();
+    const okAll = hadBox === 1 && pre === 2 && pick3d && !glossMiss.length && b1.n === 2 && rel(b1.V, 28000) < 1e-6 && b1.tree.join() === 'Corpi solidi (2),Corpo1,Corpo2' && massRows === 2 && svgLines > 20 && st2.solids === 2 && !st2.bad && st2.faces === 12
+      && b2.n === 1 && rel(b2.V, 15000) < 1e-6 && b3.n === 1 && rel(b3.V, 1000) < 1e-6 && b4.n === 3 && rel(b4.V, 44000) < 1e-6 && b5.n === 1 && rel(b5.V, 16000) < 1e-6 && ![b1, b2, b3, b4, b5].some(b => b.err.length);
+    rec('Corpi solidi con il mouse: Unisci risultato, albero, massa per corpo, tavola, STEP, Combina (Sottrai, Comune), Copia, Elimina', okAll,
+      `casella ${hadBox}; già spuntati ${pre}; clic nella vista ${pick3d}; glossario senza: ${glossMiss.join(', ') || 'nessuno'}; corpi ${b1.n} (V ${b1.V.toFixed(1)}), albero ${b1.tree.join(' | ')}; righe massa ${massRows}; tavola ${svgLines} linee; STEP ${st2.solids} solidi, ${st2.faces} facce; Sottrai V ${b2.V.toFixed(1)}; Comune V ${b3.V.toFixed(1)}; Copia ${b4.n} corpi V ${b4.V.toFixed(1)}; Elimina V ${b5.V.toFixed(1)}; errori ${[b1, b2, b3, b4, b5].flatMap(b => b.err).join(', ') || 'nessuno'}`);
+    await fresh();
+  } catch (e) { rec('Corpi solidi con il mouse: Unisci risultato, albero, massa per corpo, tavola, STEP, Combina (Sottrai, Comune), Copia, Elimina', false, e.message.split('\n')[0]); await page.evaluate(() => { if (App.closeModal) App.closeModal(); if (App.pm) App.closePM(false); }).catch(() => {}); }
   // licenza: finestra «Informazioni e licenze» dal menu, ogni testo collegato esiste nel repository
   try {
     await fresh();

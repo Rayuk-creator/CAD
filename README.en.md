@@ -112,6 +112,7 @@ Line, corner and centre rectangle, circle, arcs (centre-ends, 3-point, tangent),
 - **Hole wizard** to standards: clearance (ISO 273), counterbore (DIN 974-1), countersink (ISO 15065), tapped (tap drill), M3 to M20.
 - **Fillet** and **Chamfer** on edges, all processed **together** as in SolidWorks: where two fillets meet they blend, where three meet at a right angle the corner becomes a spherical patch. Arcs (slots) and the edge of an imported ellipse or spline can be filleted too; one click picks the whole curved edge. With **tangent propagation** (as in SolidWorks) one click on an edge also processes the edges that continue it without a corner, for example the whole edge of a slot.
 - **Linear pattern** (also as a grid), **Circular pattern**, **Mirror**, **Reference plane**.
+- **Solid bodies**: **Unisci risultato** (Merge result) box, folder in the tree, **Combina** (Combine: Add, Subtract, Common), **Sposta/Copia corpo** (Move/Copy body), **Elimina/Mantieni corpo** (Delete/Keep body); mass for each body, one solid per body in STEP.
 - Feature tree with edit, suppress, rollback bar, undo and redo.
 
 ### Evaluate
@@ -128,16 +129,16 @@ Orthographic views in **first-angle projection** (ISO 5456-2), hidden lines, cen
 
 ![«How to» guide: fillet and chamfer edges](docs/img/guida.png)
 
-- **Guida** (Guide, button at the top): 45 «how to» topics with numbered steps, tips and terms. **Mostrami dove** (Show me where) opens the right tab and makes the command blink.
-- **Glossario** (Glossary): more than 160 terms explained in plain words (commands, relations, options, standards). The small **ⓘ** next to panel headings opens the explanation of that item.
+- **Guida** (Guide, button at the top): 50 «how to» topics with numbered steps, tips and terms. **Mostrami dove** (Show me where) opens the right tab and makes the command blink.
+- **Glossario** (Glossary): more than 170 terms explained in plain words (commands, relations, options, standards). The small **ⓘ** next to panel headings opens the explanation of that item.
 
 ## Verified calculations
 
-Every calculation is checked by automatic tests: 111 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, arcs, the edges of ellipses and splines and tangent propagation, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL, OBJ, STEP and IGES, sketches imported from DXF including ellipses and splines, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero. Another 14 tests run the real reader on STEP and IGES files written for the purpose (blocks, cylinder, plate with a hole, different units, assemblies with colours, damaged files), and 14 read back the STEP files exported by Banco CAD: with true surfaces the volume read back is the exact one (sphere, cone, tube, plate with holes).
+Every calculation is checked by automatic tests: more than 120 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, arcs, the edges of ellipses and splines and tangent propagation, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL, OBJ, STEP and IGES, sketches imported from DXF including ellipses and splines, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero. Another 14 tests run the real reader on STEP and IGES files written for the purpose (blocks, cylinder, plate with a hole, different units, assemblies with colours, damaged files), and 14 read back the STEP files exported by Banco CAD: with true surfaces the volume read back is the exact one (sphere, cone, tube, plate with holes).
 
 The same tests can be run inside the program: **Valuta › Autoverifica** (Evaluate › Self-check).
 
-![Self-check: 152 tests passed](docs/img/autoverifica.png)
+![Self-check: all tests passed](docs/img/autoverifica.png)
 
 ## For developers
 
@@ -147,7 +148,7 @@ The program is one file, `index.html` (about 5 MB), with HTML, CSS and JavaScrip
 npm install
 npx playwright install chromium   # first time only
 npm test                          # all tests
-npm run test:kernel               # calculations only (152 + 28 STEP/IGES and exported STEP + 15 DWG converter tests, about a minute)
+npm run test:kernel               # calculations only (170 + 35 STEP/IGES and exported STEP + 15 DWG converter tests, about a minute)
 npm run test:ui                   # interface only, in Chromium (52 tests)
 ```
 

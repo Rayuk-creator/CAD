@@ -348,6 +348,23 @@ T('Cubo importato + estrusione unita sopra (10 × 10 × 5)', () => {
   feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 5 }); return d;
 }, { V: 8500, A: 2400 + 200, bb: [[0, 0, 0], [20, 25, 20]] });
 
+/* ---------- corpi solidi: Unisci risultato, Combina, Sposta/Copia, Elimina/Mantieni ---------- */
+// blocco x0..x1, z −y1..−y0 (sketch sul piano superiore), alto h, y da 0 a h; merge false = corpo nuovo
+const blk = (d, x0, y0, x1, y1, h, merge) => { const b = SB(); b.rect(x0, y0, x1, y1); const f = { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: h }; if (merge !== undefined) f.merge = merge; return feat(d, f); };
+// A = 40 × 40 × 10; B = 20 × 20 × 30 con x 30..50, z −50..−30: hanno in comune un cubetto 10 × 10 × 10 (x 30..40, y 0..10, z −40..−30)
+const twoB = () => { const d = D0('c'); const a = blk(d, 0, 0, 40, 40, 10), b = blk(d, 30, 30, 50, 50, 30, false); return { d, a, b }; };
+T('Corpi: Unisci risultato spento: due corpi, il volume è la somma (la parte in comune conta due volte, come in SolidWorks)', () => twoB().d, { V: 16000 + 12000, A: 4800 + 3200 });
+T('Combina › Aggiungi: 16000 + 12000 − 1000; area 4800 + 3200 − 600', () => { const { d, a, b } = twoB(); feat(d, { type: 'combine', op: 'add', main: a, tools: [b] }); return d; }, { V: 27000, A: 7400 });
+T('Combina › Sottrai: A meno B = lastra con un angolo tolto', () => { const { d, a, b } = twoB(); feat(d, { type: 'combine', op: 'sub', main: a, tools: [b] }); return d; }, { V: 15000, A: 2 * 1500 + 160 * 10 });
+T('Combina › Sottrai: B meno A', () => { const { d, a, b } = twoB(); feat(d, { type: 'combine', op: 'sub', main: b, tools: [a] }); return d; }, { V: 11000 });
+T('Combina › Comune: il cubetto 10 × 10 × 10 in comune', () => { const { d, a, b } = twoB(); feat(d, { type: 'combine', op: 'common', main: a, tools: [b] }); return d; }, { V: 1000, A: 600, C: [35, 5, -35], bb: [[30, 0, -40], [40, 10, -30]] });
+T('Corpi: un taglio passante lavora tutti i corpi', () => { const d = D0('c'); blk(d, 0, 0, 10, 10, 10); blk(d, 20, 0, 30, 10, 10, false); const b = SB(); b.rect(5, 0, 25, 10); feat(d, { type: 'cut', sketch: sketch(d, STD('top'), b), end: 'through', both: true }); return d; }, { V: 1000 });
+T('Sposta corpo: cilindro R5 h20 spostato di (100, 0, 0): volume e area esatti', () => { const d = D0('c'); const b = SB(); b.circle(0, 0, 5); const a = feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 20 }); feat(d, { type: 'movebody', bodies: [a], dx: 100 }); return d; }, { V: 500 * PI, A: 200 * PI + 50 * PI, C: [100, 10, 0] });
+T('Sposta corpo: blocco ruotato di +90° attorno a Y e poi spostato', () => { const d = D0('c'); const a = blk(d, 0, 0, 10, 10, 10); feat(d, { type: 'movebody', bodies: [a], axis: 'y', angle: 90, dy: 5 }); return d; }, { V: 1000, bb: [[-10, 5, -10], [0, 15, 0]] });
+T('Copia corpo: 2 copie di un blocco a passo 20: tre corpi', () => { const d = D0('c'); const a = blk(d, 0, 0, 10, 10, 10); feat(d, { type: 'movebody', bodies: [a], copy: true, copies: 2, dx: 20 }); return d; }, { V: 3000, A: 1800, C: [25, 5, -5], bb: [[0, 0, -10], [50, 10, 0]] });
+T('Elimina corpo', () => { const { d, b } = twoB(); feat(d, { type: 'delbody', bodies: [b] }); return d; }, { V: 16000, A: 4800 });
+T('Mantieni corpo', () => { const { d, b } = twoB(); feat(d, { type: 'delbody', keep: true, bodies: [b] }); return d; }, { V: 12000, A: 3200 });
+
 /* ---------- corpi importati da STEP e IGES (risultato di OpenCascade simulato) ---------- */
 // OpenCascade restituisce, per ogni solido, triangoli con i vertici ripetuti faccia per faccia e l'elenco delle facce vere
 // (brep_faces: primo e ultimo triangolo di ogni faccia). Qui lo si costruisce a mano; il lettore vero è provato in step.test.js.
@@ -804,6 +821,45 @@ SK.push(['STEP: facce vere conservate nel salvataggio (pack/unpack)', () => {
   const u = MI.unpack(JSON.parse(JSON.stringify(MI.pack(m))));
   const a = MI.analyze(u);
   return { ok: true, got: [u.f.length, u.f[0], u.f[u.f.length - 1], a.brepFaces, a.open], exp: [24, 0, 2, 3, 0] };
+}]);
+SK.push(['Corpi: quanti corpi dopo ogni operazione; Unisci risultato acceso si unisce solo ai corpi che tocca, anche con una faccia sola', () => {
+  const n = d => Model.regen(d).bodies.length;
+  const base = () => { const d = D0('c'); blk(d, 0, 0, 10, 10, 10); blk(d, 20, 0, 30, 10, 10, false); return d; };
+  const legacy = D0('c'); blk(legacy, 0, 0, 10, 10, 10); blk(legacy, 50, 0, 60, 10, 10);                  // progetti vecchi: una parte, un corpo
+  const hit1 = base(); blk(hit1, 8, 0, 12, 10, 10);                                                        // tocca il primo: 1000 + 200, 1000
+  const hit2 = base(); blk(hit2, 10, 0, 20, 10, 10);                                                       // tocca i due con le facce: uno solo
+  const none = base(); blk(none, 40, 0, 50, 10, 10);                                                       // non tocca nulla: corpo nuovo
+  const v = d => Model.bodyProps(Model.regen(d), d).map(b => Math.round(b.volume)).join();
+  const c = twoB(); feat(c.d, { type: 'combine', op: 'add', main: c.a, tools: [c.b] });
+  const cp = D0('c'); const a0 = blk(cp, 0, 0, 10, 10, 10); feat(cp, { type: 'movebody', bodies: [a0], copy: true, copies: 2, dx: 20 });
+  const k = twoB(); feat(k.d, { type: 'delbody', keep: true, bodies: [k.b] });
+  const got = [n(legacy), n(hit1), n(hit2), n(none), n(c.d), n(cp), n(k.d), v(hit1) === '1200,1000' ? 1 : 0, v(hit2) === '3000' ? 1 : 0, v(none) === '1000,1000,1000' ? 1 : 0];
+  return { ok: true, got, exp: [1, 2, 1, 3, 1, 3, 1, 1, 1, 1] };
+}]);
+SK.push(['Corpi: proprietà di massa per corpo (acciaio 7,85 g/cm³) e messaggi di errore di Combina', () => {
+  const { d, a, b } = twoB(); d.material = (Model.MATERIALS.find(m => Math.abs(m.rho - 7850) < 1) || Model.MATERIALS.find(m => /C40/.test(m.name))).id;
+  const rho = Model.MATERIALS.find(m => m.id === d.material).rho / 1000;
+  const p = Model.bodyProps(Model.regen(d), d);
+  const err = (o) => { const x = twoB(); feat(x.d, { type: 'combine', ...o(x) }); const st = Model.regen(x.d); return [...st.errors.values()][0] || ''; };
+  const far = D0('c'); const f1 = blk(far, 0, 0, 10, 10, 10), f2 = blk(far, 50, 0, 60, 10, 10, false); feat(far, { type: 'combine', id: 'X', op: 'common', main: f1, tools: [f2] });
+  const e3 = [...Model.regen(far).errors.values()][0] || '';
+  return { ok: true, got: [p.length, p[0].volume, p[1].volume, p[0].mass, p[1].mass, p[0].area, p[1].centroid[1], /almeno due/.test(err(x => ({ op: 'add', main: x.a }))) ? 1 : 0, /non esiste/.test(err(x => ({ op: 'add', main: x.a, tools: ['nessuno'] }))) ? 1 : 0, /in comune/.test(e3) ? 1 : 0],
+    exp: [2, 16000, 12000, 16000 * rho, 12000 * rho, 4800, 15, 1, 1, 1] };
+}]);
+SK.push(['Raccordo con due corpi: lavora solo il corpo dello spigolo, anche se l\'altro gli passa sopra', () => {
+  // blocco 40×40×10 e, sopra lo spigolo x = 40, y = 10, un blocco che lo attraversa. Raccordo R2 sullo spigolo lungo z (convesso): togli (1 − π/4)·4 × lunghezza 40
+  const d = D0('c'); blk(d, 0, 0, 40, 40, 10); const b = blk(d, 35, 10, 45, 30, 20, false);
+  const r0 = Model.regen(d), v0 = Model.bodyProps(r0, d).map(x => x.volume);
+  feat(d, { type: 'fillet', r: 2, edges: [edge(d, [40, 10, -5], 'line')] });
+  const r1 = Model.regen(d), v1 = Model.bodyProps(r1, d).map(x => x.volume);
+  return { ok: !r1.errors.size, got: [r1.bodies.length, v1[0], v1[1]], exp: [2, v0[0] - (1 - PI / 4) * 4 * 40, v0[1]] };
+}]);
+SK.push(['STEP di più corpi: due blocchi che si toccano con una faccia restano due solidi chiusi, 12 facce', () => {
+  const d = D0('c'); blk(d, 0, 0, 10, 10, 10); blk(d, 10, 0, 20, 10, 10, false);
+  const st = Model.regen(d);
+  const r = Export.toSTEP(st.body, Geom.topology(st.body, st.tags), { name: 'c', tags: st.tags, bodies: Model.stepBodies(st), date: new Date(2026, 10, 3) });
+  const c = (r.text.match(/MANIFOLD_SOLID_BREP/g) || []).length, rp = (r.text.match(/ADVANCED_BREP_SHAPE_REPRESENTATION/g) || []).length, nm = /MANIFOLD_SOLID_BREP\('Corpo2'/.test(r.text) ? 1 : 0;
+  return { ok: true, got: [r.stats.solids, r.stats.faces, r.stats.badEdges + r.stats.openLoops, c, rp, nm], exp: [2, 12, 0, 2, 1, 1] };
 }]);
 SK.push(['STEP: due facce vere nello stesso piano restano due facce, con lo spigolo in mezzo', () => {
   // cubo 20: la faccia z = 20 è divisa in due rettangoli (x 0..8 e 8..20). Facce 6 + 1. Spigoli: i 2 lati y = 0 e y = 20 di quella

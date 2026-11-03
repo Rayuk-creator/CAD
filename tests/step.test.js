@@ -140,6 +140,22 @@ const CASES = [
   const facet = body => { let V = 0, A = 0; for (const p of body) for (let i = 1; i < p.v.length - 1; i++) { const a = p.v[0], b = p.v[i], c = p.v[i + 1];
     const cr = [b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2], b[0] * c[1] - b[1] * c[0]]; V += (a[0] * cr[0] + a[1] * cr[1] + a[2] * cr[2]) / 6;
     const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]; A += Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]) / 2; } return { V, A }; };
+  // più corpi: due blocchi che si toccano con una faccia e non sono uniti → due solidi, riletti con il volume giusto
+  {
+    n++; let ok = true; const m3 = [];
+    try {
+      const d = D0('corpi'); const b1 = SB(); b1.rect(0, 0, 10, 10); feat(d, { type: 'extrude', sketch: skf(d, 'top', b1), end: 'blind', depth: 10 });
+      const b2 = SB(); b2.circle(15, 5, 5); feat(d, { type: 'extrude', sketch: skf(d, 'top', b2), end: 'blind', depth: 10, merge: false });
+      const st = Model.regen(d), ex = Export.toSTEP(st.body, Geom.topology(st.body, st.tags), { name: d.name, tags: st.tags, bodies: Model.stepBodies(st), color: [0.66, 0.7, 0.74] });
+      const r = IM.readCAD(occt, new TextEncoder().encode(ex.text), 'step');
+      const V = r.bodies.reduce((a, b) => a + b.volume, 0), Ve = 1000 + PI * 25 * 10;
+      if (r.bodies.length !== 2 || ex.stats.solids !== 2 || ex.stats.badEdges + ex.stats.openLoops) { ok = false; m3.push(`${r.bodies.length} corpi riletti, ${ex.stats.solids} solidi, ${ex.stats.badEdges + ex.stats.openLoops} spigoli aperti`); }
+      if (Math.abs(V - Ve) / Ve > 2e-3) { ok = false; m3.push(`volume ${V.toFixed(3)} invece di ${Ve.toFixed(3)}`); }
+      m3.unshift(`${r.bodies.length} corpi, volume ${V.toFixed(3)} (atteso ${Ve.toFixed(3)})`);
+    } catch (e) { ok = false; m3.push('ERRORE ' + e.message); }
+    if (!ok) fail++;
+    console.log((ok ? 'OK  ' : 'NO  ') + 'STEP di due corpi che si toccano, riletto con OpenCascade\n      ' + m3.join('\n      '));
+  }
   const exportCases = [
     ['blocco 80 × 50 × 10', () => { const d = D0('blocco'); const b = SB(); b.rect(0, 0, 80, 50); feat(d, { type: 'extrude', sketch: skf(d, 'top', b), end: 'blind', depth: 10 }); return d; }, 40000],
     ['piastra 100 × 60 × 8 con 4 fori R5', () => { const d = D0('piastra'); const b = SB(); b.rect(0, 0, 100, 60); for (const [x, y] of [[20, 15], [80, 15], [20, 45], [80, 45]]) b.circle(x, y, 5); feat(d, { type: 'extrude', sketch: skf(d, 'top', b), end: 'blind', depth: 8 }); return d; }, 48000 - 4 * 25 * PI * 8],
