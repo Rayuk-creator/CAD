@@ -4,6 +4,8 @@ const { chromium } = require('playwright');
 const path = require('path');
 const page_ = path.resolve(process.argv[2] || path.join(__dirname, '..', 'index.html'));
 const TOL = +(process.env.TOL || 0.01);
+// pezzi già pronti per le prove di vista e tavola (piastra forata, squadretta a L)
+const PEZZI_JS = 'window.PEZZI = ' + require('fs').readFileSync(path.join(__dirname, 'pezzi-prova.json'), 'utf8') + ';';
 const results = [];
 // immagini di controllo (in caso di errore) in tests/output
 const OUT = path.join(__dirname, 'output'); require('fs').mkdirSync(OUT, { recursive: true });
@@ -19,6 +21,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
   if (process.env.CHROMIUM_PATH) launch.executablePath = process.env.CHROMIUM_PATH;
   const browser = await chromium.launch(launch);
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await ctx.addInitScript(PEZZI_JS);
   const page = await ctx.newPage(); PAGE = page;
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
@@ -32,22 +35,38 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
   /* ---------- 1. avvio ---------- */
   rec('Avvio della pagina senza errori', !errors.length, errors.join(' | '));
 
-  /* ---------- 2. esercitazioni: riferimento, tavola, verifica ---------- */
-  const les = await page.evaluate(() => Lessons.list.map(l => {
-    const out = { id: l.id, title: l.title };
-    try {
-      const r = Lessons.ref(l);
-      out.errors = [...r.st.errors.values()]; out.warn = [...r.st.warn.values()];
-      out.V = r.mp && r.mp.volume;
-      const svg = Lessons.refDrawing(l); out.svgLen = svg ? svg.length : 0;
-      // carica il riferimento come parte dell'utente e verifica
-      App.change(() => { App.doc = JSON.parse(JSON.stringify(r.doc)); App.sel = []; });
-      const ch = Lessons.verify(l); out.fail = ch.filter(c => !c.ok && !c.warn).map(c => c.text);
-    } catch (e) { out.exc = e.message; }
-    return out;
-  }));
-  for (const l of les) rec(`Esercitazione «${l.title}»: riferimento, tavola e verifica`, !l.exc && !l.errors.length && l.V > 0 && l.svgLen > 1000 && !l.fail.length,
-    [l.exc, ...(l.errors || []), ...(l.warn || []).map(w => 'avviso: ' + w), ...(l.fail || [])].filter(Boolean).join(' | '));
+  /* ---------- 2. esercitazioni tolte: nessuna traccia, e i progetti salvati con il campo «lesson» si aprono ---------- */
+  try {
+    const tracce = await page.evaluate(() => {
+      const out = [];
+      if (window.Lessons) out.push('modulo Lessons');
+      if (document.querySelector('[data-ct="lessons"]')) out.push('scheda');
+      const tabs = [...document.querySelectorAll('.cmd-tabs [data-ct]')].map(b => b.dataset.ct).join();
+      if (tabs !== 'features,sketch,evaluate,drawing') out.push('schede: ' + tabs);
+      if (/esercitazion/i.test(document.querySelector('#right').getAttribute('aria-label') + document.querySelector('#rightTitle').textContent)) out.push('pannello');
+      for (const t of Guide.topics) if (/esercitazion|esercizi/i.test(JSON.stringify(t))) out.push('guida: ' + t.t);
+      for (const e of Glossary.entries) if (/esercitazion/i.test(JSON.stringify(e))) out.push('glossario: ' + JSON.stringify(e).slice(0, 40));
+      return out;
+    });
+    const octx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    await octx.addInitScript(PEZZI_JS);
+    const op = await octx.newPage();
+    const oerr = []; op.on('pageerror', e => oerr.push(e.message));
+    await op.goto('file://' + page_);
+    await op.waitForFunction(() => window.App && App.r, null, { timeout: 15000 });
+    // salvataggio come lo scrivevano le versioni con le esercitazioni: c'è anche il campo «lesson»
+    const k = 'banco-cad-v1';
+    await op.evaluate(k => { localStorage.setItem(k, JSON.stringify({ doc: window.PEZZI.piastra, lesson: 'piastra', drawing: null })); localStorage.setItem('banco-cad-done', '["piastra"]'); }, k);
+    await op.reload();
+    await op.waitForFunction(() => window.App && App.r, null, { timeout: 15000 });
+    await op.waitForTimeout(400);
+    const o = await op.evaluate(async k => { const st = App.st; const mp = Geom.massProps(st.body, st.tags); App.save(); await new Promise(r => setTimeout(r, 1500)); return { n: App.doc.features.length, name: App.doc.name, V: mp && mp.volume, savedLesson: 'lesson' in JSON.parse(localStorage.getItem(k)) }; }, k);
+    await octx.close();
+    // 80 × 50 × 10 meno 4 fori Ø8 e un foro Ø20 = 40000 − π·10·(4·16 + 100) = 34847,79 mm³
+    const Vm = 40000 - Math.PI * 10 * (4 * 16 + 100);
+    const okV = o.V == null ? false : rel(o.V, Vm) < 1e-3;
+    rec('Esercitazioni tolte: nessuna traccia; progetto salvato con la vecchia esercitazione si apre uguale', !tracce.length && !oerr.length && o.n === 4 && okV && !o.savedLesson, [...tracce, ...oerr, JSON.stringify(o)].join(' | '));
+  } catch (e) { rec('Esercitazioni tolte: nessuna traccia; progetto salvato con la vecchia esercitazione si apre uguale', false, e.message.split('\n')[0]); }
 
   /* ---------- 3. flusso con il mouse ---------- */
   const helpers = async () => page.evaluate(() => {
@@ -857,7 +876,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
   // e il punto del foglio sotto il puntatore resta fermo (puntatore al centro in orizzontale, in alto in verticale)
   try {
     await fresh();
-    await page.evaluate(() => { App.change(() => { App.doc = JSON.parse(JSON.stringify(Lessons.ref(Lessons.list[0]).doc)); App.sel = []; }); App.drawingState = null; App.setCmdTab('drawing'); });
+    await page.evaluate(() => { App.change(() => { App.doc = JSON.parse(JSON.stringify(window.PEZZI.piastra)); App.sel = []; }); App.drawingState = null; App.setCmdTab('drawing'); });
     await page.waitForTimeout(500);
     const sb = await page.locator('#sheetScroll').boundingBox();
     const mx = sb.x + sb.width / 2, my = sb.y + sb.height * 0.3;
@@ -878,11 +897,12 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
   // 3l. tablet: due dita = zoom sempre; ruotare/spostare solo dopo aver toccato il pezzo
   try {
     const tctx = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, isMobile: false });
+    await tctx.addInitScript(PEZZI_JS);
     const tp = await tctx.newPage();
     tp.on('pageerror', e => errors.push('pageerror (tablet): ' + e.message));
     await tp.goto('file://' + page_);
     await tp.waitForFunction(() => window.App && App.r, null, { timeout: 15000 });
-    await tp.evaluate(() => { const r = Lessons.ref(Lessons.list[0]); App.change(() => { App.doc = JSON.parse(JSON.stringify(r.doc)); }); App.setCmdTab('features'); App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false); });
+    await tp.evaluate(() => { App.change(() => { App.doc = JSON.parse(JSON.stringify(window.PEZZI.piastra)); }); App.setCmdTab('features'); App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false); });
     await tp.waitForTimeout(500);
     const cdp = await tctx.newCDPSession(tp);
     const touch = async (type, points) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points.map(([x, y], i) => ({ x, y, id: i })) });
@@ -950,7 +970,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
   const camOf = () => page.evaluate(() => JSON.stringify([App.r.cam.q, App.r.cam.target, App.r.cam.scale, App.r.bg || null]));
   try {
     await fresh();
-    await page.evaluate(() => { App.change(() => { App.doc = JSON.parse(JSON.stringify(Lessons.ref(Lessons.list[1]).doc)); App.sel = []; }); App.drawingState = null; App.setCmdTab('drawing'); });
+    await page.evaluate(() => { App.change(() => { App.doc = JSON.parse(JSON.stringify(window.PEZZI.squadretta)); App.sel = []; }); App.drawingState = null; App.setCmdTab('drawing'); });
     await page.waitForTimeout(600);
     await page.evaluate(() => Drawing.cmd('dAuto')); await page.waitForTimeout(300);
     // testi della tavola (dalla SVG): quelli orizzontali con il loro punto d'appoggio

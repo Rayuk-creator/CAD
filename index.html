@@ -321,27 +321,6 @@ label.chk .gl-i { margin-left: 2px; }
 .gl-item summary:hover { color: var(--accent); }
 .gl-item p { margin: 0 0 10px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
 
-/* esercitazioni */
-.les-list { display: flex; flex-direction: column; gap: 6px; }
-.les-item { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 9px 11px; cursor: pointer; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
-.les-item:hover { border-color: var(--accent); }
-.les-item .n { grid-row: span 2; font: 600 18px/1 var(--font-c); color: var(--accent); width: 26px; text-align: right; padding-top: 2px; }
-.les-item .t { font-weight: 600; }
-.les-item .m { font-size: 12px; color: var(--ink-3); }
-.les-item.done .n::after { content: " ✓"; color: var(--ok); font-size: 13px; }
-.les h3 { font: 600 16px/1.25 var(--font-c); margin: 10px 0 4px; }
-.les h4 { font: 600 12px/1.2 var(--font-c); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin: 14px 0 6px; }
-.les p, .les li { font-size: 13.5px; }
-.les ol, .les ul { padding-left: 20px; margin: 4px 0; }
-.les .goal { background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; font-size: 13.5px; }
-.les .refdraw { background: #fff; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; cursor: zoom-in; }
-.les .refdraw svg { display: block; width: 100%; height: auto; }
-.checks { list-style: none; padding: 0; margin: 6px 0; display: flex; flex-direction: column; gap: 4px; }
-.checks li { display: flex; gap: 8px; font-size: 13px; align-items: flex-start; }
-.checks .ok { color: var(--ok); font-weight: 700; }
-.checks .no { color: var(--err); font-weight: 700; }
-.pill { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 8px; background: var(--panel-2); color: var(--ink-2); }
-
 /* tablet (anche con mouse e tastiera): comandi più compatti, tutti visibili su più righe */
 @media (max-width: 1280px) {
   .tool { min-width: 52px; max-width: 72px; padding: 4px 4px; font-size: 10.5px; gap: 2px; }
@@ -408,7 +387,6 @@ label.chk .gl-i { margin-left: 2px; }
       <button role="tab" type="button" data-ct="sketch" aria-selected="false">Schizzo</button>
       <button role="tab" type="button" data-ct="evaluate" aria-selected="false">Valuta</button>
       <button role="tab" type="button" data-ct="drawing" aria-selected="false">Messa in tavola</button>
-      <button role="tab" type="button" data-ct="lessons" aria-selected="false">Esercitazioni</button>
     </div>
     <div class="cmd-bar" id="cmdBar"></div>
   </nav>
@@ -465,8 +443,8 @@ label.chk .gl-i { margin-left: 2px; }
       <div class="sheet-scroll" id="sheetScroll"><div class="sheet-holder" id="sheetHolder"></div></div>
     </section>
 
-    <aside class="right" id="right" hidden aria-label="Esercitazioni">
-      <div class="right-head"><h2 id="rightTitle">Esercitazioni</h2><button class="icon-btn" id="rightClose" type="button" aria-label="Chiudi il pannello"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
+    <aside class="right" id="right" hidden aria-label="Pannello laterale">
+      <div class="right-head"><h2 id="rightTitle">Guida</h2><button class="icon-btn" id="rightClose" type="button" aria-label="Chiudi il pannello"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
       <div class="right-body" id="rightBody"></div>
     </aside>
   </main>
@@ -6616,7 +6594,7 @@ self.onmessage = async ev => {
     saveT = 0;
     let doc = App.doc;
     if (App.pm && App.pm._before) { try { doc = JSON.parse(App.pm._before); } catch (e) { /* stato corrente */ } }
-    try { localStorage.setItem(STORE, JSON.stringify({ doc, lesson: App.lessonId || null, drawing: App.drawingState || null })); App.storeFull = false; }
+    try { localStorage.setItem(STORE, JSON.stringify({ doc, drawing: App.drawingState || null })); App.storeFull = false; }
     catch (e) {
       // spazio del browser esaurito (di solito per un file importato molto grande): lo si dice una volta
       if (e && (e.name === 'QuotaExceededError' || e.code === 22) && !App.storeFull) { App.storeFull = true; toast('Il progetto è troppo grande per il salvataggio automatico del browser: salvalo con Progetto › Esporta il progetto.', 8000); }
@@ -6633,7 +6611,7 @@ self.onmessage = async ev => {
   function load() {
     try {
       const d = JSON.parse(localStorage.getItem(STORE) || 'null');
-      if (d && d.doc && Array.isArray(d.doc.features)) { App.doc = d.doc; App.lessonId = d.lesson || null; App.drawingState = d.drawing || null; return true; }
+      if (d && d.doc && Array.isArray(d.doc.features)) { App.doc = d.doc; App.drawingState = d.drawing || null; return true; }
     } catch (e) { /* ignora */ }
     return false;
   }
@@ -7316,7 +7294,6 @@ self.onmessage = async ev => {
       ['selftest', 'Autoverifica', 'Ricostruisce i pezzi di prova e confronta volume, area, baricentro e ingombro con i valori calcolati a mano (tolleranza 1%)', { icon: 'verify' }],
     ],
     drawing: null,
-    lessons: null,
   };
   App.TOOLBARS = TOOLBARS;
   App.setCmdTab = function (tab) {
@@ -7324,7 +7301,6 @@ self.onmessage = async ev => {
     document.querySelectorAll('.cmd-tabs [data-ct]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.ct === tab)));
     if (tab === 'drawing') { if (App.mode === 'sketch') { Sketcher.exit(true); } Drawing.enter(); }
     else if (App.mode === 'drawing') Drawing.exit();
-    if (tab === 'lessons') Lessons.open(); else if (App.rightPanel === 'lessons' && tab !== 'lessons') { /* il pannello resta aperto */ }
     App.updateCommands();
   };
   App.updateCommands = function () {
@@ -7333,7 +7309,6 @@ self.onmessage = async ev => {
     let list = TOOLBARS[cmdTab];
     if (cmdTab === 'sketch') list = Sketcher.toolbar();
     if (cmdTab === 'drawing') list = Drawing.toolbar();
-    if (cmdTab === 'lessons') list = Lessons.toolbar();
     for (const t of list || []) {
       if (t === '-') { bar.append(el('div', { class: 'tool-sep' })); continue; }
       const [id, label, title, opts = {}] = t;
@@ -7351,7 +7326,6 @@ self.onmessage = async ev => {
   App.cmd = function (id) {
     if (App.mode === 'sketch' && Sketcher.handles(id)) { Sketcher.cmd(id); return; }
     if (App.mode === 'drawing' && Drawing.handles(id)) { Drawing.cmd(id); return; }
-    if (Lessons.handles(id)) { Lessons.cmd(id); return; }
     switch (id) {
       case 'sketch': {
         const s = App.sel[0];
@@ -8224,7 +8198,7 @@ self.onmessage = async ev => {
     document.addEventListener('click', e => { if (!e.target.closest('.menu-wrap,.hud-group,.ctx')) hideMenus(); });
     document.addEventListener('keydown', onKey);
     initView();
-    Sketcher.init(); Features.init(); Drawing.init(); Lessons.init();
+    Sketcher.init(); Features.init(); Drawing.init();
     App.onRegen = null;
     App.regen();
     App.r.resize();
@@ -8232,7 +8206,7 @@ self.onmessage = async ev => {
     if (!App.doc.features.length) { App.showPlanes = true; App.autoPlanes = true; $('#btnPlanes').setAttribute('aria-pressed', 'true'); }
     App.setCmdTab(App.doc.features.length ? 'features' : 'sketch');
     requestAnimationFrame(frame);
-    if (!restored) setTimeout(() => toast('Benvenuto: per iniziare apri la Guida (in alto a destra) oppure la scheda Esercitazioni.', 5000), 400);
+    if (!restored) setTimeout(() => toast('Benvenuto: per iniziare apri la Guida, in alto a destra.', 5000), 400);
     window.__cad = App;
   }
   function setView(v) {
@@ -12568,419 +12542,6 @@ self.onmessage = async ev => {
   D.renderPanel = renderPanel;
 })();
 
-/* Esercitazioni guidate: pezzi meccanici di riferimento, tavola di consegna generata, verifica automatica. */
-(function () {
-  'use strict';
-  const A = () => window.App;
-  const LS = window.Lessons = {};
-  const TAU = Math.PI * 2;
-
-  /* ---------------- costruzione dei modelli di riferimento ---------------- */
-  function SB() {
-    const s = Sketch.newSketch();
-    const pt = (x, y, extra = {}) => { const id = 'p' + (s.next++); s.ents.push({ id, t: 'pt', x, y, ...extra }); return id; };
-    const api = {
-      s, pt,
-      line(a, b, extra = {}) { const id = 'l' + (s.next++); s.ents.push({ id, t: 'ln', a, b, ...extra }); return id; },
-      poly(points) { const ids = points.map(([x, y]) => pt(x, y)); for (let i = 0; i < ids.length; i++) api.line(ids[i], ids[(i + 1) % ids.length]); return ids; },
-      rect(x0, y0, x1, y1) { return api.poly([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]); },
-      circle(cx, cy, r) { const c = pt(cx, cy); const id = 'c' + (s.next++); s.ents.push({ id, t: 'ci', c, r }); return id; },
-      arc(c, a, b) { const id = 'a' + (s.next++); s.ents.push({ id, t: 'ar', c, a, b }); return id; },
-      center(x0, y0, x1, y1) { return api.line(pt(x0, y0), pt(x1, y1), { cons: true, center: true }); },
-    };
-    return api;
-  }
-  function D0(name) { const d = Model.newDoc(); d.name = name; return d; }
-  function feat(doc, f) { f.id = f.id || Model.uid(doc, 'F'); f.name = f.name || Model.defaultName(doc, f.type); doc.features.push(f); return f.id; }
-  function sketch(doc, plane, b) { return feat(doc, { type: 'sketch', plane, sk: b.s }); }
-  // faccia piana per nome (dopo una rigenerazione)
-  function face(doc, pred) {
-    const st = Model.regen(doc);
-    const ids = new Set(st.body.map(p => p.t));
-    for (const id of ids) { const t = st.tags.get(id); if (t.kind === 'plane' && pred(t)) return { kind: 'face', name: t.name, n: t.n, w: t.w }; }
-    throw new Error('faccia non trovata');
-  }
-  // spigolo per punto vicino
-  function edge(doc, p, kind) {
-    const st = Model.regen(doc);
-    let best = null, bd = Infinity;
-    for (const g of Model.edgeGroups(st, st.topo).values()) {
-      const geo = Model.edgeGeometry(g, st, st.topo); if (!geo) continue;
-      if (kind && geo.kind !== kind) continue;
-      for (const e of g.segs) { const a = st.topo.verts[e.a], b = st.topo.verts[e.b]; const d = distPS(p, a, b); if (d < bd) { bd = d; best = { a: st.tags.get(g.t1).name, b: st.tags.get(g.t2).name, p }; } }
-    }
-    return best;
-  }
-  function distPS(p, a, b) { const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]; const L2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2; let t = L2 ? ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / L2 : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(p[0] - a[0] - ab[0] * t, p[1] - a[1] - ab[1] * t, p[2] - a[2] - ab[2] * t); }
-  const near = n => t => Math.abs(t.n[0] - n[0]) < 1e-9 && Math.abs(t.n[1] - n[1]) < 1e-9 && Math.abs(t.n[2] - n[2]) < 1e-9;
-  const nearW = (n, w) => t => near(n)(t) && Math.abs(t.w - w) < 1e-6;
-
-  const LIST = [
-    {
-      id: 'piastra', views: { front: true, top: true, iso: true }, title: 'Piastra forata', level: 'Base', time: '25 min',
-      goal: 'Modella la piastra 80 × 50 × 10 mm con quattro fori Ø8 a 10 mm dai bordi e un foro centrale Ø20.',
-      steps: [
-        'Scheda Schizzo › Schizzo › Piano superiore.',
-        'Rettangolo con un vertice nell\'origine. Quota intelligente: lato orizzontale 80, lato verticale 50. Lo schizzo diventa nero.',
-        'Conferma con ✓, poi Funzioni › Estrusione base: Cieca, 10 mm.',
-        'Seleziona la faccia superiore e premi Schizzo. Disegna i quattro cerchi e quelli del centro.',
-        'Relazione «Uguale» tra i quattro cerchi piccoli; quota un diametro 8 e il centrale 20; quota i centri a 10 mm dagli spigoli (in grigio).',
-        'Taglio estruso: Passante tutto.',
-        'Valuta › Proprietà di massa, poi Verifica il modello.',
-      ],
-      build() {
-        const doc = D0('Piastra forata');
-        const b = SB(); b.rect(0, 0, 80, 50);
-        const s1 = sketch(doc, { kind: 'std', id: 'top' }, b);
-        feat(doc, { type: 'extrude', sketch: s1, end: 'blind', depth: 10 });
-        const top = face(doc, nearW([0, 1, 0], 10));
-        const c = SB(); for (const [x, y] of [[10, 10], [70, 10], [70, 40], [10, 40]]) c.circle(x, y, 4); c.circle(40, 25, 10);
-        const s2 = sketch(doc, top, c);
-        feat(doc, { type: 'cut', sketch: s2, end: 'through' });
-        return doc;
-      },
-    },
-    {
-      id: 'squadretta', views: { front: true, top: true, left: true, iso: true }, title: 'Squadretta a L con raccordo e fori', level: 'Base', time: '30 min',
-      goal: 'Squadretta a L (ali 60 e 40 mm, spessore 8, larghezza 30) con raccordo interno R6 e due fori passanti per viti M6 (ISO 273, Ø6,6).',
-      steps: [
-        'Schizzo sul Piano frontale: profilo a L con la linea (6 lati). Vertice in basso a sinistra nell\'origine.',
-        'Quote: 60, 40, spessore 8 su entrambe le ali (usa «Uguale» o due quote).',
-        'Estrusione base: Piano medio, 30 mm.',
-        'Raccordo R6 sullo spigolo interno (concavo) della L.',
-        'Creazione guidata fori › Passante per vite M6, Passante tutto: un foro al centro dell\'ala orizzontale (35 mm dall\'origine) e uno sull\'ala verticale a 25 mm di altezza.',
-        'Verifica il modello.',
-      ],
-      build() {
-        const doc = D0('Squadretta a L');
-        const b = SB(); b.poly([[0, 0], [60, 0], [60, 8], [8, 8], [8, 40], [0, 40]]);
-        const s1 = sketch(doc, { kind: 'std', id: 'front' }, b);
-        feat(doc, { type: 'extrude', sketch: s1, end: 'mid', depth: 30 });
-        feat(doc, { type: 'fillet', r: 6, edges: [edge(doc, [8, 8, 0], 'line')] });
-        // fori M6 (ISO 273 media Ø6,6)
-        const f1 = face(doc, nearW([0, 1, 0], 8));
-        const h1 = SB(); h1.pt(35, 0, { hole: true });
-        const sh1 = sketch(doc, f1, h1);
-        feat(doc, { type: 'hole', sketch: sh1, kind: 'clear', size: 'M6', fit: 'medium', end: 'through' });
-        const f2 = face(doc, nearW([-1, 0, 0], 0));
-        // faccia x=0, normale -X: riferimento x = Y × (-X) = Z, y = n × x = -X × Z = Y
-        const h2 = SB(); h2.pt(0, 25, { hole: true });
-        const sh2 = sketch(doc, f2, h2);
-        feat(doc, { type: 'hole', sketch: sh2, kind: 'clear', size: 'M6', fit: 'medium', end: 'through' });
-        return doc;
-      },
-    },
-    {
-      id: 'perno', views: { front: true, left: true, iso: true }, title: 'Perno a due diametri', level: 'Base', time: '25 min',
-      goal: 'Perno tornito: tratto Ø30 lungo 20 mm e tratto Ø20 lungo 40 mm, con smussi 1 × 45° alle due estremità.',
-      steps: [
-        'Schizzo sul Piano frontale. Linea di mezzeria orizzontale passante per l\'origine (sarà l\'asse).',
-        'Metà profilo sopra l\'asse con la linea: 0→20 a raggio 15, gradino, 20→60 a raggio 10, chiusura sull\'asse.',
-        'Quote: lunghezze 20 e 60; quota i diametri tra la linea e la mezzeria (Ø30 e Ø20, oppure i raggi 15 e 10).',
-        'Rivoluzione base: 360°.',
-        'Smusso 1 mm (distanza uguale) sui due spigoli circolari delle estremità.',
-        'Verifica il modello.',
-      ],
-      build() {
-        const doc = D0('Perno');
-        const b = SB(); b.poly([[0, 0], [0, 15], [20, 15], [20, 10], [60, 10], [60, 0]]); b.center(-5, 0, 65, 0);
-        const s1 = sketch(doc, { kind: 'std', id: 'front' }, b);
-        feat(doc, { type: 'revolve', sketch: s1, angle: 360 });
-        feat(doc, { type: 'chamfer', d: 1, mode: 'd', edges: [edge(doc, [60, 10, 0], 'circle')] });
-        feat(doc, { type: 'chamfer', d: 1, mode: 'd', edges: [edge(doc, [0, 15, 0], 'circle')] });
-        return doc;
-      },
-    },
-    {
-      id: 'flangia', views: { front: true, left: true, iso: true }, section: { view: 'left', plane: 'right', offset: 0, label: 'A' }, title: 'Flangia con mozzo e sei fori', level: 'Intermedio', time: '40 min',
-      goal: 'Disco Ø100 × 12 con mozzo Ø50 alto 18 mm, foro centrale Ø25 passante e sei fori per viti M8 (Ø9) su circonferenza Ø75.',
-      steps: [
-        'Schizzo sul Piano frontale: cerchio Ø100 con centro nell\'origine. Estrusione base 12 mm.',
-        'Schizzo sulla faccia anteriore: cerchio Ø50 concentrico. Estrusione base 18 mm (mozzo).',
-        'Schizzo sulla faccia del mozzo: cerchio Ø25. Taglio estruso passante tutto.',
-        'Creazione guidata fori › Passante per vite M8 (Ø9), Passante tutto, sulla faccia anteriore del disco: un solo foro a 37,5 mm dal centro, sull\'asse X.',
-        'Serie circolare del foro: asse Z, 6 istanze, 360°.',
-        'Materiale: Acciaio C40. Verifica il modello.',
-      ],
-      build() {
-        const doc = D0('Flangia');
-        const b = SB(); b.circle(0, 0, 50);
-        const s1 = sketch(doc, { kind: 'std', id: 'front' }, b);
-        feat(doc, { type: 'extrude', sketch: s1, end: 'blind', depth: 12 });
-        const f1 = face(doc, nearW([0, 0, 1], 12));
-        const h = SB(); h.circle(0, 0, 25);
-        const s2 = sketch(doc, f1, h);
-        feat(doc, { type: 'extrude', sketch: s2, end: 'blind', depth: 18 });
-        const f2 = face(doc, nearW([0, 0, 1], 30));
-        const c = SB(); c.circle(0, 0, 12.5);
-        const s3 = sketch(doc, f2, c);
-        feat(doc, { type: 'cut', sketch: s3, end: 'through' });
-        const hp = SB(); hp.pt(37.5, 0, { hole: true });
-        const s4 = sketch(doc, f1, hp);
-        const hid = feat(doc, { type: 'hole', sketch: s4, kind: 'clear', size: 'M8', fit: 'medium', end: 'through' });
-        feat(doc, { type: 'cpattern', feats: [hid], axis: { kind: 'axis', id: 'z' }, n: 6, angle: 360 });
-        doc.material = 'c40';
-        return doc;
-      },
-    },
-    {
-      id: 'supporto', views: { front: true, top: true, left: true, iso: true }, title: 'Supporto con fori lamati e cava', level: 'Intermedio', time: '40 min',
-      goal: 'Blocco 80 × 40 × 25 con due fori lamati per viti M8 (ISO 4762) a 15 mm dai lati corti e una cava inferiore larga 20 e profonda 5 per tutta la lunghezza.',
-      steps: [
-        'Schizzo sul Piano superiore: rettangolo 80 × 40 con un vertice nell\'origine. Estrusione base 25.',
-        'Creazione guidata fori › Lamato per vite M8, Passante tutto, sulla faccia superiore: due punti a 15 mm dai lati corti e a metà larghezza.',
-        'Schizzo sul Piano frontale: rettangolo largo 20 (centrato a 40 mm dall\'origine) e alto 5 sulla base.',
-        'Taglio estruso: Passante tutto, anche nella direzione 2.',
-        'Verifica il modello.',
-      ],
-      build() {
-        const doc = D0('Supporto');
-        const b = SB(); b.rect(0, 0, 80, 40);
-        const s1 = sketch(doc, { kind: 'std', id: 'top' }, b);
-        feat(doc, { type: 'extrude', sketch: s1, end: 'blind', depth: 25 });
-        const top = face(doc, nearW([0, 1, 0], 25));
-        const hp = SB(); hp.pt(15, 20, { hole: true }); hp.pt(65, 20, { hole: true });
-        const s2 = sketch(doc, top, hp);
-        feat(doc, { type: 'hole', sketch: s2, kind: 'cbore', size: 'M8', fit: 'medium', end: 'through' });
-        // cava lungo X: profilo sul piano destro (coordinate dello schizzo: x = −Z, y = Y)
-        const pr = SB(); pr.rect(10, 0, 30, 5);
-        const s4 = sketch(doc, { kind: 'std', id: 'right' }, pr);
-        feat(doc, { type: 'cut', sketch: s4, end: 'through', both: true });
-        return doc;
-      },
-    },
-    {
-      id: 'cavav', views: { front: true, top: true, left: true, iso: true }, title: 'Blocchetto con cava a V e smussi', level: 'Intermedio', time: '35 min',
-      goal: 'Blocchetto 60 × 40 × 40 con cava a V a 90° larga 20 e profonda 10 sulla faccia superiore; smussi 2 × 45° sui due spigoli superiori esterni.',
-      steps: [
-        'Schizzo sul Piano frontale: profilo con la linea, vertice in basso a sinistra nell\'origine; la V è centrata.',
-        'Quote: 60, 40, larghezza della V 20, angolo tra i fianchi 90° (quota angolare), profondità 10. Relazione Simmetrica dei fianchi rispetto a una mezzeria verticale.',
-        'Estrusione base 40.',
-        'Smusso 2 mm sui due spigoli superiori esterni (paralleli all\'asse Z).',
-        'Verifica il modello.',
-      ],
-      build() {
-        const doc = D0('Blocchetto a V');
-        const b = SB(); b.poly([[0, 0], [60, 0], [60, 40], [40, 40], [30, 30], [20, 40], [0, 40]]);
-        const s1 = sketch(doc, { kind: 'std', id: 'front' }, b);
-        feat(doc, { type: 'extrude', sketch: s1, end: 'blind', depth: 40 });
-        feat(doc, { type: 'chamfer', d: 2, mode: 'd', edges: [edge(doc, [0, 40, 20], 'line')] });
-        feat(doc, { type: 'chamfer', d: 2, mode: 'd', edges: [edge(doc, [60, 40, 20], 'line')] });
-        return doc;
-      },
-    },
-    {
-      id: 'boccola', views: { front: true, left: true, iso: true }, section: { view: 'front', plane: 'front', offset: 0, label: 'A' }, title: 'Boccola flangiata', level: 'Avanzato', time: '40 min',
-      goal: 'Boccola con flangia Ø60 × 8, corpo Ø40, lunghezza totale 40, foro Ø25 passante; smussi 1 × 45° sul foro alle due estremità e sul bordo esterno del corpo.',
-      steps: [
-        'Schizzo sul Piano frontale: linea di mezzeria orizzontale per l\'origine.',
-        'Profilo della sezione sopra l\'asse (rettangolo con gradino): raggi 12,5 – 30 – 20, lunghezze 8 e 40.',
-        'Rivoluzione base 360°.',
-        'Smusso 1 mm sui due spigoli del foro e sullo spigolo esterno del corpo (estremità Ø40).',
-        'Verifica il modello.',
-      ],
-      build() {
-        const doc = D0('Boccola');
-        const b = SB(); b.poly([[0, 12.5], [0, 30], [8, 30], [8, 20], [40, 20], [40, 12.5]]); b.center(-5, 0, 45, 0);
-        const s1 = sketch(doc, { kind: 'std', id: 'front' }, b);
-        feat(doc, { type: 'revolve', sketch: s1, angle: 360 });
-        feat(doc, { type: 'chamfer', d: 1, mode: 'd', edges: [edge(doc, [0, 12.5, 0], 'circle')] });
-        feat(doc, { type: 'chamfer', d: 1, mode: 'd', edges: [edge(doc, [40, 12.5, 0], 'circle')] });
-        feat(doc, { type: 'chamfer', d: 1, mode: 'd', edges: [edge(doc, [40, 20, 0], 'circle')] });
-        return doc;
-      },
-    },
-    {
-      id: 'leva', views: { front: true, top: true, iso: true }, title: 'Leva con occhielli tangenti', level: 'Avanzato', time: '45 min',
-      goal: 'Leva spessa 10 mm: occhiello R15 e occhiello R10 con centri a 80 mm, raccordati da due linee tangenti; fori Ø12 e Ø8 passanti.',
-      steps: [
-        'Schizzo sul Piano superiore: due cerchi di costruzione no; disegna i due archi esterni e le due linee.',
-        'Relazioni: Tangente tra ogni linea e ogni arco; centri degli archi orizzontali tra loro (Orizzontale tra i punti).',
-        'Quote: R15, R10, distanza tra i centri 80. Centro del primo arco nell\'origine.',
-        'Due cerchi concentrici agli archi: Ø12 e Ø8.',
-        'Estrusione base 10 mm (i fori si formano da soli perché sono contorni interni).',
-        'Verifica il modello.',
-      ],
-      build() {
-        const doc = D0('Leva');
-        const b = SB();
-        const r1 = 15, r2 = 10, dd = 80;
-        const nx = (r1 - r2) / dd, ny = Math.sqrt(1 - nx * nx); // tangenza: c2·n = r1 − r2
-        const c1 = b.pt(0, 0), c2 = b.pt(dd, 0);
-        const p1u = b.pt(r1 * nx, r1 * ny), p2u = b.pt(dd + r2 * nx, r2 * ny);
-        const p1l = b.pt(r1 * nx, -r1 * ny), p2l = b.pt(dd + r2 * nx, -r2 * ny);
-        b.line(p1u, p2u); b.arc(c2, p2l, p2u); b.line(p2l, p1l); b.arc(c1, p1u, p1l);
-        const h1 = b.pt(0, 0), h2 = b.pt(dd, 0);
-        b.s.ents.push({ id: 'ch1', t: 'ci', c: h1, r: 6 }, { id: 'ch2', t: 'ci', c: h2, r: 4 });
-        const s1 = sketch(doc, { kind: 'std', id: 'top' }, b);
-        feat(doc, { type: 'extrude', sketch: s1, end: 'blind', depth: 10 });
-        return doc;
-      },
-    },
-  ];
-  LS.list = LIST;
-
-  /* ---------------- riferimento: proprietà e tavola ---------------- */
-  const refCache = new Map();
-  function ref(lesson) {
-    if (refCache.has(lesson.id)) return refCache.get(lesson.id);
-    const doc = lesson.build();
-    const st = Model.regen(doc);
-    if (st.errors.size) console.warn('Errori nel riferimento', lesson.id, [...st.errors]);
-    const mp = Model.massProperties(st, doc);
-    const r = { doc, st, mp };
-    refCache.set(lesson.id, r);
-    return r;
-  }
-  LS.ref = ref;
-  function refDrawing(lesson) {
-    const r = ref(lesson);
-    if (r.svg) return r.svg;
-    const ds = { sheet: lesson.sheet || 'A4H', scale: 'auto', views: lesson.views || { front: true, top: true, left: true, iso: true }, hidden: true, offsets: {}, section: lesson.section || null, dims: [], axes: true,
-      title: { school: 'Banco CAD – Esercitazioni', title: lesson.title, author: '', date: '', number: 'ES. ' + (LIST.indexOf(lesson) + 1), classe: '', tol: 'ISO 2768-mK', notes: 'Disegno di consegna: modella il pezzo e premi Verifica.' } };
-    const first = Drawing.render({ st: r.st, ds, doc: r.doc });
-    ds.dims = Drawing.smartDims(first.L, ds);
-    r.svg = Drawing.render({ st: r.st, ds, doc: r.doc }).svg;
-    return r.svg;
-  }
-  LS.refDrawing = refDrawing;
-
-  /* ---------------- verifica ---------------- */
-  function verify(lesson) {
-    const App = A();
-    const r = ref(lesson);
-    const st = App.st;
-    const checks = [];
-    if (!st || !st.body.length) return [{ ok: false, text: 'Non c\'è ancora nessun solido nella parte.' }];
-    const errs = st.errors.size;
-    checks.push({ ok: !errs, text: errs ? 'Ci sono funzioni con errori nell\'albero: correggile prima.' : 'Nessuna funzione con errori.' });
-    const m = Model.massProperties(st, App.doc);
-    const rel = (a, b) => Math.abs(a - b) / Math.abs(b);
-    const ext = mp => [mp.bbox.mx[0] - mp.bbox.mn[0], mp.bbox.mx[1] - mp.bbox.mn[1], mp.bbox.mx[2] - mp.bbox.mn[2]].sort((a, b) => a - b);
-    const e1 = ext(m), e2 = ext(r.mp);
-    const extOk = e1.every((v, i) => Math.abs(v - e2[i]) < 0.01);
-    checks.push({ ok: extOk, text: extOk ? `Ingombro corretto: ${e2.map(x => App.fmt(x)).join(' × ')} mm.` : `Ingombro: il tuo pezzo misura ${e1.map(x => App.fmt(x)).join(' × ')} mm, quello richiesto ${e2.map(x => App.fmt(x)).join(' × ')} mm.` });
-    const vOk = rel(m.volume, r.mp.volume) < 1e-4;
-    checks.push({ ok: vOk, text: vOk ? `Volume corretto: ${App.fmt(r.mp.volume)} mm³.` : `Volume: ${App.fmt(m.volume)} mm³ invece di ${App.fmt(r.mp.volume)} mm³ (differenza ${App.fmt(m.volume - r.mp.volume)} mm³): controlla fori, smussi e quote.` });
-    const aOk = rel(m.area, r.mp.area) < 1e-4;
-    checks.push({ ok: aOk, text: aOk ? 'Area della superficie corretta.' : `Area della superficie: ${App.fmt(m.area)} mm² invece di ${App.fmt(r.mp.area)} mm² (forse manca o è in più un raccordo, uno smusso o un foro).` });
-    // schizzi completamente definiti
-    let under = 0;
-    for (const f of App.doc.features) if (f.type === 'sketch' && !f.suppressed) { try { const a = Sketch.analyze(f.sk); if (a.status !== 'full') under++; } catch (e) { /* ignora */ } }
-    checks.push({ ok: !under, warn: true, text: under ? `${under} ${under === 1 ? 'schizzo non è' : 'schizzi non sono'} completamente ${under === 1 ? 'definito' : 'definiti'} (in blu): un buon modello ha tutti gli schizzi neri.` : 'Tutti gli schizzi sono completamente definiti.' });
-    if (lesson.id === 'flangia') { const ok = App.doc.material === 'c40'; checks.push({ ok, text: ok ? 'Materiale: Acciaio C40.' : 'Materiale: assegna Acciaio C40 (Valuta › Materiale).' }); }
-    return checks;
-  }
-  LS.verify = verify;
-
-  /* ---------------- interfaccia ---------------- */
-  let current = null, lastChecks = null;
-  LS.init = function () {
-    const App = A();
-    current = LIST.find(l => l.id === App.lessonId) || null;
-  };
-  LS.handles = id => ['lList', 'lVerify', 'lDrawing', 'lStart'].includes(id);
-  LS.toolbar = function () {
-    return [
-      ['lList', 'Elenco', 'Tutte le esercitazioni', { icon: 'views3' }],
-      ['lDrawing', 'Tavola di consegna', 'Il disegno quotato del pezzo da modellare', { icon: 'drawing', disabled: !current }],
-      ['lStart', 'Nuova parte', 'Comincia l\'esercitazione da una parte vuota', { icon: 'sketch', disabled: !current }],
-      ['lVerify', 'Verifica il modello', 'Confronta il tuo pezzo con quello richiesto', { icon: 'verify', disabled: !current }],
-    ];
-  };
-  LS.cmd = function (id) {
-    switch (id) {
-      case 'lList': current = null; render(); return;
-      case 'lDrawing': if (current) showDrawing(current); return;
-      case 'lStart': if (current) startLesson(current); return;
-      case 'lVerify': if (current) { lastChecks = verify(current); render(); openPanel(); } return;
-    }
-  };
-  LS.open = function () { openPanel(); render(); };
-  function openPanel() { const App = A(); document.querySelector('#right').hidden = false; App.rightPanel = 'lessons'; }
-  function render() {
-    const App = A(), el = App.el;
-    const body = document.querySelector('#rightBody');
-    body.innerHTML = '';
-    document.querySelector('#rightTitle').textContent = current ? 'Esercitazione ' + (LIST.indexOf(current) + 1) : 'Esercitazioni';
-    App.updateCommands();
-    if (!current) {
-      body.append(el('p', { class: 'note' }, 'Ogni esercitazione ha una tavola quotata da riprodurre. Alla fine «Verifica il modello» confronta il tuo pezzo con quello richiesto (ingombro, volume, superficie).'));
-      const list = el('div', { class: 'les-list' });
-      const done = getDone();
-      LIST.forEach((l, i) => {
-        const b = el('button', { class: 'les-item' + (done.has(l.id) ? ' done' : ''), type: 'button', onclick: () => { current = l; App.lessonId = l.id; App.save(); lastChecks = null; render(); } },
-          el('span', { class: 'n' }, String(i + 1)), el('span', { class: 't' }, l.title), el('span', { class: 'm' }, l.level + ' · ' + l.time));
-        list.append(b);
-      });
-      body.append(list);
-      return;
-    }
-    const l = current;
-    const wrap = el('div', { class: 'les' });
-    wrap.append(el('button', { class: 'btn btn-small', type: 'button', onclick: () => { current = null; render(); } }, '← Tutte le esercitazioni'));
-    wrap.append(el('h3', {}, l.title), el('span', { class: 'pill' }, l.level + ' · ' + l.time));
-    wrap.append(el('p', { class: 'goal' }, l.goal));
-    const dr = el('div', { class: 'refdraw', title: 'Clic per ingrandire', html: refDrawing(l) });
-    dr.addEventListener('click', () => showDrawing(l));
-    wrap.append(el('h4', {}, 'Tavola di consegna'), dr);
-    const ol = el('ol');
-    for (const s of l.steps) ol.append(el('li', {}, s));
-    wrap.append(el('h4', {}, 'Procedimento consigliato'), ol);
-    const r = ref(l);
-    wrap.append(el('h4', {}, 'Dati del pezzo richiesto'), el('dl', { class: 'kv' },
-      el('dt', {}, 'Volume'), el('dd', {}, App.fmt(r.mp.volume) + ' mm³'),
-      el('dt', {}, 'Area della superficie'), el('dd', {}, App.fmt(r.mp.area) + ' mm²')));
-    const act = el('div', { class: 'btnrow', style: 'margin-top:10px' },
-      el('button', { class: 'btn', type: 'button', onclick: () => startLesson(l) }, 'Nuova parte per l\'esercizio'),
-      el('button', { class: 'btn btn-primary', type: 'button', onclick: () => { lastChecks = verify(l); if (lastChecks.filter(c => !c.warn).every(c => c.ok)) markDone(l.id); render(); } }, 'Verifica il modello'));
-    wrap.append(act);
-    if (lastChecks) {
-      const ul = el('ul', { class: 'checks' });
-      for (const c of lastChecks) ul.append(el('li', {}, el('span', { class: c.ok ? 'ok' : 'no' }, c.ok ? '✓' : (c.warn ? '!' : '✗')), el('span', {}, c.text)));
-      wrap.append(el('h4', {}, 'Risultato della verifica'), ul);
-      if (lastChecks.filter(c => !c.warn).every(c => c.ok)) wrap.append(el('p', { class: 'note ok' }, 'Il pezzo corrisponde alla tavola. Ora prova la messa in tavola: scheda Messa in tavola › Quote di ingombro.'));
-    }
-    wrap.append(el('h4', {}, 'Soluzione'), el('button', { class: 'btn btn-small', type: 'button', onclick: () => loadSolution(l) }, 'Carica il modello risolto (sostituisce la parte)'));
-    body.append(wrap);
-  }
-  function showDrawing(l) {
-    const App = A();
-    App.modal(l.title, `<div style="background:#fff;border:1px solid var(--line);border-radius:6px;overflow:auto;max-height:70vh">${refDrawing(l).replace('<svg ', '<svg style="width:100%;height:auto;min-width:640px" ')}</div>`, [
-      { label: 'Esporta SVG', fn: () => App.offerFile(l.id + '-consegna.svg', 'image/svg+xml', refDrawing(l), 'Tavola di consegna') },
-      { label: 'Chiudi', primary: true },
-    ]);
-    const card = document.querySelector('.modal-card'); if (card) card.style.width = 'min(1100px, 100%)';
-  }
-  function startLesson(l) {
-    const App = A();
-    const go = () => {
-      if (App.mode === 'sketch') Sketcher.exit(false);
-      App.change(() => { App.doc = Model.newDoc(); App.doc.name = l.title; App.sel = []; App.drawingState = null; });
-      document.querySelector('#docName').value = l.title;
-      App.lessonId = l.id; App.save();
-      App.r.setView(GLView.Renderer.viewQ('iso'));
-      App.r.fit();
-      App.setCmdTab('sketch');
-      current = l; openPanel(); render();
-    };
-    if (App.doc.features.length) App.confirm('Nuova parte per l\'esercizio', 'La parte attuale verrà sostituita da una parte vuota (puoi tornare indietro con Annulla).', 'Comincia', go);
-    else go();
-  }
-  function loadSolution(l) {
-    const App = A();
-    App.confirm('Caricare la soluzione?', 'La parte attuale verrà sostituita dal modello risolto. Prova prima a farlo da solo!', 'Carica', () => {
-      if (App.mode === 'sketch') Sketcher.exit(false);
-      const doc = JSON.parse(JSON.stringify(ref(l).doc));
-      App.change(() => { App.doc = doc; App.sel = []; App.drawingState = null; });
-      document.querySelector('#docName').value = doc.name;
-      App.r.fit();
-    });
-  }
-  function getDone() { try { return new Set(JSON.parse(localStorage.getItem('banco-cad-done') || '[]')); } catch (e) { return new Set(); } }
-  function markDone(id) { try { const s = getDone(); s.add(id); localStorage.setItem('banco-cad-done', JSON.stringify([...s])); } catch (e) { /* ignora */ } }
-})();
-
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => App.init()); else App.init();
 
 
@@ -12991,7 +12552,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
   // [categoria, termine, alias (altri modi in cui compare nell'interfaccia), spiegazione]
   const E = [
     // ---------- interfaccia ----------
-    ['Interfaccia', 'CommandManager', ['barra dei comandi'], 'La barra in alto con le schede Funzioni, Schizzo, Valuta, Messa in tavola ed Esercitazioni. Ogni scheda mostra i comandi di quel gruppo, come in SolidWorks.'],
+    ['Interfaccia', 'CommandManager', ['barra dei comandi'], 'La barra in alto con le schede Funzioni, Schizzo, Valuta e Messa in tavola. Ogni scheda mostra i comandi di quel gruppo, come in SolidWorks.'],
     ['Interfaccia', 'Albero di progettazione', ['featuremanager', 'albero'], 'L\'elenco a sinistra con i piani, l\'origine e tutte le funzioni nell\'ordine in cui sono state create. Il pezzo si ricostruisce seguendo l\'albero dall\'alto in basso: doppio clic su una funzione per modificarla, clic destro per gli altri comandi.'],
     ['Interfaccia', 'PropertyManager', ['pannello delle proprietà'], 'Il pannello che si apre a sinistra quando crei o modifichi una funzione: contiene i parametri (profondità, raggio, numero di istanze…). ✓ conferma, ✕ annulla.'],
     ['Interfaccia', 'Angolo di conferma', ['conferma'], 'I pulsanti ✓ e ✕ in alto a destra della vista: confermano o annullano la funzione o lo schizzo aperti, come il PropertyManager.'],
@@ -13322,7 +12883,7 @@ const Export = isNode ? require(path.join(dir, 'export.js')) : root.Export;
 const TOL = isNode ? +(process.env.TOL || 0.01) : 0.01;
 const PI = Math.PI;
 
-/* ---------- costruttori (come nelle esercitazioni) ---------- */
+/* ---------- costruttori ---------- */
 function SB() {
   const s = Sketch.newSketch();
   const pt = (x, y, extra = {}) => { const id = 'p' + (s.next++); s.ents.push({ id, t: 'pt', x, y, ...extra }); return id; };
@@ -13389,7 +12950,7 @@ T('Asola (rettangolo 40 + due semicerchi R5) × 10', () => {
   b.line(p1, p2); b.arc(c1, p2, p3); b.line(p3, p4); b.arc(c2, p4, p1);
   const s = sketch(d, STD('front'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 10 }); return d;
 }, { V: (400 + 25 * PI) * 10, A: 2 * (400 + 25 * PI) + (80 + 10 * PI) * 10, C: [20, 0, 5] });
-T('Piastra forata (esercitazione 1)', () => {
+T('Piastra forata', () => {
   const d = box(); const top = face(d, nearW([0, 1, 0], 10));
   const c = SB(); for (const [x, y] of [[10, 10], [70, 10], [70, 40], [10, 40]]) c.circle(x, y, 4); c.circle(40, 25, 10);
   const s = sketch(d, top, c); feat(d, { type: 'cut', sketch: s, end: 'through' }); return d;
@@ -13435,7 +12996,7 @@ T('Smusso 3 su spigolo convesso (lungo 80)', () => {
 T('Smusso distanza-distanza 2×4', () => {
   const d = box(); feat(d, { type: 'chamfer', mode: 'dd', d: 2, d2: 4, edges: [edge(d, [40, 10, 0], 'line')] }); return d;
 }, { V: 40000 - 4 * 80 });
-T('Squadretta a L con raccordo concavo R6 (esercitazione 2)', () => {
+T('Squadretta a L con raccordo concavo R6', () => {
   const d = D0('L'); const b = SB(); b.poly([[0, 0], [60, 0], [60, 8], [8, 8], [8, 40], [0, 40]]);
   const s = sketch(d, STD('front'), b); feat(d, { type: 'extrude', sketch: s, end: 'mid', depth: 30 });
   feat(d, { type: 'fillet', r: 6, edges: [edge(d, [8, 8, 0], 'line')] }); return d;
@@ -14297,7 +13858,7 @@ if (isNode) {
   add('Per iniziare', 'interfaccia', 'Com\'è fatto lo schermo', {
     why: 'Il Banco CAD è organizzato come SolidWorks: comandi in alto, albero a sinistra, pezzo al centro.',
     steps: [
-      'In alto c\'è il [[CommandManager]]: le schede **Funzioni**, **Schizzo**, **Valuta**, **Messa in tavola** ed **Esercitazioni** cambiano i pulsanti mostrati sotto.',
+      'In alto c\'è il [[CommandManager]]: le schede **Funzioni**, **Schizzo**, **Valuta** e **Messa in tavola** cambiano i pulsanti mostrati sotto.',
       'A sinistra c\'è l\'[[Albero di progettazione]]: piani, origine e tutte le funzioni nell\'ordine in cui le hai fatte.',
       'Quando crei o modifichi una funzione, al posto dell\'albero compare il [[PropertyManager]] con i parametri; ✓ conferma, ✕ annulla.',
       'Al centro c\'è la vista 3D; in alto la barretta con Adatta, orientamenti, stile di visualizzazione, sezione e piani.',
@@ -14330,7 +13891,7 @@ if (isNode) {
       'Premi direttamente **Estrusione base** (scheda Funzioni): lo schizzo si conferma da solo.',
       'Scrivi la [[Profondità]] e conferma con ✓.',
     ],
-    tips: ['Prima la forma, poi le quote: non serve disegnare preciso, le quote sistemano le misure.', 'Per esercitarti apri la scheda Esercitazioni: ogni esercizio ha una tavola da riprodurre e la verifica automatica.'],
+    tips: ['Prima la forma, poi le quote: non serve disegnare preciso, le quote sistemano le misure.'],
     terms: ['Schizzo', 'Quota intelligente', 'Completamente definito', 'Estrusione base'],
   });
   add('Per iniziare', 'salvare', 'Salvare, esportare e riaprire il lavoro', {
@@ -14779,20 +14340,6 @@ if (isNode) {
     ],
     tips: ['Le quote e la storia delle funzioni non passano: nessun CAD le scambia con gli altri. Si possono aggiungere funzioni nuove sopra al pezzo importato.', 'Il Banco CAD rilegge i suoi STEP con Progetto › Importa STEP o IGES.'],
     terms: ['Esporta STEP', 'STEP', 'Superficie vera'],
-  });
-
-  /* ================= 7. Esercitazioni ================= */
-  add('Esercitazioni', 'esercizi', 'Fare un\'esercitazione e verificarla', {
-    why: 'Esercitarsi su pezzi meccanici con controllo automatico.',
-    cmd: { tab: 'lessons', id: 'lList' },
-    steps: [
-      'Apri la scheda **Esercitazioni** e scegli un esercizio dall\'elenco.',
-      'Leggi l\'obiettivo e guarda la tavola di consegna (clic per ingrandirla).',
-      '«Nuova parte» comincia da una parte vuota; segui i passi suggeriti.',
-      '«Verifica il modello» confronta il tuo pezzo con quello richiesto: ingombro, volume, area, schizzi definiti (e materiale se richiesto).',
-    ],
-    tips: ['Una verifica verde con tutti gli schizzi neri è il risultato da consegnare.'],
-    terms: ['Ingombro', 'Volume', 'Completamente definito'],
   });
 
   /* ---------------- testo ---------------- */

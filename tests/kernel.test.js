@@ -12,7 +12,7 @@ const Export = isNode ? require(path.join(dir, 'export.js')) : root.Export;
 const TOL = isNode ? +(process.env.TOL || 0.01) : 0.01;
 const PI = Math.PI;
 
-/* ---------- costruttori (come nelle esercitazioni) ---------- */
+/* ---------- costruttori ---------- */
 function SB() {
   const s = Sketch.newSketch();
   const pt = (x, y, extra = {}) => { const id = 'p' + (s.next++); s.ents.push({ id, t: 'pt', x, y, ...extra }); return id; };
@@ -79,7 +79,7 @@ T('Asola (rettangolo 40 + due semicerchi R5) × 10', () => {
   b.line(p1, p2); b.arc(c1, p2, p3); b.line(p3, p4); b.arc(c2, p4, p1);
   const s = sketch(d, STD('front'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 10 }); return d;
 }, { V: (400 + 25 * PI) * 10, A: 2 * (400 + 25 * PI) + (80 + 10 * PI) * 10, C: [20, 0, 5] });
-T('Piastra forata (esercitazione 1)', () => {
+T('Piastra forata', () => {
   const d = box(); const top = face(d, nearW([0, 1, 0], 10));
   const c = SB(); for (const [x, y] of [[10, 10], [70, 10], [70, 40], [10, 40]]) c.circle(x, y, 4); c.circle(40, 25, 10);
   const s = sketch(d, top, c); feat(d, { type: 'cut', sketch: s, end: 'through' }); return d;
@@ -125,7 +125,7 @@ T('Smusso 3 su spigolo convesso (lungo 80)', () => {
 T('Smusso distanza-distanza 2×4', () => {
   const d = box(); feat(d, { type: 'chamfer', mode: 'dd', d: 2, d2: 4, edges: [edge(d, [40, 10, 0], 'line')] }); return d;
 }, { V: 40000 - 4 * 80 });
-T('Squadretta a L con raccordo concavo R6 (esercitazione 2)', () => {
+T('Squadretta a L con raccordo concavo R6', () => {
   const d = D0('L'); const b = SB(); b.poly([[0, 0], [60, 0], [60, 8], [8, 8], [8, 40], [0, 40]]);
   const s = sketch(d, STD('front'), b); feat(d, { type: 'extrude', sketch: s, end: 'mid', depth: 30 });
   feat(d, { type: 'fillet', r: 6, edges: [edge(d, [8, 8, 0], 'line')] }); return d;

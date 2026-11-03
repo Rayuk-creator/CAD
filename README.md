@@ -4,7 +4,7 @@
 
 Modellatore 3D parametrico per la scuola, ispirato a SolidWorks, in **un'unica pagina HTML**: si apre con un doppio clic in Chrome, Edge o Firefox, non c'è niente da installare e funziona anche senza internet.
 
-![Banco CAD: flangia con mozzo e sei fori nella vista isometrica](docs/img/modello-3d.png)
+![Banco CAD: flangia con mozzo e otto fori nella vista isometrica](docs/img/modello-3d.png)
 
 Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo di lavoro dei CAD professionali (schizzo quotato, funzioni, albero di progettazione, messa in tavola secondo le norme ISO) su un programma leggero che gira su qualunque computer o tablet della scuola.
 
@@ -16,7 +16,7 @@ Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo
 2. [Il primo pezzo in 6 passi](#il-primo-pezzo-in-6-passi)
 3. [Comandi della vista](#comandi-della-vista)
 4. [Cosa si può fare](#cosa-si-può-fare)
-5. [Guida, glossario ed esercitazioni](#guida-glossario-ed-esercitazioni)
+5. [Guida e glossario](#guida-e-glossario)
 6. [Calcoli verificati](#calcoli-verificati)
 7. [Per chi sviluppa](#per-chi-sviluppa)
 
@@ -35,7 +35,7 @@ Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo
 > 2. GitHub scrive che il file è troppo grande da mostrare («Sorry about that, but we can't show files that are this big right now»): **è normale**, il file è a posto. Premi il pulsante **Download raw file**: è la **freccia verso il basso**, in alto a destra. **Non** premere «Raw» né «View raw»: mostrerebbero solo il testo del programma.
 > 3. Il file scaricato si chiama `index.html`, **come il Convertitore DWG → DXF**: rinominalo, per esempio `banco-cad.html`, così non li confondi.
 > 4. Aprilo con un **doppio clic**: si apre in Chrome, Edge o Firefox. Non serve internet.
-> 5. Premi **Guida** in alto a destra e comincia da «Il primo pezzo in 6 passi», oppure apri la scheda **Esercitazioni**.
+> 5. Premi **Guida** in alto a destra e comincia da «Il primo pezzo in 6 passi».
 
 Il lavoro si salva da solo nel browser. Per portarlo su un altro computer usa **Progetto › Esporta il progetto** e poi **Importa un progetto**.
 
@@ -121,23 +121,20 @@ Proprietà di massa (volume, area, massa, baricentro, ingombro) calcolate sulle 
 
 Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nascoste, assi, viste in sezione tratteggiate, quote (anche automatiche), cartiglio, fogli da A4 ad A2 con scale unificate. L'assonometria si può avere **ombreggiata**, con i colori del pezzo (anche quelli di un file STEP). **Salva PDF** (un file PDF vettoriale della tavola sul foglio vero, in scala 1:1), stampa in scala, esportazione **SVG** e **DXF** (per AutoCAD). Dal menu Progetto anche **Salva PDF** dello schizzo (vettoriale, con la scala unificata più grande che lo fa entrare in un A4) o della vista 3D, l'esportazione **STEP** del pezzo per aprirlo in SolidWorks, Inventor, Fusion o FreeCAD (solido in millimetri; le superfici curve divise in facce piane) e l'esportazione **STL** per la stampa 3D.
 
-## Guida, glossario ed esercitazioni
+## Guida e glossario
 
 ![Guida «Come si fa»: raccordo e smusso degli spigoli](docs/img/guida.png)
 
-- **Guida** (pulsante in alto): 41 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
-- **Glossario**: oltre 130 termini spiegati in parole semplici (comandi, relazioni, opzioni, norme). La piccola **ⓘ** accanto ai titoli dei pannelli apre la spiegazione della voce.
-- **Esercitazioni**: 8 pezzi meccanici, dalla piastra forata alla leva con occhielli tangenti, ognuno con la tavola di consegna, il procedimento consigliato e la **verifica automatica** del modello (ingombro, volume, area, schizzi definiti).
-
-![Esercitazione 2: squadretta a L con la tavola di consegna](docs/img/esercitazioni.png)
+- **Guida** (pulsante in alto): 45 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
+- **Glossario**: oltre 160 termini spiegati in parole semplici (comandi, relazioni, opzioni, norme). La piccola **ⓘ** accanto ai titoli dei pannelli apre la spiegazione della voce.
 
 ## Calcoli verificati
 
-Ogni calcolo del programma è controllato da prove automatiche: 110 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, su archi, sul bordo di ellissi e spline e con la propagazione tangente, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 14 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, assiemi con colori, file danneggiati), e 14 rileggono gli STEP esportati dal Banco CAD: con le superfici vere il volume riletto è quello esatto (sfera, cono, tubo, piastra forata).
+Ogni calcolo del programma è controllato da prove automatiche: 111 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, su archi, sul bordo di ellissi e spline e con la propagazione tangente, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 14 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, assiemi con colori, file danneggiati), e 14 rileggono gli STEP esportati dal Banco CAD: con le superfici vere il volume riletto è quello esatto (sfera, cono, tubo, piastra forata).
 
 Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifica**.
 
-![Autoverifica: 66 prove superate](docs/img/autoverifica.png)
+![Autoverifica: 152 prove superate](docs/img/autoverifica.png)
 
 ## Per chi sviluppa
 
@@ -147,7 +144,7 @@ Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScr
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (152 + 28 prove STEP/IGES e STEP esportati + 14 del convertitore DWG, circa un minuto)
+npm run test:kernel               # solo i calcoli (152 + 28 prove STEP/IGES e STEP esportati + 15 del convertitore DWG, circa un minuto)
 npm run test:ui                   # solo l'interfaccia in Chromium (52 prove)
 ```
 

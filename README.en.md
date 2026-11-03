@@ -6,7 +6,7 @@ A parametric 3D modeller for schools, inspired by SolidWorks, in **a single HTML
 
 > The program's interface is in **Italian**. This page explains what it does and how to use it; command names are given in Italian with their meaning.
 
-![Banco CAD: flange with hub and six holes in isometric view](docs/img/modello-3d.png)
+![Banco CAD: flange with hub and eight holes in isometric view](docs/img/modello-3d.png)
 
 Designed for technical secondary schools (mechanical and mechatronic engineering): students learn the workflow of professional CAD (dimensioned sketch, features, feature tree, ISO technical drawings) on a lightweight program that runs on any school computer or tablet.
 
@@ -18,7 +18,7 @@ Designed for technical secondary schools (mechanical and mechatronic engineering
 2. [Your first part in 6 steps](#your-first-part-in-6-steps)
 3. [View controls](#view-controls)
 4. [What it can do](#what-it-can-do)
-5. [Guide, glossary and exercises](#guide-glossary-and-exercises)
+5. [Guide and glossary](#guide-and-glossary)
 6. [Verified calculations](#verified-calculations)
 7. [For developers](#for-developers)
 
@@ -37,7 +37,7 @@ Designed for technical secondary schools (mechanical and mechatronic engineering
 > 2. GitHub says the file is too big to display ("Sorry about that, but we can't show files that are this big right now"): **this is normal**, the file is fine. Press the **Download raw file** button: the **down arrow** at the top right. Do **not** press "Raw" or "View raw": they would only show the program's text.
 > 3. The downloaded file is called `index.html`, **like the DWG → DXF converter**: rename it, for example `banco-cad.html`, so you don't mix them up.
 > 4. **Double-click** it: it opens in Chrome, Edge or Firefox. No internet needed.
-> 5. Press **Guida** (Guide) at the top right and start with «Il primo pezzo in 6 passi» (your first part in 6 steps), or open the **Esercitazioni** (Exercises) tab.
+> 5. Press **Guida** (Guide) at the top right and start with «Il primo pezzo in 6 passi» (your first part in 6 steps).
 
 Your work is saved automatically in the browser. To move it to another computer use **Progetto › Esporta il progetto** (Project › Export) and then **Importa un progetto** (Import).
 
@@ -123,23 +123,20 @@ Mass properties (volume, area, mass, centre of mass, bounding box) computed on t
 
 Orthographic views in **first-angle projection** (ISO 5456-2), hidden lines, centre lines, hatched section views, dimensions (also automatic), title block, A4 to A2 sheets with standard scales. The isometric view can be **shaded**, with the part's colours (including those of a STEP file). **Salva PDF** (*save PDF*: a vector PDF of the drawing on the real sheet size, at 1:1), print to scale, export to **SVG** and **DXF** (for AutoCAD). The Project menu also saves a PDF of the open sketch (vector, at the largest standard scale that fits an A4 sheet) or of the 3D view, exports the part as **STEP** to open it in SolidWorks, Inventor, Fusion or FreeCAD (a solid in millimetres; curved surfaces split into flat faces) and as **STL** for 3D printing.
 
-## Guide, glossary and exercises
+## Guide and glossary
 
 ![«How to» guide: fillet and chamfer edges](docs/img/guida.png)
 
-- **Guida** (Guide, button at the top): 41 «how to» topics with numbered steps, tips and terms. **Mostrami dove** (Show me where) opens the right tab and makes the command blink.
-- **Glossario** (Glossary): more than 130 terms explained in plain words (commands, relations, options, standards). The small **ⓘ** next to panel headings opens the explanation of that item.
-- **Esercitazioni** (Exercises): 8 mechanical parts, from a drilled plate to a lever with tangent eyes, each with its drawing to reproduce, a suggested procedure and **automatic checking** of the model (bounding box, volume, area, fully defined sketches).
-
-![Exercise 2: L-bracket with its drawing](docs/img/esercitazioni.png)
+- **Guida** (Guide, button at the top): 45 «how to» topics with numbered steps, tips and terms. **Mostrami dove** (Show me where) opens the right tab and makes the command blink.
+- **Glossario** (Glossary): more than 160 terms explained in plain words (commands, relations, options, standards). The small **ⓘ** next to panel headings opens the explanation of that item.
 
 ## Verified calculations
 
-Every calculation is checked by automatic tests: 110 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, arcs, the edges of ellipses and splines and tangent propagation, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL, OBJ, STEP and IGES, sketches imported from DXF including ellipses and splines, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero. Another 14 tests run the real reader on STEP and IGES files written for the purpose (blocks, cylinder, plate with a hole, different units, assemblies with colours, damaged files), and 14 read back the STEP files exported by Banco CAD: with true surfaces the volume read back is the exact one (sphere, cone, tube, plate with holes).
+Every calculation is checked by automatic tests: 111 test parts (extrusions, revolutions, cuts, fillets and chamfers including several edges at once, arcs, the edges of ellipses and splines and tangent propagation, ISO holes, patterns, mirror, draft, sweep, ribs, bodies imported from STL, OBJ, STEP and IGES, sketches imported from DXF including ellipses and splines, dimensioned sketches) are rebuilt and their volume, area, centre of mass and bounding box are compared with values worked out by hand with geometry formulas. The allowed error is **1 %**; today it is practically zero. Another 14 tests run the real reader on STEP and IGES files written for the purpose (blocks, cylinder, plate with a hole, different units, assemblies with colours, damaged files), and 14 read back the STEP files exported by Banco CAD: with true surfaces the volume read back is the exact one (sphere, cone, tube, plate with holes).
 
 The same tests can be run inside the program: **Valuta › Autoverifica** (Evaluate › Self-check).
 
-![Self-check: 66 tests passed](docs/img/autoverifica.png)
+![Self-check: 152 tests passed](docs/img/autoverifica.png)
 
 ## For developers
 
@@ -149,7 +146,7 @@ The program is one file, `index.html` (about 5 MB), with HTML, CSS and JavaScrip
 npm install
 npx playwright install chromium   # first time only
 npm test                          # all tests
-npm run test:kernel               # calculations only (152 + 28 STEP/IGES and exported STEP + 14 DWG converter tests, about a minute)
+npm run test:kernel               # calculations only (152 + 28 STEP/IGES and exported STEP + 15 DWG converter tests, about a minute)
 npm run test:ui                   # interface only, in Chromium (52 tests)
 ```
 
