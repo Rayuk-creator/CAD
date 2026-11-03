@@ -520,6 +520,10 @@ T('DXF: SPLINE per 2 punti con le tangenti agli estremi, chiusa da una LINE', ()
 // perpendicolare al piano frontale del profilo. B′(t) = 200 (t, −(1 − t)), |B′| = 200 √(2t² − 2t + 1); con s = t − ½:
 // L = 200√2 ∫₋½^½ √(s² + ¼) ds = 100 + 50√2·arcsinh 1; tubo R2 → V = π·4·L (teorema di Pappo-Guldino; raggio di curvatura minimo 70,7)
 const parabolaPath = p => MI.dxfToSketch(p.s, MI.parseDXF(dxfFile([dSpl(2, [0, 0, 0, 1, 1, 1], [[0, 0], [0, -100], [100, -100]])])).geo, {});
+// percorso che si incrocia: 60 in giù, arco R20 di 270°, poi 40 a sinistra: i due tratti dritti si incrociano ad angolo retto.
+// L = 60 + 30π + 40; R = 2: V = π R² L meno un solido di Steinmetz (16/3 R³), che i due tratti hanno in comune
+T('Sweep: percorso che si incrocia: il volume in comune si conta una volta', () => sweepDoc(p => { const a = p.pt(0, 0), b = p.pt(0, -60), c = p.pt(20, -60), e = p.pt(20, -40), g = p.pt(-20, -40); p.line(a, b); p.arc(c, b, e); p.line(e, g); }, b => b.circle(0, 0, 2)),
+  { V: 4 * PI * (100 + 30 * PI) - 16 / 3 * 8 });
 T('Sweep: cerchio R2 lungo una SPLINE importata da DXF (arco di parabola)', () => sweepDoc(parabolaPath, b => b.circle(0, 0, 2)),
   { V: 4 * PI * (100 + 50 * Math.SQRT2 * Math.asinh(1)) });
 
@@ -800,6 +804,28 @@ SK.push(['STEP: facce vere conservate nel salvataggio (pack/unpack)', () => {
   const u = MI.unpack(JSON.parse(JSON.stringify(MI.pack(m))));
   const a = MI.analyze(u);
   return { ok: true, got: [u.f.length, u.f[0], u.f[u.f.length - 1], a.brepFaces, a.open], exp: [24, 0, 2, 3, 0] };
+}]);
+SK.push(['STEP: due facce vere nello stesso piano restano due facce, con lo spigolo in mezzo', () => {
+  // cubo 20: la faccia z = 20 è divisa in due rettangoli (x 0..8 e 8..20). Facce 6 + 1. Spigoli: i 2 lati y = 0 e y = 20 di quella
+  // faccia diventano 2 ciascuno (toccano due facce), più quello in mezzo: 12 + 2 + 1 = 15
+  const q = (a, b, c, e) => [[a, b, c], [a, e, c]];
+  const f = boxFaces(0, 0, 0, 20, 20, 20).filter(tt => !tt.every(t => t.every(p => p[2] === 20)));
+  const half = (x0, x1) => [[[x0, 0, 20], [x1, 0, 20], [x1, 20, 20]], [[x0, 0, 20], [x1, 20, 20], [x0, 20, 20]]];
+  const d = D0('s'); cadImp(d, [occtMesh([...f, half(0, 8), half(8, 20)])]);
+  const st = Model.regen(d), g = Model.edgeGroups(st, st.topo);
+  const top = new Set(st.body.filter(p => p.p.n[2] > 0.5).map(p => st.topo.faceKeys[p.t]));
+  const mp = Model.massProperties(st, d);
+  const open = st.topo.edges.filter(e => e.polys.length !== 2).length;
+  return { ok: !st.errors.size, got: [[...g.values()].length, top.size, new Set(st.topo.faceKeys.filter((k, i) => st.body.some(p => p.t === i))).size, mp.volume, open + 1], exp: [15, 2, 7, 8000, 1] };
+}]);
+SK.push(['Sweep lungo una spline: nessuna scheggia (area sotto 10⁻⁴ mm²), corpo chiuso', () => {
+  const st = Model.regen(sweepDoc(parabolaPath, b => b.circle(0, 0, 2)));
+  if (st.errors.size || !st.body.length) throw new Error('pezzo non costruito');
+  let tiny = 0; const area = p => { let s = 0; for (let i = 1; i < p.v.length - 1; i++) { const u = p.v[i].map((x, k) => x - p.v[0][k]), w = p.v[i + 1].map((x, k) => x - p.v[0][k]); s += Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]) / 2; } return s; };
+  for (const p of st.body) if (area(p) < 1e-4) tiny++;
+  const open = st.topo.edges.filter(e => e.polys.length !== 2).length;
+  const s = stepOf(sweepDoc(parabolaPath, b => b.circle(0, 0, 2))).stats;
+  return { ok: true, got: [tiny + 1, open + 1, s.badEdges + 1, s.openLoops + 1], exp: [1, 1, 1, 1] };
 }]);
 SK.push(['STEP e IGES: riconoscimento del tipo e messaggi per i file sbagliati', () => {
   const code = t => ({ step: 1, iges: 2, stepxml: 3 })[MI.cadKind(enc(t))] || 0;

@@ -1324,7 +1324,8 @@ label.chk .gl-i { margin-left: 2px; }
   function surfKey(tg) {
     if (!tg) return 'x';
     const q = v => Math.round(v * 1e5) / 1e5;
-    if (tg.kind === 'plane') return 'P' + tg.n.map(x => q(x)).join(',') + '|' + q(tg.w);
+    // facce vere di un file STEP o IGES nello stesso piano: restano facce diverse, con lo spigolo in mezzo, come nel file
+    if (tg.kind === 'plane') return 'P' + tg.n.map(x => q(x)).join(',') + '|' + q(tg.w) + (tg.mesh && tg.bf !== undefined ? '|' + tg.feature + ':' + tg.bf : '');
     // asse canonico
     let d = tg.d;
     const s = (Math.abs(d[0]) > 1e-9 ? d[0] : Math.abs(d[1]) > 1e-9 ? d[1] : d[2]) < 0 ? -1 : 1;
@@ -5098,9 +5099,16 @@ self.onmessage = async ev => {
     let rho = 0;
     for (const rg of regions) for (const p of S.sampleLoop(rg.outer)) rho = Math.max(rho, Math.hypot(p[0], p[1]));
     let X = flip ? mul(Fp.x, -1) : Fp.x.slice(), Y = Fp.y.slice(), T = T0, A = P0;
+    // I tratti tangenti si toccano solo sui tappi: si tolgono i due tappi e si mettono insieme le facce, senza passare dai
+    // tagli BSP, che lascerebbero schegge di triangoli minuscole. Se il percorso torna su sé stesso, servono i tagli veri.
+    const closed = !!ch.chains[0].closed && segs.length > 1;
+    const direct = sweepClearOfItself(segs, rho, closed);
+    const capOn = (o, n) => p => Math.abs(dot(p.p.n, n)) > 0.999 && p.v.every(v => Math.abs(dot(sub(v, o), n)) < 1e-6);
+    const areaOf = polys => polys.reduce((sum, p) => { for (let i = 1; i < p.v.length - 1; i++) sum += len(cross(sub(p.v[i], p.v[0]), sub(p.v[i + 1], p.v[0]))) / 2; return sum; }, 0);
     let out = null;
     segs.forEach((s, k) => {
       const base = f.id + '~' + (k + 1);
+      const Aj = A, Tj = T;
       const nt0 = st.tags.list.length;
       let part = [];
       if (s.type === 'line') {
@@ -5122,9 +5130,36 @@ self.onmessage = async ev => {
       }
       // percorso fatto da un'ellisse o da una spline importata: le facce dei tratti si uniscono senza spigolo
       if (s.cg) for (let t = nt0; t < st.tags.list.length; t++) st.tags.list[t].pcg = s.cg;
-      out = out ? CSG.union(out, part) : part;
+      if (!out) { out = part; return; }
+      const cap = capOn(Aj, Tj), c1 = out.filter(cap), c2 = part.filter(cap);
+      if (direct && c1.length && c2.length && Math.abs(areaOf(c1) - areaOf(c2)) < 1e-6 * Math.max(1, areaOf(c1))) out = out.filter(p => !cap(p)).concat(part.filter(p => !cap(p)));
+      else out = CSG.union(out, part);
     });
+    if (closed && direct) { const cap = capOn(P0, T0), caps = out.filter(cap); if (caps.length) out = out.filter(p => !cap(p)); }
     return out;
+  }
+  // true se nessun punto del percorso passa a meno di due volte l'ingombro del profilo da un tratto lontano (lungo il percorso)
+  // dello stesso percorso. I tratti vicini non si toccano: ogni arco ha già raggio maggiore del profilo.
+  function sweepClearOfItself(segs, rho, closed) {
+    const pts = [], step = Math.max(rho / 2, 1e-6);
+    let s0 = 0;
+    for (const sg of segs) {
+      const L = sg.type === 'line' ? Math.hypot(sg.b[0] - sg.a[0], sg.b[1] - sg.a[1]) : sg.r * Math.abs(sg.a1 - sg.a0);
+      const n = Math.max(1, Math.ceil(L / step));
+      for (let i = 0; i < n; i++) {
+        const t = i / n;
+        if (sg.type === 'line') pts.push([sg.a[0] + (sg.b[0] - sg.a[0]) * t, sg.a[1] + (sg.b[1] - sg.a[1]) * t, s0 + L * t]);
+        else { const a = sg.a0 + (sg.a1 - sg.a0) * t; pts.push([sg.c[0] + sg.r * Math.cos(a), sg.c[1] + sg.r * Math.sin(a), s0 + L * t]); }
+      }
+      s0 += L;
+    }
+    if (pts.length > 6000) return false;
+    const near = 2 * rho + step, far = Math.PI * rho + step;
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+      let ds = pts[j][2] - pts[i][2]; if (closed) ds = Math.min(ds, s0 - ds);
+      if (ds > far && Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) < near) return false;
+    }
+    return true;
   }
 
   /* ---------------- nervatura ---------------- */
@@ -13429,6 +13464,10 @@ T('DXF: SPLINE per 2 punti con le tangenti agli estremi, chiusa da una LINE', ()
 // perpendicolare al piano frontale del profilo. B′(t) = 200 (t, −(1 − t)), |B′| = 200 √(2t² − 2t + 1); con s = t − ½:
 // L = 200√2 ∫₋½^½ √(s² + ¼) ds = 100 + 50√2·arcsinh 1; tubo R2 → V = π·4·L (teorema di Pappo-Guldino; raggio di curvatura minimo 70,7)
 const parabolaPath = p => MI.dxfToSketch(p.s, MI.parseDXF(dxfFile([dSpl(2, [0, 0, 0, 1, 1, 1], [[0, 0], [0, -100], [100, -100]])])).geo, {});
+// percorso che si incrocia: 60 in giù, arco R20 di 270°, poi 40 a sinistra: i due tratti dritti si incrociano ad angolo retto.
+// L = 60 + 30π + 40; R = 2: V = π R² L meno un solido di Steinmetz (16/3 R³), che i due tratti hanno in comune
+T('Sweep: percorso che si incrocia: il volume in comune si conta una volta', () => sweepDoc(p => { const a = p.pt(0, 0), b = p.pt(0, -60), c = p.pt(20, -60), e = p.pt(20, -40), g = p.pt(-20, -40); p.line(a, b); p.arc(c, b, e); p.line(e, g); }, b => b.circle(0, 0, 2)),
+  { V: 4 * PI * (100 + 30 * PI) - 16 / 3 * 8 });
 T('Sweep: cerchio R2 lungo una SPLINE importata da DXF (arco di parabola)', () => sweepDoc(parabolaPath, b => b.circle(0, 0, 2)),
   { V: 4 * PI * (100 + 50 * Math.SQRT2 * Math.asinh(1)) });
 
@@ -13709,6 +13748,28 @@ SK.push(['STEP: facce vere conservate nel salvataggio (pack/unpack)', () => {
   const u = MI.unpack(JSON.parse(JSON.stringify(MI.pack(m))));
   const a = MI.analyze(u);
   return { ok: true, got: [u.f.length, u.f[0], u.f[u.f.length - 1], a.brepFaces, a.open], exp: [24, 0, 2, 3, 0] };
+}]);
+SK.push(['STEP: due facce vere nello stesso piano restano due facce, con lo spigolo in mezzo', () => {
+  // cubo 20: la faccia z = 20 è divisa in due rettangoli (x 0..8 e 8..20). Facce 6 + 1. Spigoli: i 2 lati y = 0 e y = 20 di quella
+  // faccia diventano 2 ciascuno (toccano due facce), più quello in mezzo: 12 + 2 + 1 = 15
+  const q = (a, b, c, e) => [[a, b, c], [a, e, c]];
+  const f = boxFaces(0, 0, 0, 20, 20, 20).filter(tt => !tt.every(t => t.every(p => p[2] === 20)));
+  const half = (x0, x1) => [[[x0, 0, 20], [x1, 0, 20], [x1, 20, 20]], [[x0, 0, 20], [x1, 20, 20], [x0, 20, 20]]];
+  const d = D0('s'); cadImp(d, [occtMesh([...f, half(0, 8), half(8, 20)])]);
+  const st = Model.regen(d), g = Model.edgeGroups(st, st.topo);
+  const top = new Set(st.body.filter(p => p.p.n[2] > 0.5).map(p => st.topo.faceKeys[p.t]));
+  const mp = Model.massProperties(st, d);
+  const open = st.topo.edges.filter(e => e.polys.length !== 2).length;
+  return { ok: !st.errors.size, got: [[...g.values()].length, top.size, new Set(st.topo.faceKeys.filter((k, i) => st.body.some(p => p.t === i))).size, mp.volume, open + 1], exp: [15, 2, 7, 8000, 1] };
+}]);
+SK.push(['Sweep lungo una spline: nessuna scheggia (area sotto 10⁻⁴ mm²), corpo chiuso', () => {
+  const st = Model.regen(sweepDoc(parabolaPath, b => b.circle(0, 0, 2)));
+  if (st.errors.size || !st.body.length) throw new Error('pezzo non costruito');
+  let tiny = 0; const area = p => { let s = 0; for (let i = 1; i < p.v.length - 1; i++) { const u = p.v[i].map((x, k) => x - p.v[0][k]), w = p.v[i + 1].map((x, k) => x - p.v[0][k]); s += Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]) / 2; } return s; };
+  for (const p of st.body) if (area(p) < 1e-4) tiny++;
+  const open = st.topo.edges.filter(e => e.polys.length !== 2).length;
+  const s = stepOf(sweepDoc(parabolaPath, b => b.circle(0, 0, 2))).stats;
+  return { ok: true, got: [tiny + 1, open + 1, s.badEdges + 1, s.openLoops + 1], exp: [1, 1, 1, 1] };
 }]);
 SK.push(['STEP e IGES: riconoscimento del tipo e messaggi per i file sbagliati', () => {
   const code = t => ({ step: 1, iges: 2, stepxml: 3 })[MI.cadKind(enc(t))] || 0;
