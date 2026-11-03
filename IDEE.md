@@ -57,4 +57,4 @@ Cose ancora da fare:
 ## Altro ancora da fare
 
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
-- Le pagine pubblicate su claude.ai («Banco CAD» e «Convertitore DWG → DXF») sono aggiornate al 3 novembre pomeriggio, senza i corpi solidi e gli altri lavori della sera. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
+- Le pagine pubblicate su claude.ai: «Banco CAD» è aggiornata al 3 novembre notte (versione 19), «Convertitore DWG → DXF» al 3 novembre pomeriggio. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
