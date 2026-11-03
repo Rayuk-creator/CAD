@@ -178,3 +178,5 @@ Banco CAD, Copyright © 2026 Rayuk-creator. It is free software under the [GNU G
 The program **collects no data**: everything stays in the browser, and not even the fonts are downloaded from other sites.
 
 SolidWorks is a trademark of Dassault Systèmes, AutoCAD of Autodesk; Banco CAD is not affiliated with them.
+
+Written with the help of Claude.

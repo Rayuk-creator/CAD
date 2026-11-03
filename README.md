@@ -177,3 +177,5 @@ Banco CAD, Copyright © 2026 Rayuk-creator. È un programma libero con licenza [
 Il programma **non raccoglie dati**: tutto resta nel browser, e nemmeno i caratteri vengono scaricati da altri siti.
 
 SolidWorks è un marchio di Dassault Systèmes, AutoCAD di Autodesk; il Banco CAD non è collegato a loro.
+
+Scritto con l'aiuto di Claude.

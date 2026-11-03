@@ -68,12 +68,11 @@ Chiesto dall'utente il 29 ottobre 2026 («quanto ci andrebbe per aggiungere tutt
 
 L'utente vuole inserire il Banco CAD su **AlternativeTo**. Controllo fatto su tutto il repository (non è un parere legale). **Licenza consigliata e accettata dall'utente: GNU GPL 3** (resta libero; stessa licenza del Convertitore; permetterebbe di rimettere il lettore DWG dentro il Banco CAD; la LGPL 2.1 di OpenCascade è compatibile). **Decisioni del 3 novembre:** copyright a nome **Rayuk-creator**; le 8 esercitazioni sono state **tolte**.
 
-**Fatti il 3 novembre:** punti 1, 2, 3, 4, 6 e 7 (file `LICENSE`, avvisi di csg.js e Adobe, finestra «Informazioni e licenze», marchi, caratteri dentro le pagine, riga sulla privacy).
+**Fatti il 3 novembre:** punti 1, 2, 3, 4, 6, 7 e 8 (riga «scritto con l'aiuto di Claude» nei README; file `LICENSE`, avvisi di csg.js e Adobe, finestra «Informazioni e licenze», marchi, caratteri dentro le pagine, riga sulla privacy).
 
 Cose ancora da fare:
 
 5. **Sorgenti di occt-import-js «nello stesso posto»** (LGPL 2.1, punto 6d): l'utente fa un **fork su GitHub di occt-import-js alla versione 0.0.24** (con OpenCascade); poi si aggiornano `licenze/LEGGIMI.md` e il commento in `index.html`. Facoltativo lo stesso per libredwg-web 0.8.2 (la GPL 3 permette già i sorgenti su un altro server).
-8. **Codice scritto con l'IA:** in Italia la L. 132/2025 (dal 10 ottobre 2025) protegge le opere fatte con l'IA solo se c'è un contributo creativo umano; non impedisce di pubblicare con licenza libera. Le condizioni di Anthropic trasferiscono all'utente i diritti di Anthropic sui risultati. Facoltativa una riga nel README «scritto con l'aiuto di Claude».
 9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 46 argomenti, Glossario 168 termini), da decidere con l'utente.
 
 ## Altro ancora da fare
