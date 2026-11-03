@@ -2,7 +2,7 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 3 novembre 2026, notte (**lettore DWG dentro il Banco CAD**; cancellato il disegno 2D libero; Banco CAD 19 su claude.ai; proposto il lettore DWG dentro il Banco CAD; prima: più corpi solidi e Combina; bordi B-spline nello STEP; sweep senza schegge; spigolo tra facce vere complanari; licenza GPL 3, finestra «Informazioni e licenze», caratteri dentro la pagina; tolte le 8 esercitazioni; 1° novembre: controllo delle licenze per AlternativeTo, segnato in `IDEE.md`; 29 ottobre: sito su GitHub Pages; spigoli nascosti che uscivano davanti alle facce; operazioni booleane segnate in `IDEE.md`; STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
+Ultimo aggiornamento: 3 novembre 2026, notte (**lettore DWG dentro il Banco CAD**, pagine ripubblicate su claude.ai; cancellato il disegno 2D libero; Banco CAD 19 su claude.ai; proposto il lettore DWG dentro il Banco CAD; prima: più corpi solidi e Combina; bordi B-spline nello STEP; sweep senza schegge; spigolo tra facce vere complanari; licenza GPL 3, finestra «Informazioni e licenze», caratteri dentro la pagina; tolte le 8 esercitazioni; 1° novembre: controllo delle licenze per AlternativeTo, segnato in `IDEE.md`; 29 ottobre: sito su GitHub Pages; spigoli nascosti che uscivano davanti alle facce; operazioni booleane segnate in `IDEE.md`; STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
 
 **Stato attuale:** ultima modifica al programma su `main` = lettore DWG dentro il Banco CAD, 3 novembre (vedi `git log`). Tutte le prove superate: 170/170 di calcolo, 35/35 STEP/IGES (comprese 21 di STEP esportati e riletti), 20/20 del lettore e del convertitore DWG, 61/61 dell'interfaccia, Autoverifica 170/170. Nessun lavoro lasciato a metà.
 
@@ -179,6 +179,8 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 
 ## 6. Cose aperte
 
+- **Da chiedere per primo:** se l'utente ha provato ad aprire un DWG nella pagina su claude.ai. Nell'ambiente di prova si può controllare solo la pagina da disco e il sito simulato: dentro claude.ai la lettura non è stata provata. Se dà errore, farsi dire il messaggio.
+- **Da chiedere subito dopo:** il prossimo lavoro; il grande in elenco sono gli assiemi con accoppiamenti (vedi `IDEE.md`). Nessun lavoro è rimasto a metà.
 - L'utente potrebbe volere testi, quote e tratteggi visibili come **sfondo di riferimento** nello schizzo: spiegato che si può fare, non chiesto.
 - **Da fare: il fork di occt-import-js 0.0.24.** Lo fa l'utente dal suo account GitHub (ha detto il 3 novembre che lo fa il giorno dopo), togliendo la spunta «Copy the main branch only». Quando dà l'indirizzo, aggiornare `licenze/LEGGIMI.md`, la finestra «Informazioni e licenze» (`aboutDialog` in `index.html`; la prova dell'interfaccia conta 7 testi collegati) e il commento nel lettore.
 - Ripubblicare su claude.ai: la lettura con `path` non basta, l'Artifact tool chiede anche quella senza `path`, che mette molto testo nella chat (circa 30 000 caratteri a pagina). Dopo, avvisare l'utente che la chat è diventata pesante.
