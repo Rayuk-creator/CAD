@@ -24,6 +24,12 @@ Il codice sorgente è disponibile ai due indirizzi sopra. Chiunque può sostitui
 node tools/incorpora-occt.js <cartella dist di occt-import-js>
 ```
 
+## Lettore DWG
+
+Dentro `index.html`, in fondo alla pagina (tra i commenti «LETTORE DWG: inizio» e «fine»), c'è **LibreDWG** del progetto GNU, <https://www.gnu.org/software/libredwg/>, compilato in WebAssembly da **libredwg-web** 0.8.2, <https://github.com/mlightcad/libredwg-web>. Licenza **GNU GPL 3**, la stessa del Banco CAD (testo in `../convertitore-dwg/COPYING`).
+
+È identico a quello del Convertitore DWG → DXF. Versione, impronte SHA-256, sorgenti e l'unica modifica (memoria iniziale 16 MB invece di 1 GB) sono in `../convertitore-dwg/LEGGIMI.md`. Per aggiornarlo: `node convertitore-dwg/incorpora-libredwg.js <cartella wasm>`, poi `node tools/copia-lettore-dwg.js`.
+
 ## csg.js
 
 Il modulo `CSG` di `index.html` è riscritto seguendo l'algoritmo di **csg.js** di Evan Wallace, <https://github.com/evanw/csg.js>. Licenza MIT: `csg.js-MIT.txt`.

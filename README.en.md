@@ -48,9 +48,11 @@ With **Progetto › Importa STEP o IGES** (Project › Import STEP or IGES) you 
 
 With **Progetto › Importa STL o OBJ** (Project › Import STL or OBJ) you can also open a part made with another program (SolidWorks, Inventor, Tinkercad… saved as STL or OBJ): it arrives as a faceted body that you can measure, put on a drawing and weigh, and you can add sketches and features on its flat faces.
 
-With **Progetto › Importa DXF (schizzo)** (Project › Import DXF), or **Inserisci DXF** (Insert DXF) in the Sketch tab, a 2D drawing (AutoCAD, DraftSight, LibreCAD, a SolidWorks drawing…) becomes a sketch: lines, arcs, circles, polylines, ellipses, splines and blocks, in the file's units; ellipses and splines become chains of tangent arcs (biarcs) within a few thousandths of a millimetre of the true curve; dash-dot axes become centerlines. The dialog shows a preview of the drawing and lets you pick the layers to import (for example without the title block and dimensions). Then you extrude or revolve it.
+With **Progetto › Importa DXF o DWG (schizzo)** (Project › Import DXF or DWG), or **Inserisci DXF o DWG** (Insert DXF or DWG) in the Sketch tab, a 2D drawing (AutoCAD, DraftSight, LibreCAD, a SolidWorks drawing…) becomes a sketch: lines, arcs, circles, polylines, ellipses, splines and blocks, in the file's units; ellipses and splines become chains of tangent arcs (biarcs) within a few thousandths of a millimetre of the true curve; dash-dot axes become centerlines. The dialog shows a preview of the drawing and lets you pick the layers to import (for example without the title block and dimensions). Then you extrude or revolve it.
 
-AutoCAD **DWG** files are first turned into DXF with the **DWG → DXF converter** (*Convertitore DWG → DXF*), a separate page (folder `convertitore-dwg/`): it works in the browser with the free LibreDWG reader, from release R1.4 to 2018 (so files from AutoCAD 2019–2025 too). It is a separate program under the GNU GPL 3; Banco CAD links to it when a DWG is chosen and also opens the `.zip` in which the published page saves DXF files.
+AutoCAD **DWG** files open directly in the same way, from release R1.4 to 2018 (so also files from AutoCAD 2019–2025), with the free LibreDWG reader inside the page. Texts, dimensions and hatches do not enter the sketch, which holds geometry only: the final message says how many there are.
+
+To **save DXF files** (for other programs) or convert many drawings at once there is the **DWG → DXF converter** (*Convertitore DWG → DXF*), a separate page (folder `convertitore-dwg/`); Banco CAD also opens the `.zip` in which the published page saves the DXF files.
 
 > [!IMPORTANT]
 > **How to use the DWG → DXF converter**
@@ -64,7 +66,7 @@ AutoCAD **DWG** files are first turned into DXF with the **DWG → DXF converter
 > 3. The downloaded file is called `index.html`, **like Banco CAD**: rename it, for example `convertitore-dwg.html`, so you don't mix them up.
 > 4. **Double-click** it: it opens in Chrome, Edge or Firefox. No internet needed.
 > 5. Press **Scegli i file DWG** (*choose DWG files*, or drag the `.dwg` files onto the page), check the **preview**, then press **Salva DXF** (*save DXF*) next to each drawing, or **Salva tutti i DXF (.zip)** (*save all DXF*) to get them in one file.
-> 6. In Banco CAD: **Progetto › Importa DXF (schizzo)** and choose the `.dxf` file you just saved.
+> 6. If you need it in Banco CAD: **Progetto › Importa DXF o DWG (schizzo)** opens the `.dwg` directly, or the `.dxf` you just saved.
 >
 > It also works on **tablets and phones**: the converter starts with 16 MB of memory and takes more only for large drawings.
 
@@ -142,13 +144,13 @@ The same tests can be run inside the program: **Valuta › Autoverifica** (Evalu
 
 ## For developers
 
-The program is one file, `index.html` (about 5 MB), with HTML, CSS and JavaScript together, no build step. The only part not written here is the STEP/IGES reader (occt-import-js with OpenCascade, LGPL 2.1 licence), compressed at the end of the page: licences and how to replace it are in `licenze/`. The tests use Node.js and Playwright.
+The program is one file, `index.html` (about 9 MB), with HTML, CSS and JavaScript together, no build step. The parts not written here are the STEP/IGES reader (occt-import-js with OpenCascade, LGPL 2.1 licence) and the DWG reader (LibreDWG, GPL 3 licence), compressed at the end of the page: licences and how to replace it are in `licenze/`. The tests use Node.js and Playwright.
 
 ```bash
 npm install
 npx playwright install chromium   # first time only
 npm test                          # all tests
-npm run test:kernel               # calculations only (170 + 35 STEP/IGES and exported STEP + 15 DWG converter tests, about a minute)
+npm run test:kernel               # calculations only (170 + 35 STEP/IGES and exported STEP + 20 DWG reader and converter tests, about a minute)
 npm run test:ui                   # interface only, in Chromium (52 tests)
 ```
 
@@ -174,7 +176,7 @@ The interface tests use the program the way a student would: they draw with the 
 
 ## Licence
 
-Banco CAD, Copyright © 2026 Rayuk-creator. It is free software under the [GNU GPL 3](LICENSE) (or later versions), with **no warranty**. Parts by other authors (STEP/IGES reader, csg.js, Adobe metrics, IBM Plex fonts) are listed in [`licenze/LEGGIMI.md`](licenze/LEGGIMI.md) and inside the program, under **Progetto › Informazioni e licenze**.
+Banco CAD, Copyright © 2026 Rayuk-creator. It is free software under the [GNU GPL 3](LICENSE) (or later versions), with **no warranty**. Parts by other authors (STEP/IGES and DWG readers, csg.js, Adobe metrics, IBM Plex fonts) are listed in [`licenze/LEGGIMI.md`](licenze/LEGGIMI.md) and inside the program, under **Progetto › Informazioni e licenze**.
 
 The program **collects no data**: everything stays in the browser, and not even the fonts are downloaded from other sites.
 

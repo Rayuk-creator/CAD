@@ -46,9 +46,11 @@ Con **Progetto › Importa STEP o IGES** si apre un pezzo (o un piccolo assieme)
 
 Con **Progetto › Importa STL o OBJ** si apre anche un pezzo fatto con un altro programma (SolidWorks, Inventor, Tinkercad… salvato in STL o OBJ): arriva come corpo a faccette che si misura, si mette in tavola, se ne calcolano volume e massa, e sulle cui facce piane si possono aggiungere schizzi e funzioni.
 
-Con **Progetto › Importa DXF (schizzo)**, o con **Inserisci DXF** nella scheda Schizzo, un disegno 2D (AutoCAD, DraftSight, LibreCAD, tavola di SolidWorks…) entra in uno schizzo: linee, archi, cerchi, polilinee, ellissi, spline e blocchi, con l'unità del file; ellissi e spline diventano archi tangenti tra loro (biarchi) lontani pochi millesimi di millimetro dalla curva vera, gli assi tratto-punto diventano linee di mezzeria. Nella finestra si vede l'anteprima del disegno e si scelgono i layer da importare (per esempio senza cartiglio e quote). Poi si estrude o si fa ruotare.
+Con **Progetto › Importa DXF o DWG (schizzo)**, o con **Inserisci DXF o DWG** nella scheda Schizzo, un disegno 2D (AutoCAD, DraftSight, LibreCAD, tavola di SolidWorks…) entra in uno schizzo: linee, archi, cerchi, polilinee, ellissi, spline e blocchi, con l'unità del file; ellissi e spline diventano archi tangenti tra loro (biarchi) lontani pochi millesimi di millimetro dalla curva vera, gli assi tratto-punto diventano linee di mezzeria. Nella finestra si vede l'anteprima del disegno e si scelgono i layer da importare (per esempio senza cartiglio e quote). Poi si estrude o si fa ruotare.
 
-I file **DWG** di AutoCAD si trasformano prima in DXF con il **Convertitore DWG → DXF**, una pagina a parte (cartella `convertitore-dwg/`): lavora nel browser con il lettore libero LibreDWG, dalla versione R1.4 alla 2018 (e quindi anche i file di AutoCAD 2019–2025). È un programma separato, con licenza GNU GPL 3; il Banco CAD rimanda alla sua pagina quando si sceglie un DWG e apre anche lo `.zip` con cui la pagina pubblicata salva i DXF.
+I file **DWG** di AutoCAD si aprono direttamente nello stesso modo, dalla versione R1.4 alla 2018 (e quindi anche i file di AutoCAD 2019–2025), con il lettore libero LibreDWG dentro la pagina. Testi, quote e tratteggi non entrano nello schizzo, che contiene solo geometria: il messaggio finale dice quanti sono.
+
+Per **salvare i DXF** (per altri programmi) o convertire molti disegni insieme c'è il **Convertitore DWG → DXF**, una pagina a parte (cartella `convertitore-dwg/`); il Banco CAD apre anche lo `.zip` con cui la pagina pubblicata salva i DXF.
 
 > [!IMPORTANT]
 > **Come si usa il Convertitore DWG → DXF**
@@ -62,7 +64,7 @@ I file **DWG** di AutoCAD si trasformano prima in DXF con il **Convertitore DWG 
 > 3. Il file scaricato si chiama `index.html`, **come il Banco CAD**: rinominalo, per esempio `convertitore-dwg.html`, così non li confondi.
 > 4. Aprilo con un **doppio clic**: si apre in Chrome, Edge o Firefox. Non serve internet.
 > 5. Premi **Scegli i file DWG** (oppure trascina i file `.dwg` nella pagina), guarda l'**anteprima**, poi premi **Salva DXF** accanto a ogni disegno, oppure **Salva tutti i DXF (.zip)** per averli in un solo file.
-> 6. Nel Banco CAD: **Progetto › Importa DXF (schizzo)** e scegli il file `.dxf` appena salvato.
+> 6. Se ti serve nel Banco CAD: **Progetto › Importa DXF o DWG (schizzo)** apre direttamente il `.dwg`, oppure il `.dxf` appena salvato.
 >
 > Funziona anche su **tablet e telefoni**: il convertitore parte con 16 MB di memoria e ne prende di più solo per i disegni grandi.
 
@@ -140,13 +142,13 @@ Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifi
 
 ## Per chi sviluppa
 
-Il programma è un solo file, `index.html` (circa 5 MB), con HTML, CSS e JavaScript insieme, senza compilazione. Il lettore STEP/IGES (occt-import-js con OpenCascade, licenza LGPL 2.1) è compresso in fondo alla pagina, i caratteri IBM Plex in cima: licenze e istruzioni per sostituirli sono in `licenze/`. I test usano Node.js e Playwright.
+Il programma è un solo file, `index.html` (circa 9 MB), con HTML, CSS e JavaScript insieme, senza compilazione. Il lettore STEP/IGES (occt-import-js con OpenCascade, licenza LGPL 2.1) e il lettore DWG (LibreDWG, licenza GPL 3) sono compressi in fondo alla pagina, i caratteri IBM Plex in cima: licenze e istruzioni per sostituirli sono in `licenze/`. I test usano Node.js e Playwright.
 
 ```bash
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (170 + 35 prove STEP/IGES e STEP esportati + 15 del convertitore DWG, circa un minuto)
+npm run test:kernel               # solo i calcoli (170 + 35 prove STEP/IGES e STEP esportati + 20 del lettore e del convertitore DWG, circa un minuto)
 npm run test:ui                   # solo l'interfaccia in Chromium (52 prove)
 ```
 
@@ -163,6 +165,7 @@ tests/step.test.js    prove del lettore STEP/IGES vero e degli STEP esportati (r
 tests/stepgen.js      scrive piccoli file STEP di prova (igesgen.js: IGES)
 tests/dwg.test.js     prove del Convertitore DWG → DXF (DWG da R11 a 2018, confronto con DXF di riferimento)
 tools/incorpora-occt.js  inserisce o aggiorna il lettore STEP/IGES nella pagina
+tools/copia-lettore-dwg.js  copia nella pagina il lettore DWG del Convertitore
 tools/incorpora-caratteri.js  inserisce o aggiorna i caratteri IBM Plex nelle due pagine
 LICENSE               licenza GPL 3 del Banco CAD
 licenze/              licenze delle parti di altri autori e LEGGIMI
@@ -173,7 +176,7 @@ Le prove dell'interfaccia usano il programma come farebbe uno studente: disegnan
 
 ## Licenza
 
-Banco CAD, Copyright © 2026 Rayuk-creator. È un programma libero con licenza [GNU GPL 3](LICENSE) (o versioni successive), **senza alcuna garanzia**. Le parti di altri autori (lettore STEP/IGES, csg.js, metriche Adobe, caratteri IBM Plex) sono elencate in [`licenze/LEGGIMI.md`](licenze/LEGGIMI.md) e nel programma, in **Progetto › Informazioni e licenze**.
+Banco CAD, Copyright © 2026 Rayuk-creator. È un programma libero con licenza [GNU GPL 3](LICENSE) (o versioni successive), **senza alcuna garanzia**. Le parti di altri autori (lettori STEP/IGES e DWG, csg.js, metriche Adobe, caratteri IBM Plex) sono elencate in [`licenze/LEGGIMI.md`](licenze/LEGGIMI.md) e nel programma, in **Progetto › Informazioni e licenze**.
 
 Il programma **non raccoglie dati**: tutto resta nel browser, e nemmeno i caratteri vengono scaricati da altri siti.
 

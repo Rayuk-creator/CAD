@@ -302,36 +302,152 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const afterUndo = await page.evaluate(() => Sketcher.session().sk.ents.filter(e => e.t !== 'pt').length);
     await page.evaluate(() => Sketcher.exit(false));
     rec('Interfaccia: «Inserisci DXF» nello schizzo aperto (asola, annulla)', noPlane && s2.feats === 2 && s2.ln === 2 && s2.ar === 2 && s2.regions === 1 && !s2.err && afterUndo === 0, JSON.stringify({ noPlane, ...s2, afterUndo }));
-    // file DWG: messaggio nella finestra, niente schizzo nuovo
-    const nBefore = await page.evaluate(() => App.doc.features.length);
-    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
-    await page.setInputFiles('#dxfFile', { name: 'pezzo.dwg', mimeType: 'application/octet-stream', buffer: Buffer.from('AC1032') });
-    await page.click('#modalActions .btn-primary'); await page.waitForTimeout(300);
-    const msg = await page.evaluate(() => { const e = document.querySelector('#dxfErr'); return e && !e.hidden ? e.textContent : ''; });
-    const nAfter = await page.evaluate(() => App.doc.features.length);
-    await page.click('#modalActions .btn:not(.btn-primary)').catch(() => page.evaluate(() => { document.querySelector('#modal').hidden = true; }));
-    rec('Interfaccia: file DWG spiegato (va salvato come DXF)', /salvalo come DXF/.test(msg) && nAfter === nBefore && (await page.evaluate(() => App.mode)) === 'part', msg);
   } catch (e) { rec('Interfaccia: importa DXF dal menu (schizzo nuovo, cm, origine) ed estrusione', false, e.message.split('\n')[0]); }
-  // collegamento al Convertitore DWG → DXF nei messaggi sui file DWG (finestre DXF, STEP/IGES, STL/OBJ)
+  // DWG scelto nelle altre finestre: rimanda a «Importa DXF o DWG»; la finestra giusta porta il collegamento al Convertitore
   try {
     await fresh();
-    // lo stesso messaggio porta il collegamento alla pagina del Convertitore DWG → DXF
-    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
-    await page.setInputFiles('#dxfFile', { name: 'pezzo.dwg', mimeType: 'application/octet-stream', buffer: Buffer.from('AC1032') });
-    await page.waitForTimeout(300);
-    const link = await page.evaluate(() => { const a = document.querySelector('#dxfErr a.dwg-link'); return a ? { href: a.href, target: a.target, text: a.textContent, url: App.DWG_CONVERTER_URL, n: document.querySelectorAll('#dxfErr a').length } : null; });
-    await page.click('#modalActions .btn:not(.btn-primary)').catch(() => {});
-    // anche dalla finestra STEP/IGES e da quella STL/OBJ
-    const linkIn = async (act, inp, errSel) => { await page.click('#btnFile'); await page.click(`#menuFile [data-act="${act}"]`);
+    const msgIn = async (act, inp, errSel) => { await page.click('#btnFile'); await page.click(`#menuFile [data-act="${act}"]`);
       await page.setInputFiles(inp, { name: 'pezzo.dwg', mimeType: 'application/octet-stream', buffer: Buffer.from('AC1032') });
       await page.click('#modalActions .btn-primary'); await page.waitForTimeout(400);
-      const h = await page.evaluate(sel => { const a = document.querySelector(sel + ' a.dwg-link'); return a ? a.href : ''; }, errSel);
-      await page.click('#modalActions .btn:not(.btn-primary)').catch(() => {}); await page.waitForTimeout(100); return h; };
-    const hCad = await linkIn('importCad', '#cadFile', '#cadErr'), hMesh = await linkIn('importMesh', '#meshFile', '#meshErr');
-    const U = 'https://claude.ai/artifact/8PeF7HpK8VZ1RFpsfAJYkY';
-    rec('Interfaccia: i messaggi sui DWG portano il collegamento al Convertitore DWG → DXF', !!link && link.url === U && link.href === U && link.target === '_blank' && link.n === 1 && hCad === U && hMesh === U,
-      `${JSON.stringify(link)}; STEP/IGES: ${hCad}; STL/OBJ: ${hMesh}`);
-  } catch (e) { rec('Interfaccia: i messaggi sui DWG portano il collegamento al Convertitore DWG → DXF', false, e.message.split('\n')[0]); await page.evaluate(() => { const m = document.querySelector('#modal'); if (m && !m.hidden) { const b = document.querySelector('#modalActions .btn:not(.btn-primary)'); if (b) b.click(); } if (App.mode === 'sketch') Sketcher.exit(false); }); }
+      const m = await page.evaluate(sel => document.querySelector(sel).textContent, errSel);
+      await page.click('#modalActions .btn:not(.btn-primary)').catch(() => {}); await page.waitForTimeout(100); return m; };
+    const mCad = await msgIn('importCad', '#cadFile', '#cadErr'), mMesh = await msgIn('importMesh', '#meshFile', '#meshErr');
+    await page.click('#btnFile');
+    const label = await page.locator('#menuFile [data-act="importDxf"]').textContent();
+    await page.click('#menuFile [data-act="importDxf"]');
+    const link = await page.evaluate(() => { const a = document.querySelector('#modalBody a.dwg-link'); return a ? { href: a.href, target: a.target, url: App.DWG_CONVERTER_URL, acc: document.querySelector('#dxfFile').accept } : null; });
+    await page.click('#modalActions .btn:not(.btn-primary)');
+    const U = 'https://claude.ai/artifact/8PeF7HpK8VZ1RFpsfAJYkY', want = /usa «Importa DXF o DWG \(schizzo\)»/;
+    rec('Interfaccia: un DWG scelto nelle finestre STEP e STL rimanda a «Importa DXF o DWG»; lì c\'è il collegamento al Convertitore', want.test(mCad) && want.test(mMesh) && label === 'Importa DXF o DWG (schizzo)' && !!link && link.href === U && link.url === U && link.target === '_blank' && /\.dwg/.test(link.acc),
+      `STEP: «${mCad}»; STL: «${mMesh}»; menu «${label}»; ${JSON.stringify(link)}`);
+  } catch (e) { rec('Interfaccia: un DWG scelto nelle finestre STEP e STL rimanda a «Importa DXF o DWG»', false, e.message.split('\n')[0]); await page.evaluate(() => App.closeModal()).catch(() => {}); }
+  // DWG veri aperti direttamente nel Banco CAD (lettore dentro la pagina, in un Worker)
+  const DWGP = n => path.join(__dirname, '..', 'convertitore-dwg', 'prove', n);
+  const closeAll = () => page.evaluate(() => { App.dwgCancel(); App.closeModal(); if (App.mode === 'sketch') Sketcher.exit(false); }).catch(() => {});
+  // cerchio-2010.dwg: un cerchio di raggio 13,5304138 pollici (dal DWG, l'unità è scritta nel file): dal menu fino all'estrusione
+  try {
+    await fresh();
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', DWGP('cerchio-2010.dwg'));
+    await page.waitForFunction(() => /AutoCAD 2010/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 30000 });
+    const pv = await page.evaluate(() => ({ cap: document.querySelector('#dxfCap').textContent, svg: !!document.querySelector('#dxfPrev svg'), mode: App.dwgMode, app: App.mode, busy: App.dwgBusy() }));
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    const info = await page.evaluate(() => { const s = Sketcher.session(); return { ci: s.sk.ents.filter(e => e.t === 'ci').length, n: s.sk.ents.filter(e => e.t !== 'pt').length, toast: document.querySelector('#toast').textContent }; });
+    await page.waitForTimeout(1200);
+    await tool('exitSketch');
+    await page.evaluate(() => App.setCmdTab('features'));
+    await tool('extrude');
+    const dep = page.locator('.pm-body .row', { hasText: 'Profondità' }).first().locator('input');
+    await dep.fill('10'); await dep.press('Tab');
+    await page.click('.pm-ok'); await page.waitForTimeout(300);
+    const p = await props();
+    const R = 13.5304138459097 * 25.4, Ve = Math.PI * R * R * 10, w = p ? p.bb[1][0] - p.bb[0][0] : 0;
+    const ok = pv.svg && pv.mode === 'worker' && pv.app === 'part' && !pv.busy && /ingombro/.test(pv.cap) && info.ci === 1 && info.n === 1 && /«cerchio-2010\.dwg»/.test(info.toast) && /pollici/.test(info.toast)
+      && p && !p.err.length && rel(p.V, Ve) < TOL && rel(w, 2 * R) < TOL;
+    rec('DWG dal menu: anteprima dal lettore nel Worker, cerchio in pollici, schizzo ed estrusione (V calcolato a mano)', ok, `«${pv.cap}» (${pv.mode}); V ${p && p.V.toFixed(1)} (${Ve.toFixed(1)}), larghezza ${w.toFixed(4)} (${(2 * R).toFixed(4)}); «${info.toast}»`);
+  } catch (e) { rec('DWG dal menu: anteprima dal lettore nel Worker, cerchio in pollici, schizzo ed estrusione', false, e.message.split('\n')[0]); await closeAll(); }
+  // entita-r11.dwg dentro uno schizzo aperto con «Inserisci DXF o DWG»: stesse entità del DXF di riferimento di LibreDWG, entità saltate dette, Annulla
+  try {
+    await fresh();
+    await startSketchOn('Piano frontale');
+    await tool('dxf');
+    await page.setInputFiles('#dxfFile', DWGP('entita-r11.dwg'));
+    await page.waitForFunction(() => /R11\/R12/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 30000 });
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => document.querySelector('#modal').hidden, null, { timeout: 10000 });
+    const count = () => page.evaluate(() => { const s = Sketcher.session(), c = {}; for (const e of s.sk.ents) if (e.t !== 'pt') c[e.t] = (c[e.t] || 0) + 1; return { c, toast: document.querySelector('#toast').textContent }; });
+    const a = await count();
+    const feats = await page.evaluate(() => App.doc.features.filter(f => f.type === 'sketch').length);
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+    const undone = await page.evaluate(() => Sketcher.session().sk.ents.filter(e => e.t !== 'pt').length);
+    await closeAll();
+    await fresh();
+    const ref = require('fs').readFileSync(path.join(__dirname, '..', 'convertitore-dwg', 'prove', 'riferimento', 'entita-r11.dxf'));
+    const b0 = await page.evaluate(d => { const r = App.importDxfData('r.dxf', new Uint8Array(d), { origin: 'file', plane: 'front' }); return r.msg; }, [...ref]);
+    const b = await count();
+    await closeAll();
+    const ok = JSON.stringify(a.c) === JSON.stringify(b.c) && a.c.ln === 4 && a.c.ar === 1 && a.c.ci === 1 && /1 testo/.test(a.toast) && /1 quota/.test(a.toast) && /1 traccia/.test(a.toast) && /1 forma/.test(a.toast) && feats === 1 && undone === 0
+      && a.toast.match(/Ingombro [^(]*/)[0] === b0.match(/Ingombro [^(]*/)[0];
+    rec('DWG nello schizzo aperto: stesse entità e ingombro del DXF di riferimento, testi e quote contati nel messaggio, Annulla', ok, `DWG ${JSON.stringify(a.c)}, riferimento ${JSON.stringify(b.c)}; dopo Annulla ${undone}; «${a.toast}»`);
+  } catch (e) { rec('DWG nello schizzo aperto: stesse entità e ingombro del DXF di riferimento', false, e.message.split('\n')[0]); await closeAll(); }
+  // file sbagliati: messaggio chiaro, nessuna funzione aggiunta, e subito dopo un DWG buono si legge
+  try {
+    await fresh();
+    const good = require('fs').readFileSync(DWGP('arco-2018.dwg'));
+    const cases = [['finto.dwg', Buffer.from('AC1032'), /codice LibreDWG/], ['troncato.dwg', good.subarray(0, 3000), /codice LibreDWG/], ['testo.dwg', Buffer.from('ciao a tutti'), /Non è un file DWG/],
+      ['dxf.dwg', Buffer.from('  0\nSECTION\n  2\nENTITIES\n  0\nENDSEC\n  0\nEOF\n'), /dentro è un DXF/], ['step.dwg', Buffer.from('ISO-10303-21;\nHEADER;'), /dentro è un file STEP/]];
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    const got = [];
+    for (const [name, buffer, re] of cases) {
+      await page.setInputFiles('#dxfFile', { name, mimeType: 'application/octet-stream', buffer });
+      await page.waitForFunction(() => { const e = document.querySelector('#dxfErr'); return e && !e.hidden; }, null, { timeout: 30000 });
+      const before = await page.evaluate(() => document.querySelector('#dxfErr').textContent);
+      await page.click('#modalActions .btn-primary'); await page.waitForTimeout(100);
+      const m = await page.evaluate(() => ({ t: document.querySelector('#dxfErr').textContent, open: !document.querySelector('#modal').hidden, app: App.mode, n: App.doc.features.length }));
+      got.push({ name, ok: re.test(before) && re.test(m.t) && m.open && m.app === 'part', t: m.t });
+    }
+    await page.setInputFiles('#dxfFile', DWGP('arco-2018.dwg'));
+    await page.waitForFunction(() => /AutoCAD 2018/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 30000 });
+    const clean = await page.evaluate(() => document.querySelector('#dxfErr').hidden);
+    await closeAll();
+    const n = await page.evaluate(() => App.doc.features.length), n0 = await page.evaluate(() => Model.newDoc().features.length);
+    rec('DWG sbagliati (finto, troncato, testo, DXF e STEP rinominati): messaggio chiaro e niente schizzo; dopo, un DWG buono si legge', got.every(x => x.ok) && clean && n === n0, got.map(x => `${x.name}: ${x.ok ? 'sì' : 'NO'} «${x.t}»`).join(' | '));
+  } catch (e) { rec('DWG sbagliati: messaggio chiaro e niente schizzo', false, e.message.split('\n')[0]); await closeAll(); }
+  // lettura in corso: la pagina resta libera, Annulla interrompe, un altro file prende il posto del primo, doppio clic su Importa = una sola importazione
+  try {
+    await fresh();
+    const pick = async f => { await page.setInputFiles('#dxfFile', []); await page.setInputFiles('#dxfFile', f); };   // lo stesso file due volte non farebbe scattare «change»
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    // fotogramma più lungo durante la lettura del disegno grande, misurato con requestAnimationFrame
+    await page.evaluate(() => { window.__fr = { max: 0, last: performance.now(), on: true }; const tick = t => { const f = window.__fr; if (!f.on) return; f.max = Math.max(f.max, t - f.last); f.last = t; requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
+    const t0 = Date.now();
+    await pick(DWGP('esempio-2000.dwg'));
+    await page.waitForFunction(() => App.dwgBusy(), null, { timeout: 10000 });
+    await page.waitForFunction(() => /AutoCAD 2000/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 60000 });
+    const ms = Date.now() - t0;
+    const lavoro = await page.evaluate(() => { window.__fr.on = false; return window.__fr.max; });
+    // (l'anteprima di 3891 entità si disegna nella pagina: il fotogramma più lungo la comprende. Si misura perciò anche il solo lettore.)
+    await pick(DWGP('esempio-2000.dwg'));
+    await page.waitForFunction(() => App.dwgBusy(), null, { timeout: 10000 });
+    const free = await page.evaluate(() => new Promise(res => { let max = 0, last = performance.now(); const tick = t => { max = Math.max(max, t - last); last = t; if (App.dwgBusy()) requestAnimationFrame(tick); else res(max); }; requestAnimationFrame(tick); setTimeout(() => App.dwgCancel(), 150); }));
+    await page.waitForTimeout(100);
+    const after = await page.evaluate(() => ({ busy: App.dwgBusy(), open: !document.querySelector('#modal').hidden }));
+    await pick(DWGP('esempio-2000.dwg'));
+    await page.waitForFunction(() => App.dwgBusy(), null, { timeout: 10000 });
+    await page.click('#modalActions .btn:not(.btn-primary)');
+    await page.waitForTimeout(200);
+    const can = await page.evaluate(() => ({ busy: App.dwgBusy(), hidden: document.querySelector('#modal').hidden, app: App.mode }));
+    // un altro file mentre il primo si legge; doppio clic su Importa mentre si legge
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await pick(DWGP('esempio-2000.dwg'));
+    await page.waitForFunction(() => App.dwgBusy(), null, { timeout: 10000 });
+    await pick(DWGP('arco-2018.dwg'));
+    await page.evaluate(() => { const b = document.querySelector('#modalActions .btn-primary'); b.click(); b.click(); });
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 30000 });
+    await page.waitForTimeout(600);
+    const two = await page.evaluate(() => { const s = Sketcher.session(); return { ar: s.sk.ents.filter(e => e.t === 'ar').length, n: s.sk.ents.filter(e => e.t !== 'pt').length, toast: document.querySelector('#toast').textContent, busy: App.dwgBusy() }; });
+    await closeAll();
+    const ok = free < 200 && !after.busy && after.open && !can.busy && can.hidden && can.app === 'part' && two.ar === 1 && two.n === 1 && /arco-2018/.test(two.toast) && !/Tolte/.test(two.toast) && !two.busy;
+    rec('DWG in lettura: pagina libera, Annulla interrompe, un altro file prende il posto del primo, doppio clic importa una volta sola', ok,
+      `disegno grande letto e mostrato in ${ms} ms (fotogramma più lungo ${lavoro.toFixed(0)} ms, anteprima compresa); durante la sola lettura ${free.toFixed(0)} ms; dopo Annulla ${JSON.stringify(can)}; ${JSON.stringify(two)}`);
+  } catch (e) { rec('DWG in lettura: pagina libera, Annulla interrompe', false, e.message.split('\n')[0]); await closeAll(); }
+  // senza Worker il lettore lavora nella pagina, e il DXF è identico byte per byte; stesso DXF del Convertitore (lo controlla dwg.test.js)
+  try {
+    await fresh();
+    const bytes = [...require('fs').readFileSync(DWGP('v-r14.dwg'))];
+    const res = await page.evaluate(async d => {
+      const u8 = new Uint8Array(d), a = await App.dwgToDxf(u8), ma = App.dwgMode;
+      const W = window.Worker; window.Worker = undefined;
+      let b, mb, r;
+      try { b = await App.dwgToDxf(u8); mb = App.dwgMode; r = await App.importDwgData('porta.dwg', u8, { origin: 'file', plane: 'front' }); } finally { window.Worker = W; }
+      let same = a.dxf.length === b.dxf.length; for (let i = 0; same && i < a.dxf.length; i++) same = a.dxf[i] === b.dxf[i];
+      const s = Sketcher.session();
+      return { ma, mb, same, n: a.dxf.length, name: a.kind.name, ln: s.sk.ents.filter(e => e.t === 'ln').length, msg: r.msg };
+    }, bytes);
+    await closeAll();
+    rec('DWG senza Worker: legge nella pagina, DXF identico byte per byte, porta R14 (16 linee di cui 8 doppie)', res.ma === 'worker' && res.mb === 'page' && res.same && res.name === 'R14' && res.ln === 8 && /Tolte 8 entità doppie/.test(res.msg) && /1 testo/.test(res.msg), JSON.stringify(res));
+  } catch (e) { rec('DWG senza Worker: legge nella pagina, DXF identico byte per byte', false, e.message.split('\n')[0]); await page.evaluate(() => { if (!window.Worker) location.reload(); }).catch(() => {}); await closeAll(); }
   // DXF dentro uno .zip (come lo salva il Convertitore nella pagina pubblicata): piastra 10 × 6 cm con foro, in centimetri
   try {
     const L = (a, b, c, d) => ['0', 'LINE', '8', '0', '10', a, '20', b, '11', c, '21', d];
@@ -1224,9 +1340,11 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const gp = await gctx.newPage(); const gerr = []; gp.on('pageerror', e => gerr.push(e.message));
     await gp.goto(SITE); await gp.waitForFunction(() => window.App && App.DWG_CONVERTER_URL, null, { timeout: 30000 });
     await gp.click('#btnFile'); await gp.click('#menuFile [data-act="importDxf"]');
-    await gp.setInputFiles('#dxfFile', { name: 'pezzo.dwg', mimeType: 'application/octet-stream', buffer: Buffer.from('AC1032') });
-    await gp.waitForTimeout(300);
-    const g1 = await gp.evaluate(() => ({ url: App.DWG_CONVERTER_URL, href: (document.querySelector('#dxfErr a.dwg-link') || {}).href }));
+    const g1 = await gp.evaluate(() => ({ url: App.DWG_CONVERTER_URL, href: (document.querySelector('#modalBody a.dwg-link') || {}).href }));
+    // sul sito (http, non da disco) il DWG si legge nel Worker
+    await gp.setInputFiles('#dxfFile', path.join(ROOTD, 'convertitore-dwg', 'prove', 'arco-2018.dwg'));
+    await gp.waitForFunction(() => /AutoCAD 2018/.test(document.querySelector('#dxfCap').textContent), null, { timeout: 30000 });
+    const gm = await gp.evaluate(() => App.dwgMode);
     const cp = await gctx.newPage(); cp.on('pageerror', e => gerr.push(e.message));
     await cp.goto(SITE + 'convertitore-dwg/');
     const g2 = await cp.evaluate(() => document.querySelector('#cadLink').href);
@@ -1238,7 +1356,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const g4 = await lp.evaluate(() => document.querySelector('#cadLink').href); await lp.close();
     const g5 = await page.evaluate(() => App.DWG_CONVERTER_URL);
     rec('Sito GitHub Pages: Banco CAD e Convertitore si collegano tra loro sullo stesso sito; da disco restano i collegamenti a claude.ai',
-      g1.url === SITE + 'convertitore-dwg/' && g1.href === SITE + 'convertitore-dwg/' && g2 === SITE && g3 === SITE &&
+      gm === 'worker' && g1.url === SITE + 'convertitore-dwg/' && g1.href === SITE + 'convertitore-dwg/' && g2 === SITE && g3 === SITE &&
       g4 === 'https://claude.ai/artifact/MB1heHPSzDXuv6brJimWUP' && g5 === 'https://claude.ai/artifact/8PeF7HpK8VZ1RFpsfAJYkY' && !gerr.length,
       `sito: Banco CAD → ${g1.href}; Convertitore → ${g2} (e da index.html → ${g3}); da disco: ${g4} e ${g5}${gerr.length ? '; errori: ' + gerr.join(' | ') : ''}`);
   } catch (e) { rec('Sito GitHub Pages: Banco CAD e Convertitore si collegano tra loro sullo stesso sito', false, e.message.split('\n')[0]); }
@@ -1326,13 +1444,13 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     await fresh();
     await page.click('#btnFile'); await page.click('#menuFile [data-act="about"]');
     const ab = await page.evaluate(() => ({ title: document.querySelector('#modalTitle').textContent, text: document.querySelector('#modalBody').textContent, links: [...document.querySelectorAll('#modalBody a')].map(a => a.href) }));
-    const need = ['Copyright © 2026 Rayuk-creator', 'GNU GPL versione 3', 'senza alcuna garanzia', 'non raccoglie dati', 'occt-import-js', 'LGPL 2.1', 'csg.js', 'Evan Wallace', 'Adobe', 'IBM Plex', 'SIL OFL 1.1', 'Dassault', 'Autodesk'].filter(t => !ab.text.toLowerCase().includes(t.toLowerCase()));
+    const need = ['Copyright © 2026 Rayuk-creator', 'GNU GPL versione 3', 'senza alcuna garanzia', 'non raccoglie dati', 'occt-import-js', 'LGPL 2.1', 'LibreDWG', 'libredwg-web', 'csg.js', 'Evan Wallace', 'Adobe', 'IBM Plex', 'SIL OFL 1.1', 'Dassault', 'Autodesk'].filter(t => !ab.text.toLowerCase().includes(t.toLowerCase()));
     const base = 'https://github.com/Rayuk-creator/CAD/blob/main/';
     const local = ab.links.filter(l => l.startsWith(base)).map(l => l.slice(base.length));
     const noFile = local.filter(l => !require('fs').existsSync(path.join(__dirname, '..', l)));
     await page.evaluate(() => App.closeModal());
     const gpl3 = /GNU GENERAL PUBLIC LICENSE\s+Version 3, 29 June 2007/.test(require('fs').readFileSync(path.join(__dirname, '..', 'LICENSE'), 'utf8'));
-    rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', ab.title === 'Informazioni e licenze' && !need.length && local.length === 7 && !noFile.length && gpl3, `mancano: ${need.join(', ') || 'nulla'}; ${local.length} testi, senza file: ${noFile.join(', ') || 'nessuno'}; LICENSE GPL 3: ${gpl3}`);
+    rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', ab.title === 'Informazioni e licenze' && !need.length && local.length === 9 && !noFile.length && gpl3, `mancano: ${need.join(', ') || 'nulla'}; ${local.length} testi, senza file: ${noFile.join(', ') || 'nessuno'}; LICENSE GPL 3: ${gpl3}`);
   } catch (e) { rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', false, e.message.split('\n')[0]); await page.evaluate(() => App.closeModal && App.closeModal()).catch(() => {}); }
   // privacy: le due pagine non chiedono nulla ad altri siti e usano davvero IBM Plex da dentro la pagina
   try {

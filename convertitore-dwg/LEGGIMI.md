@@ -1,6 +1,8 @@
 # Convertitore DWG → DXF
 
-Pagina a parte del Banco CAD: trasforma i disegni di AutoCAD (`.dwg`) in file DXF, che il Banco CAD apre con **Progetto › Importa DXF (schizzo)**. La conversione avviene nel browser, senza internet: il file non viene mandato da nessuna parte.
+Pagina a parte del Banco CAD: trasforma i disegni di AutoCAD (`.dwg`) in file DXF, che il Banco CAD apre con **Progetto › Importa DXF o DWG (schizzo)**. La conversione avviene nel browser, senza internet: il file non viene mandato da nessuna parte.
+
+> Dal 3 novembre 2026 il Banco CAD **apre direttamente i DWG**, con lo stesso lettore: questa pagina serve per salvare i DXF (per altri programmi) o per convertire molti disegni insieme.
 
 > [!IMPORTANT]
 > **Come si usa il Convertitore DWG → DXF**
@@ -14,7 +16,7 @@ Pagina a parte del Banco CAD: trasforma i disegni di AutoCAD (`.dwg`) in file DX
 > 3. Il file scaricato si chiama `index.html`, **come il Banco CAD**: rinominalo, per esempio `convertitore-dwg.html`, così non li confondi.
 > 4. Aprilo con un **doppio clic**: si apre in Chrome, Edge o Firefox. Non serve internet.
 > 5. Premi **Scegli i file DWG** (oppure trascina i file `.dwg` nella pagina), guarda l'**anteprima**, poi premi **Salva DXF** accanto a ogni disegno, oppure **Salva tutti i DXF (.zip)** per averli in un solo file.
-> 6. Nel Banco CAD: **Progetto › Importa DXF (schizzo)** e scegli il file `.dxf` appena salvato.
+> 6. Nel Banco CAD: **Progetto › Importa DXF o DWG (schizzo)** e scegli il file `.dxf` appena salvato.
 >
 > Funziona anche su **tablet e telefoni**: il convertitore parte con 16 MB di memoria e ne prende di più solo per i disegni grandi.
 
@@ -44,7 +46,7 @@ Nella pagina il `.wasm` è compresso con gzip e scritto in base64 in fondo al fi
 node convertitore-dwg/incorpora-libredwg.js <cartella bindings/javascript/wasm di libredwg-web>
 ```
 
-Lo strumento controlla che il lettore sappia scrivere i DXF (`dwg_write_dxf`), abbassa la memoria iniziale (opzione `--memoria-mb N`, 16 se non si dice) e scrive nella pagina le impronte SHA-256 del `.wasm` originale e di quello incorporato.
+Lo strumento controlla che il lettore sappia scrivere i DXF (`dwg_write_dxf`), abbassa la memoria iniziale (opzione `--memoria-mb N`, 16 se non si dice) e scrive nella pagina le impronte SHA-256 del `.wasm` originale e di quello incorporato. Lo stesso lettore sta anche nel Banco CAD: dopo averlo aggiornato qui, ricopiarlo con `node tools/copia-lettore-dwg.js` (una prova in `tests/dwg.test.js` controlla che i due siano identici).
 
 ## Come funziona
 

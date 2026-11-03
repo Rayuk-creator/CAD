@@ -242,6 +242,34 @@ const acadver = u8 => { const m = /\$ACADVER\s*\r?\n\s*1\s*\r?\n\s*(\S+)/.exec(B
       has(conv) && has(cad), `convertitore: ${has(conv) ? 'sì' : 'NO'}, Banco CAD: ${has(cad) ? 'sì' : 'NO'}`);
   } catch (e) { rec('Codifica UTF-8 dichiarata all\'inizio della pagina', false, 'ERRORE ' + e.message); }
 
+  // Il lettore dentro il Banco CAD: uguale a quello del Convertitore, stesso DXF byte per byte per tutti i disegni di prova
+  try {
+    const cad = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const jsC = (cad.match(/<script id="dwgJs" type="text\/plain">([\s\S]*?)<\/script>/) || [])[1], b64C = (cad.match(/<script id="dwgWasm" type="application\/octet-stream">([\s\S]*?)<\/script>/) || [])[1];
+    rec('Banco CAD: stesso lettore del Convertitore (codice e WebAssembly identici)', !!jsC && jsC === js && !!b64C && b64C.trim() === b64.trim(), `codice ${jsC ? jsC.length : 0}, wasm base64 ${b64C ? b64C.length : 0} caratteri`);
+    const diffs = [];
+    for (const [file] of CASES) {
+      const data = new Uint8Array(fs.readFileSync(path.join(PROVE, file)));
+      const a = IM.runDwgConvert(M, data), b = runConvert(M, data);
+      if (a.err !== b.err || !a.dxf || Buffer.compare(Buffer.from(a.dxf), Buffer.from(b.dxf))) diffs.push(file);
+    }
+    rec(`Banco CAD: i ${CASES.length} DWG di prova danno il DXF del Convertitore byte per byte`, !diffs.length, diffs.length ? 'diversi: ' + diffs.join(', ') : '');
+    // il testo del Worker è un programma valido, senza l'export del modulo (non partirebbe come Worker classico)
+    const src = IM.dwgWorkerSource(jsC);
+    let synt = true; try { new Function(src); } catch (e) { synt = e.message; }
+    rec('Banco CAD: il testo del Worker è valido e non contiene export né import.meta', synt === true && !/export\s+default\s+createModule/.test(src) && !/import\.meta/.test(src), String(synt));
+    // tipo del file dai primi byte
+    const enc = t => new TextEncoder().encode(t);
+    const K = [['AC1032', 'AutoCAD 2018'], ['AC1027', 'AutoCAD 2013'], ['AC1024', 'AutoCAD 2010'], ['AC1021', 'AutoCAD 2007'], ['AC1018', 'AutoCAD 2004'], ['AC1015', 'AutoCAD 2000'], ['AC1014', 'R14'], ['AC1012', 'R13'], ['AC1009', 'R11/R12'], ['MC0.0', 'R1.0'], ['AC1.40', 'R1.40']];
+    const kBad = K.filter(([c, n]) => { const r = IM.dwgKind(enc(c)); return !r.ok || r.name !== n; }).map(x => x[0]);
+    const nuovo = IM.dwgKind(enc('AC1036')), no = [['', /Non è un file DWG/], ['ciao', /Non è un file DWG/], ['  0\nSECTION\n', /dentro è un DXF/], ['AutoCAD Binary DXF', /DXF binario/], ['ISO-10303-21;', /file STEP/]].filter(([t, re]) => { const r = IM.dwgKind(enc(t)); return r.ok || !re.test(r.msg); }).map(x => x[0]);
+    rec('Banco CAD: tipo del file riconosciuto dai primi byte (versioni, più nuovo del 2018 si prova, altri formati spiegati)', !kBad.length && nuovo.ok && /più nuova del 2018/.test(nuovo.name) && !no.length, `versioni sbagliate: ${kBad.join(', ') || 'nessuna'}; altri formati sbagliati: ${no.join(', ') || 'nessuno'}`);
+    // la strada completa come nella pagina: DWG → DXF → lettura; le misure coincidono con quelle del riferimento (cfr. sopra)
+    const rd = f => IM.parseDXF(IM.runDwgConvert(M, new Uint8Array(fs.readFileSync(path.join(PROVE, f)))).dxf);
+    const c = rd('cerchio-2010.dwg').geo[0], arc = rd('arco-2018.dwg').geo[0], R11 = rd('entita-r11.dwg').skipped;
+    rec('Banco CAD: DWG letti con le misure del file (cerchio r 13,5304; testi e quote contati)', c.t === 'circle' && Math.abs(c.r - 13.5304138459097) < 1e-9 && arc.t === 'arc' && R11.testi === 1 && R11.quote === 1, `r ${c.r}; arco r ${arc.r}; saltati ${JSON.stringify(R11)}`);
+  } catch (e) { rec('Banco CAD: lettore DWG dentro la pagina', false, 'ERRORE ' + e.message); }
+
   fs.rmSync(tmp, { recursive: true, force: true });
   const fail = rows.filter(x => !x).length;
   console.log(`\n${rows.length - fail}/${rows.length} superati (tolleranza ${(TOL * 100).toFixed(1)}%)`);

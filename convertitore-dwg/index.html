@@ -133,7 +133,7 @@ footer p { margin: 0; }
   <header>
     <div class="kicker"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 8l8-4 8 4v8l-8 4-8-4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M4 8l8 4 8-4M12 12v8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Banco CAD · strumento a parte</div>
     <h1>Convertitore DWG <span class="arrow">→</span> DXF</h1>
-    <p class="lead">Trasforma i disegni di AutoCAD (.dwg) in file DXF, che il Banco CAD apre con «Importa DXF (schizzo)». La conversione avviene nel tuo browser: il file non viene mandato da nessuna parte.</p>
+    <p class="lead">Trasforma i disegni di AutoCAD (.dwg) in file DXF da salvare, per altri programmi o per molti disegni insieme. Per aprire un DWG nel Banco CAD questa pagina non serve più: lo apre direttamente con «Importa DXF o DWG (schizzo)». La conversione avviene nel tuo browser: il file non viene mandato da nessuna parte.</p>
   </header>
 
   <section class="drop" id="drop" aria-label="Scegli i file DWG">
@@ -159,7 +159,7 @@ footer p { margin: 0; }
       <ul>
         <li>Scegli uno o più file .dwg.</li>
         <li>Guarda l'anteprima, poi premi <b>Salva DXF</b> accanto a ogni disegno, oppure <b>Salva tutti i DXF</b> per averli in un solo .zip.</li>
-        <li>Nel Banco CAD: <b>Progetto › Importa DXF (schizzo)</b>, poi scegli i layer (con uno .zip di più disegni, scegli anche il disegno).</li>
+        <li>Nel Banco CAD: <b>Progetto › Importa DXF o DWG (schizzo)</b>, poi scegli i layer (con uno .zip di più disegni, scegli anche il disegno).</li>
       </ul>
     </div>
     <div class="note">
@@ -204,7 +204,7 @@ footer p { margin: 0; }
     for (const k of Object.keys(DWG_VERS)) if (head.startsWith(k)) return { ok: true, code: k, name: DWG_VERS[k] };
     if (/^AC1\d{3}$/.test(head)) return { ok: true, code: head, name: 'versione ' + head + ' (più nuova del 2018: si prova lo stesso)' };
     const txt = new TextDecoder('latin1').decode(u8.subarray(0, 64));
-    if (/^\s*0\s*\r?\n\s*SECTION/.test(txt)) return { ok: false, msg: 'Questo è già un file DXF: aprilo direttamente nel Banco CAD con «Importa DXF (schizzo)».' };
+    if (/^\s*0\s*\r?\n\s*SECTION/.test(txt)) return { ok: false, msg: 'Questo è già un file DXF: aprilo direttamente nel Banco CAD con «Importa DXF o DWG (schizzo)».' };
     if (/^AutoCAD Binary DXF/.test(txt)) return { ok: false, msg: 'Questo è un DXF binario: dal programma d\'origine salvalo come DXF di testo (ASCII).' };
     if (/^ISO-10303-21/.test(txt)) return { ok: false, msg: 'Questo è un file STEP (un pezzo 3D): nel Banco CAD usa «Importa STEP o IGES».' };
     return { ok: false, msg: 'Non è un file DWG di AutoCAD (i primi caratteri dovrebbero essere «AC10…»).' };
@@ -401,12 +401,12 @@ self.postMessage({ hello: true });`;
     const ok = results.filter(r => r.dxf).slice().reverse();   // nell'ordine in cui sono stati convertiti
     if (!ok.length) return;
     const files = ok.map(r => ({ name: r.name.replace(/\.dwg$/i, '') + '.dxf', data: r.dxf }));
-    await saveBlob('disegni-dxf.zip', zipMany(files), 'Salvato disegni-dxf.zip con ' + files.length + ' disegni: il Banco CAD lo apre con «Importa DXF (schizzo)» e ti fa scegliere il disegno.');
+    await saveBlob('disegni-dxf.zip', zipMany(files), 'Salvato disegni-dxf.zip con ' + files.length + ' disegni: il Banco CAD lo apre con «Importa DXF o DWG (schizzo)» e ti fa scegliere il disegno.');
   }
   async function save(name, u8) {
     if (dl) {
       const zname = name + '.zip';
-      try { await dl.save({ filename: zname, data: zipOne(name, u8) }); toast('Salvato ' + zname + ': il Banco CAD lo apre così com\'è con «Importa DXF (schizzo)», oppure estrai ' + name + '.', 8000); return; }
+      try { await dl.save({ filename: zname, data: zipOne(name, u8) }); toast('Salvato ' + zname + ': il Banco CAD lo apre così com\'è con «Importa DXF o DWG (schizzo)», oppure estrai ' + name + '.', 8000); return; }
       catch (e) {
         if (e && e.code === 'declined') { toast('Salvataggio annullato'); return; }
         if (e && e.code === 'rate_limited') { toast('C\'è già una richiesta di salvataggio aperta'); return; }
