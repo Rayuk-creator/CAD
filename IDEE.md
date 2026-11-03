@@ -34,22 +34,9 @@ Versione **semi-automatica** fattibile (il lettore DXF ora c'è: `Import.parseDX
 
 Risultato: il cablaggio 3D steso in piano. Ellissi e spline del DXF sono pronte: è il prossimo lavoro grande, da confermare con l'utente.
 
-## Disegno 2D libero (come in AutoCAD), da aggiungere a ciò che esiste
-
-Deciso con l'utente il 21 ottobre 2026: **prossimo lavoro grande**, da fare in una chat nuova. Si **aggiunge** al programma: schizzo, funzioni 3D, messa in tavola, esercitazioni, importazioni e progetti già salvati restano come sono, e tutte le prove esistenti devono continuare a passare.
-
-- **Stile**: base SolidWorks («tavola senza modello»: gli stessi strumenti dello schizzo, con relazioni e quote che comandano il disegno), più i comandi AutoCAD utili: **Offset, Copia, Sposta, Ruota** (e dove serve Taglia, Estendi).
-- **Contenuto** (l'utente ha detto «sì a tutto»): linee, archi, cerchi, rettangoli; quote; testi; tratteggi; tipi di linea (continua, tratteggiata, mezzeria); cartiglio e fogli A4–A2; stampa e salvataggio in DXF (e SVG); **layer**; **blocchi**; **tolleranze**; **rugosità**.
-- **Collegamento al 3D**: poter usare un disegno 2D come schizzo per fare un pezzo.
-- **Decisioni dell'utente (29 ottobre 2026)**, da seguire senza richiederle:
-  1. Il comando sta in una **scheda nuova** (non dentro «Messa in tavola»).
-  2. Il disegno 2D si salva come **documento a parte**, non dentro il progetto del pezzo.
-  3. **Ordine dei lavori**: prima le basi (entità, Offset, Copia, Sposta, Ruota, Taglia, Estendi, quote, testi, tratteggi, tipi di linea, cartiglio e fogli, stampa, DXF e SVG), poi layer, blocchi, tolleranze e rugosità.
-- Ogni comando nuovo nella Guida, ogni termine nel Glossario, prove con valori calcolati a mano.
-
 ## Assiemi con gli accoppiamenti (come SolidWorks)
 
-Chiesto dall'utente il 28 ottobre 2026 («l'opzione per montare gli assiemi con gli accoppiamenti, c'è?»): **non c'è**, il Banco CAD fa una parte alla volta (gli STEP di assiemi si importano come corpi fermi). Deciso: **lavoro grande da fare dopo**, in una chat nuova (l'ordine con il disegno 2D libero è da confermare con l'utente). Da chiarire all'inizio:
+Chiesto dall'utente il 28 ottobre 2026 («l'opzione per montare gli assiemi con gli accoppiamenti, c'è?»): **non c'è**, il Banco CAD fa una parte alla volta (gli STEP di assiemi si importano come corpi fermi). Deciso: **lavoro grande da fare dopo**, in una chat nuova. Da chiarire all'inizio:
 
 - Come si salvano le parti dentro l'assieme (oggi il progetto è una parte sola, in `localStorage`): più parti nello stesso progetto, oppure parti importate da file.
 - Accoppiamenti di base come in SolidWorks: **coincidente** (facce, assi, punti), **concentrico**, **parallelo**, **perpendicolare**, **distanza**, **angolo**; parte **fissa**; trascinamento delle parti libere nei gradi di libertà che restano.
