@@ -1853,6 +1853,88 @@ ASM.push(['Esplosione automatica: in fila lungo la direzione, con lo spazio volu
     [2, 1, 35, 1, 48, 1, 20, 18, 1, 35, 1, 1, 25, 0]);
 }]);
 
+/* ---------- viti, dadi e rondelle: tabelle controllate e volumi calcolati a mano ---------- */
+const fastVol = sp => { const d = Model.fastenerDoc(sp), st = Model.regen(d); if (st.errors.size) throw new Error([...st.errors.values()].join()); const m = Model.massProperties(st, d); return { d, st, m, topY: m.bbox.mx[1], lowY: m.bbox.mn[1] }; };
+const HEX = s => Math.sqrt(3) / 2 * s * s, CIR = D => PI * D * D / 4;
+ASM.push(['Viti: le tabelle dicono le misure di norma (qualche riga per ogni norma); ISO 10642: 2k = dk − d in tutte le misure, cono di 90°', () => {
+  const F = Model.FAST, sz = Model.HOLE.SIZES;
+  const cone = sz.every(z => Math.abs(F.iso10642[z].dk - parseFloat(z.slice(1)) - 2 * F.iso10642[z].k) < 1e-9) ? 1 : 0;
+  const all = sz.every(z => F.iso4762[z] && F.iso10642[z] && F.hex[z] && F.iso4032[z] && F.iso7089[z]) ? 1 : 0;
+  return eqs([sz.length, cone, all, F.iso4762.M6.dk, F.iso4762.M6.k, F.iso4762.M6.s, F.iso4762.M20.b, F.iso10642.M8.dk, F.iso10642.M16.s, F.hex.M10.s, F.hex.M10.k, F.hex.M12.b, F.iso4032.M6.m, F.iso4032.M5.m, F.iso4032.M16.m, F.iso7089.M6.d1, F.iso7089.M6.d2, F.iso7089.M12.h, Model.threadMinor(6, 1)],
+    [9, 1, 1, 10, 6, 5, 52, 17.92, 10, 16, 6.4, 30, 5.2, 4.7, 14.8, 6.4, 12, 2.5, 6 - 1.22687], 1e-9);
+}]);
+ASM.push(['Viti: ISO 4762 M6×20 e M20×60: volume a mano (testa + gambo − esagono), lunghezza sotto la testa, lunghezza del filetto, nessun errore', () => {
+  const a = fastVol({ type: 'iso4762', size: 'M6', length: 20 }), b = fastVol({ type: 'iso4762', size: 'M20', length: 60 });
+  const Va = CIR(10) * 6 + CIR(6) * 20 - HEX(5) * 3, Vb = CIR(30) * 20 + CIR(20) * 60 - HEX(17) * 10;
+  const Ta = Model.threadsOf(a.d, a.st)[0], Tb = Model.threadsOf(b.d, b.st)[0];
+  return eqs([a.m.volume, b.m.volume, a.topY, a.lowY, b.lowY, Ta.z1 - Ta.z0, Ta.o[1], Ta.ext ? 1 : 0, Ta.rMajor, Ta.rMinor, Tb.z1 - Tb.z0, a.d.name === 'Vite TCEI ISO 4762 M6×20' ? 1 : 0, a.m.mass],
+    [Va, Vb, 0, -26, -80, 20, -26, 1, 3, (6 - 1.22687) / 2, 52, 1, Va * 7.85 / 1000], 1e-3);
+}]);
+ASM.push(['Viti: ISO 10642 M8×30: la lunghezza comprende la testa; tronco di cono a mano; filetto min(b, l − k)', () => {
+  const a = fastVol({ type: 'iso10642', size: 'M8', length: 30 }), k = 4.96, dk = 17.92;
+  const V = PI * k / 3 * (dk * dk / 4 + dk / 2 * 4 + 16) + CIR(8) * (30 - k) - HEX(5) * 3;
+  const T = Model.threadsOf(a.d, a.st)[0], l = fastVol({ type: 'iso10642', size: 'M8', length: 80 }), Tl = Model.threadsOf(l.d, l.st)[0];
+  return eqs([a.m.volume, a.lowY, a.topY, T.z1 - T.z0, Tl.z1 - Tl.z0], [V, -30, 0, 30 - k, 28], 1e-3);
+}]);
+ASM.push(['Viti: ISO 4017 (tutto filettato) e ISO 4014 (b di norma): prisma esagonale + gambo; dado con il foro di preparazione; rondella', () => {
+  const t = fastVol({ type: 'iso4017', size: 'M10', length: 40 }), p = fastVol({ type: 'iso4014', size: 'M10', length: 60 }), n = fastVol({ type: 'iso4032', size: 'M12' }), w = fastVol({ type: 'iso7089', size: 'M16' });
+  const Tt = Model.threadsOf(t.d, t.st)[0], Tp = Model.threadsOf(p.d, p.st)[0], Tn = Model.threadsOf(n.d, n.st)[0];
+  return eqs([t.m.volume, t.topY, t.lowY, Tt.z1 - Tt.z0, p.m.volume, Tp.z1 - Tp.z0, n.m.volume, n.topY, n.lowY, Tn.ext ? 1 : 0, Tn.rMajor, Tn.rMinor, Tn.z1 - Tn.z0, w.m.volume, w.topY, Model.threadsOf(w.d, w.st).length],
+    [HEX(16) * 6.4 + CIR(10) * 40, 0, -46.4, 40, HEX(16) * 6.4 + CIR(10) * 60, 26, (HEX(18) - CIR(10.2)) * 10.8, 10.8, 0, 0, 6, 5.1, 10.8, (CIR(30) - CIR(17)) * 3, 3, 0], 1e-3);
+}]);
+ASM.push(['Viti: tutte le misure e i tipi si costruiscono senza errori, con il volume esatto per le TCEI; lunghezze: ISO 4014 sopra b, serie ISO 888', () => {
+  let bad = 0, n = 0;
+  for (const t of Model.FAST_TYPES) for (const z of Model.HOLE.SIZES) {
+    const ls = t.screw ? Model.fastenerLengths(t.id, z) : [0];
+    const sp = { type: t.id, size: z, length: ls[0] };
+    const r = fastVol(sp); n++;
+    if (!(r.m.volume > 0) || r.st.warn.size) bad++;
+  }
+  const l = Model.fastenerLengths('iso4014', 'M10'), l2 = Model.fastenerLengths('iso4762', 'M6');
+  return eqs([n, bad, l[0], l2[0], l2[l2.length - 1]], [54, 0, 30, 6, 200]);
+}]);
+ASM.push(['Filetto di un foro della Creazione guidata: maggiore, minore e tratto veri, anche passante e con la serie', () => {
+  const d = D0('f'); const b = SB(); b.rect(0, 0, 40, 40); const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 20 });
+  const top = face(d, nearW([0, 1, 0], 20));
+  const h = SB(); const pp = h.pt(20, 20); h.s.ents.find(e => e.id === pp).hole = true; const q = feat(d, { type: 'sketch', plane: { kind: 'face', name: top.name, n: top.n, w: top.w }, sk: h.s, holeSketch: true });
+  feat(d, { type: 'hole', kind: 'tap', size: 'M8', end: 'blind', depth: 15, threadDepth: 12, sketch: q });
+  const T = Model.threadsOf(d, Model.regen(d))[0];
+  // passante: tutto lo spessore
+  d.features[d.features.length - 1].end = 'through';
+  const P = Model.threadsOf(d, Model.regen(d))[0];
+  // un rialzo accanto al foro, alto 30 sopra il pezzo: il filetto resta lungo quanto il foro
+  const c = SB(); c.rect(0, 0, 10, 10); const r = sketch(d, STD('top'), c); feat(d, { type: 'extrude', sketch: r, end: 'blind', depth: 50 });
+  const Q = Model.threadsOf(d, Model.regen(d))[0];
+  return eqs([T.rMajor, T.rMinor, T.z1 - T.z0, T.ext ? 1 : 0, T.dir[1], T.hole ? 1 : 0, P.z1 - P.z0, P.rMinor, Q.z1 - Q.z0], [4, 3.4, 12, 0, -1, 1, 20, 3.4, 20], 1e-6);
+}]);
+ASM.push(['Interferenze con le viti: M6 nel foro filettato M6 = «filetto»; nel passante nessuna; foro semplice, foro M5 o perno liscio = vere; testa nella piastra = vera; bullone nel dado: sul filetto sì, sul gambo no', () => {
+  const scr = Model.fastenerDoc({ type: 'iso4762', size: 'M6', length: 20 });
+  // piastra 40×40×10, y 0..10, con un foro della Creazione guidata
+  const holed = (kind, size, extra = {}) => { const d = block(40, 40, 10); const top = face(d, nearW([0, 1, 0], 10)); const h = SB(); const pp = h.pt(20, 20); h.s.ents.find(e => e.id === pp).hole = true; const q = feat(d, { type: 'sketch', plane: { kind: 'face', name: top.name, n: top.n, w: top.w }, sk: h.s, holeSketch: true }); feat(d, { type: 'hole', kind, size, end: 'through', sketch: q, ...extra }); return d; };
+  const go = (a, s, y) => { const docs = { a, s }, infos = asmSet(docs), asm = Assembly.newAssembly(); Assembly.addInst(asm, 'a'); Assembly.addInst(asm, 's', { pose: asmPose([20, y, -20], TURN) }); return Assembly.interferences(asm, infos).list; };
+  // sottotesta sulla faccia alta: testa y 10..16, l'origine della vite è a y = 16
+  const tap = go(holed('tap', 'M6'), scr, 16), clear = go(holed('clear', 'M6', { fit: 'medium' }), scr, 16), plain = go(plateHole(40, 40, 10, 20, 20, 2.5), scr, 16), small = go(holed('tap', 'M5'), scr, 16), pinIn = go(holed('tap', 'M6'), pin(3, 30), -5), sunk = go(holed('tap', 'M6'), scr, 12);
+  const big = go(holed('tap', 'M6'), Model.fastenerDoc({ type: 'iso4762', size: 'M8', length: 20 }), 18);   // M8 in un foro M6: va oltre il nominale del foro
+  const docs = { n: Model.fastenerDoc({ type: 'iso4032', size: 'M10' }), b: Model.fastenerDoc({ type: 'iso4014', size: 'M10', length: 60 }) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 'n'); Assembly.addInst(asm, 'b', { pose: asmPose([0, 30, 0], TURN) });   // punta -36,4, filetto fino a -10,4: nel dado (y 0..8,4) c'è il gambo liscio
+  const shank = Assembly.interferences(asm, infos).list;
+  asm.insts[1].pose = asmPose([0, 60, 0], TURN);   // punta -6,4, filetto fino a 19,6: copre tutto il dado
+  const ok = Assembly.interferences(asm, infos).list;
+  asm.insts[1].pose = asmPose([0, 100, 0], TURN);  // punta 33,6: lontano
+  const far = Assembly.interferences(asm, infos).list;
+  return eqs([tap.length, tap[0].thread ? 1 : 0, tap[0].volume, clear.length, plain.length, plain[0].thread ? 1 : 0, small.length, small[0].thread ? 1 : 0, pinIn.length, pinIn[0].thread ? 1 : 0, sunk.length, sunk[0].thread ? 1 : 0, shank.length, shank[0].thread ? 1 : 0, ok.length, ok[0].thread ? 1 : 0, ok[0].volume, far.length, big.length, big[0].thread ? 1 : 0],
+    [1, 1, PI * (9 - 6.25) * 10, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, PI * (25 - 4.25 * 4.25) * 8.4, 0, 1, 0], 1e-3);
+}]);
+ASM.push(['Filetti nell\'assieme: seguono posizione e rotazione del componente', () => {
+  const docs = { s: Model.fastenerDoc({ type: 'iso4762', size: 'M6', length: 20 }) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 's', { pose: asmPose([1, 2, 3], Assembly.qexp([0, 0, PI / 2])) });
+  // base del filetto in (0, -26, 0): ruotata di 90° attorno a Z va in (26, 0, 0), spostata (27, 2, 3); asse +Y → -X
+  const t = Assembly.threadsWorld(asm, infos)[0];
+  asm.explode = { on: true, steps: [{ id: 'X1', insts: [asm.insts[0].id], dir: [0, 0, 1], dist: 40 }] };
+  const e = Assembly.threadsWorld(asm, infos, { exploded: true })[0], f = Assembly.threadsWorld(asm, infos)[0];
+  return eqs([...t.o, ...t.dir, t.inst === asm.insts[0].id ? 1 : 0, e.o[2], f.o[2]], [27, 2, 3, -1, 0, 0, 1, 43, 3]);
+}]);
+
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
   const rows = [];

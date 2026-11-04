@@ -2189,6 +2189,47 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     rec(ASMC2, okExp && okAuto && okSheet && !errs.length, `anteprima y ${prev.mn[1]}..${prev.mx[1]}, vero ${prev.pose[1]}; «${listed}»; dopo ✓ ${s1.mn[1]}; «${tree}»; annulla ${su.steps}/${su.mn[1]}; ripeti ${sr.steps}/${sr.mn[1]}; comprimi ${sc.ex}/${sc.mn[1]}; trascinato ${dist} (atteso ${(10 + 30 / dragInfo.px).toFixed(3)}); Esc ${sa.steps}/${sa.mn[1]}; automatica ${sAuto.steps}/${sAuto.mn[1]}; tavola ${JSON.stringify({ ...sheet, frame: undefined })}; pdf ${JSON.stringify(pdf)}; dxf ${dxf.length}; spenti ${JSON.stringify(off)}; sezione ${JSON.stringify(sec)}; ritorno ${JSON.stringify(back)}; parte ${JSON.stringify(part)}; errori ${errs.join(' | ')}`);
   } catch (e) { rec(ASMC2, false, e.message.split('\n')[0]); }
 
+  const ASMC3 = 'Viti e bulloni con il mouse: finestra, due viti uguali = una parte e quantità 2, dado, misure; filetto indicato in tavola (ISO 6410) con le misure a mano; interferenza «filetto»';
+  try {
+    const { c, p, errs, insert } = await asmSetup();
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    await insert('p1');
+    const pickFast = async (type, size, len) => { await p.click('[data-cmd="fastener"]'); await p.waitForTimeout(120); await p.selectOption('#fsType', type); await p.selectOption('#fsSize', size); if (len) await p.selectOption('#fsLen', String(len)); const info = await p.evaluate(() => ({ name: document.querySelector('#fsInfo').textContent, lenHidden: document.querySelector('#fsLenRow').hidden, n: document.querySelector('#fsLen').options.length })); await p.click('#modalActions .btn-primary'); await p.waitForTimeout(200); return info; };
+    const i1 = await pickFast('iso4762', 'M6', 20);
+    const i2 = await pickFast('iso4762', 'M6', 20);
+    const i3 = await pickFast('iso4032', 'M10');
+    const i4 = await pickFast('iso4014', 'M10', 60);
+    const proj = await p.evaluate(() => ({ parts: App.project.parts.map(q => q.doc.name), insts: App.project.assembly.insts.length, sel: [...document.querySelectorAll('#partSel option')].map(o => o.textContent), lines: App.asm.threadsNow().length }));
+    await p.click('[data-cmd="bom"]'); await p.waitForTimeout(120);
+    const bom = await p.evaluate(() => [...document.querySelectorAll('#asmBom tbody tr')].map(r => [...r.cells].map(x => x.textContent)));
+    await p.click('#modalActions .btn-primary');
+    // bullone nel dado: filetto; Annulla toglie il componente
+    await p.evaluate(() => { App.change(() => { const a = App.project.assembly, I = a.insts; I[0].pose = { p: [500, 0, 0], q: [1, 0, 0, 0] }; I[1].pose = { p: [700, 0, 0], q: [1, 0, 0, 0] }; I[2].pose = { p: [900, 0, 0], q: [1, 0, 0, 0] }; I[3].pose = { p: [0, 0, 0], q: [1, 0, 0, 0] }; I[4].pose = { p: [0, 60, 0], q: Assembly.qexp([0, 0.0713, 0]) }; }); });
+    await p.waitForTimeout(150);
+    await p.click('[data-cmd="interf"]'); await p.waitForTimeout(120);
+    await p.click('#asmIntRun'); await p.waitForFunction(() => document.querySelector('#asmIntSum'), null, { timeout: 30000 }); await p.waitForTimeout(100);
+    const inter = await p.evaluate(() => ({ rows: [...document.querySelectorAll('#pm .asm-int')].map(b => b.textContent), note: document.querySelector('#asmIntRes').textContent }));
+    await p.screenshot({ path: path.join(OUT, 'assieme-viti.png') });
+    await p.evaluate(() => App.closePM(false));
+    // la vite da sola, nella sua tavola: righe sottili a ±d3/2, lunghe quanto il filetto; 3/4 di cerchio nella vista dal basso; fine filetto
+    await p.evaluate(() => { const id = App.project.parts.find(q => q.doc.name === 'Vite TCEI ISO 4762 M6×20').id; App.openPart(id); }); await p.waitForTimeout(200);
+    const docInfo = await p.evaluate(() => ({ features: App.doc.features.map(f => f.type), material: App.doc.material, err: App.st.errors.size, mass: Model.massProperties(App.st, App.doc).mass }));
+    await p.click('[data-ct="drawing"]'); await p.waitForTimeout(300);
+    const dr = await p.evaluate(() => { const d = Drawing.state(); d.views.bottom = true; d.scale = '2:1'; d.views.iso = false; Drawing.redraw(); const s = document.querySelector('#sheetHolder svg'); const q = id => s.querySelector(`[data-view="${id}"]`); const L = g => [...g.querySelectorAll('[data-thread] line')].map(l => [+l.getAttribute('x1'), +l.getAttribute('y1'), +l.getAttribute('x2'), +l.getAttribute('y2')]); const A = g => [...g.querySelectorAll('[data-thread] path, [data-thread] circle')].map(a => a.getAttribute('d') || a.getAttribute('r')); const out = { front: L(q('front')), arcsBottom: A(q('bottom')), arcsTop: q('top') ? A(q('top')) : [] }; out.dxf = Drawing.toDXF(); return out; });
+    await p.screenshot({ path: path.join(OUT, 'vite-tavola.png') });
+    await p.click('[data-ct="features"]'); await p.waitForTimeout(100);
+    await c.close();
+    const fl = dr.front;
+    const xs = fl.map(l => l[0]).sort((a, b) => a - b), len = fl.length ? Math.abs(fl[0][3] - fl[0][1]) : 0;
+    const okLines = fl.length === 2 && Math.abs(xs[1] - xs[0] - (6 - 1.22687) * 2) < 0.002 && Math.abs(len - 20 * 2) < 0.002 && fl[0][0] === fl[0][2];
+    const arcR = dr.arcsBottom.length === 1 ? parseFloat(/^M[\d. \-]+A([\d.]+)/.exec(dr.arcsBottom[0])[1]) : 0;
+    const okArc = Math.abs(arcR - (6 - 1.22687)) < 0.002 && /A[\d.]+ [\d.]+ 0 1 0/.test(dr.arcsBottom[0]) && dr.arcsTop.length === 0;
+    const ok = i1.name === 'Vite TCEI ISO 4762 M6×20' && !i1.lenHidden && i3.name === 'Dado ISO 4032 M10' && i3.lenHidden && /ISO 4014 M10×60/.test(i4.name) && proj.parts.length === 5 && proj.insts === 5 && proj.sel.some(t => /Vite TCEI/.test(t)) && proj.lines === 4
+      && bom.length === 4 && bom[1][1] === 'Vite TCEI ISO 4762 M6×20' && bom[1][3] === '2' && /S235/.test(bom[1][2]) && inter.rows.length === 1 && / \(filetto\)$/.test(inter.rows[0]) && /Dado ISO 4032 M10<1> e Vite TE ISO 4014 M10×60<1>/.test(inter.rows[0]) && /183,076 mm³/.test(inter.rows[0]) && /non è un errore/.test(inter.note)
+      && docInfo.err === 0 && docInfo.features.includes('revolve') && docInfo.features.includes('cut') && okLines && okArc && /\nFILETTI\r?\n/.test(dr.dxf);
+    rec(ASMC3, ok && !errs.length, `${JSON.stringify(i1)} ${JSON.stringify(i3)}; ${JSON.stringify(proj)}; distinta ${JSON.stringify(bom)}; ${inter.rows.join()}; ${JSON.stringify(docInfo)}; righe ${JSON.stringify(fl)} (distanza attesa ${((6 - 1.22687) * 2).toFixed(3)}, lunghezza 40); archi basso ${JSON.stringify(dr.arcsBottom)}, r ${arcR}; alto ${dr.arcsTop.length}; errori ${errs.join(' | ')}`);
+  } catch (e) { rec(ASMC3, false, e.message.split('\n')[0]); }
+
   await browser.close();
   const f = results.filter(r => !r.ok).length;
   console.log(`\n${results.length - f}/${results.length} superati`);

@@ -46,13 +46,9 @@ Chiesto dall'utente il 28 ottobre 2026. **La base è fatta il 4 novembre 2026** 
 **Fatti il 4 novembre:** calcoli sull'assieme (massa, distinta base, interferenze); vista esplosa e tavola dell'assieme; accoppiamenti con i piani e l'origine delle parti; coni e sfere nelle facce curve degli STEP; vertici che si ritrovano quando cambia la parte.
 - Se servirà: parti collegate a file separati (scartate per ora: funzionerebbero solo in Chrome ed Edge).
 
-## Viti, bulloni e filettature (lavoro successivo, chiesto il 4 novembre 2026)
+## Viti, bulloni e filettature
 
-Oggi ci sono solo i **fori** per le viti (Creazione guidata fori, M3–M20): il foro filettato è il foro di preparazione, senza filetto nel pezzo 3D, e non ci sono viti, bulloni, dadi e rondelle da inserire. **L'utente ha chiesto di segnarlo come lavoro successivo.** Da chiarire all'inizio:
-
-- Quali pezzi: viti (ISO 4762 a testa cilindrica, ISO 10642 svasate, ISO 4017/4014 a testa esagonale), dadi (ISO 4032), rondelle (ISO 7089), e con quali misure di norma.
-- La filettatura: filetto indicato (cosmetico), come di solito in SolidWorks, oppure elica vera nel 3D, molto più pesante da calcolare.
-- Come si inseriscono nell'assieme: una raccolta di parti pronte, da mettere nel foro con gli accoppiamenti.
+**Fatti il 4 novembre 2026** (vedi `RIPARTENZA.md`). Se servirà: smussi della viteria, filetti nelle sezioni, un clic sul foro che inserisce e accoppia la vite da sola, l'elica vera a richiesta.
 
 ## Licenza e pubblicazione su AlternativeTo (controllo del 1° novembre 2026)
 

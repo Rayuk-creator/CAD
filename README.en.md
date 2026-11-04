@@ -123,6 +123,7 @@ Line, corner and centre rectangle, circle, arcs (centre-ends, 3-point, tangent),
 - **Inserisci parte** (Insert part): a part of the project, several copies of it, or a STEP, IGES, STL, OBJ file or an exported project. A STEP file with several bodies gives one part per body, at the positions in the file.
 - **Mates**: coincident, concentric, parallel, perpendicular, distance, angle, between faces, edges, vertices, and the planes and origin of parts (including cones and spheres from STEP files); a vertex is found again by itself when you change the dimensions; fixed part; degrees of freedom of each component in the tree; a message when two mates contradict each other.
 - **Dragging** components within their remaining degrees of freedom, by mouse or finger (**Sposta parte**, Move part). If you edit a part, the assembly is solved again.
+- **Screws and nuts** (**Viti e bulloni**): ISO 4762, 10642, 4014 and 4017 screws, ISO 4032 nuts and ISO 7089 washers from M3 to M20, with cosmetic threads drawn as in ISO 6410.
 - **Export STEP** of the assembly: one solid per component. **Mass properties**, **bill of materials**, **interference check** (true volume on the exact surfaces), **exploded view** and **assembly drawing** with item balloons and parts list.
 
 ### Evaluate

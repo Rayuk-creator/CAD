@@ -121,6 +121,7 @@ Linea, rettangolo e rettangolo centrale, cerchio, archi (centro-estremi, 3 punti
 - **Inserisci parte**: una parte del progetto, più copie della stessa parte, oppure un file STEP, IGES, STL, OBJ o un progetto esportato. Uno STEP con più corpi dà una parte per ogni corpo, nelle posizioni del file.
 - **Accoppiamenti**: coincidente, concentrico, parallelo, perpendicolare, distanza, angolo, tra facce, spigoli, vertici, piani e origine delle parti (anche coni e sfere dei file STEP); un vertice si ritrova da solo quando cambi le misure; parte fissa; gradi di libertà di ogni componente nell'albero; messaggio quando due accoppiamenti si contraddicono.
 - **Trascinamento** dei componenti nei gradi di libertà che restano, con il mouse o con il dito (**Sposta parte**). Se modifichi una parte, l'assieme si ricalcola.
+- **Viti e bulloni**: viti ISO 4762, 10642, 4014 e 4017, dadi ISO 4032 e rondelle ISO 7089 da M3 a M20, con il filetto indicato come ISO 6410.
 - **Esporta STEP** dell'assieme: un solido per ogni componente. **Proprietà di massa**, **distinta base**, **verifica interferenze** (volume vero, sulle superfici esatte), **vista esplosa** e **tavola dell'assieme** con numeri di posizione e distinta base.
 
 ### Valuta
@@ -137,7 +138,7 @@ Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nasc
 
 ![Guida «Come si fa»: raccordo e smusso degli spigoli](docs/img/guida.png)
 
-- **Guida** (pulsante in alto): 58 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
+- **Guida** (pulsante in alto): 59 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
 - **Glossario**: oltre 190 termini spiegati in parole semplici (comandi, relazioni, opzioni, norme). La piccola **ⓘ** accanto ai titoli dei pannelli apre la spiegazione della voce.
 
 ## Calcoli verificati
