@@ -2,9 +2,9 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 3 novembre 2026, notte (**testi e quote di DXF e DWG come sfondo nello schizzo**; prima: **lettore DWG dentro il Banco CAD**, pagine ripubblicate su claude.ai; cancellato il disegno 2D libero; Banco CAD 19 su claude.ai; proposto il lettore DWG dentro il Banco CAD; prima: più corpi solidi e Combina; bordi B-spline nello STEP; sweep senza schegge; spigolo tra facce vere complanari; licenza GPL 3, finestra «Informazioni e licenze», caratteri dentro la pagina; tolte le 8 esercitazioni; 1° novembre: controllo delle licenze per AlternativeTo, segnato in `IDEE.md`; 29 ottobre: sito su GitHub Pages; spigoli nascosti che uscivano davanti alle facce; operazioni booleane segnate in `IDEE.md`; STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
+Ultimo aggiornamento: 4 novembre 2026 (**sorgenti del lettore STEP/IGES nei due fork**; prima, 3 novembre notte: **testi e quote di DXF e DWG come sfondo nello schizzo**; prima: **lettore DWG dentro il Banco CAD**, pagine ripubblicate su claude.ai; cancellato il disegno 2D libero; Banco CAD 19 su claude.ai; proposto il lettore DWG dentro il Banco CAD; prima: più corpi solidi e Combina; bordi B-spline nello STEP; sweep senza schegge; spigolo tra facce vere complanari; licenza GPL 3, finestra «Informazioni e licenze», caratteri dentro la pagina; tolte le 8 esercitazioni; 1° novembre: controllo delle licenze per AlternativeTo, segnato in `IDEE.md`; 29 ottobre: sito su GitHub Pages; spigoli nascosti che uscivano davanti alle facce; operazioni booleane segnate in `IDEE.md`; STEP con superfici vere; meno archi per curva nei DXF; Convertitore DWG con 16 MB di memoria, anteprima e «Salva tutti i DXF»).
 
-**Stato attuale:** ultima modifica al programma su `main` = sfondo del disegno, 3 novembre (vedi `git log`). Tutte le prove superate: 178/178 di calcolo, 35/35 STEP/IGES (comprese 21 di STEP esportati e riletti), 21/21 del lettore e del convertitore DWG, 62/62 dell'interfaccia, Autoverifica 178/178. Nessun lavoro lasciato a metà.
+**Stato attuale:** ultima modifica su `main` = sorgenti del lettore STEP/IGES nei due fork, 4 novembre; ultima funzione nuova = sfondo del disegno, 3 novembre (vedi `git log`). Tutte le prove superate: 178/178 di calcolo, 35/35 STEP/IGES (comprese 21 di STEP esportati e riletti), 21/21 del lettore e del convertitore DWG, 62/62 dell'interfaccia, Autoverifica 178/178. Nessun lavoro lasciato a metà.
 
 ---
 
@@ -142,7 +142,7 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 
 ---
 
-## 5. Cronologia (14 ottobre – 3 novembre 2026)
+## 5. Cronologia (14 ottobre – 4 novembre 2026)
 
 - Batteria di test sui calcoli e sull'interfaccia, tolleranza 1 %.
 - Corretti: raccordo sul bordo circolare di un cilindro pieno; anteprima che restava attiva dopo ✓ (pezzo sbagliato); salvataggio perso alla chiusura e funzioni «fantasma» alla riapertura; zoom a due dita che spostava la vista; dita «rimaste agganciate» tra un gesto e l'altro.
@@ -181,12 +181,14 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 
 - 3 novembre (notte, ancora dopo): **sfondo del disegno** (scelte: testi e quote, niente tratteggi, solo a video). Controllo indipendente sul disegno vero 2013: i numeri scritti nelle 8 quote non angolari coincidono con le misure salvate nel file (codice 42), testi e quote del DWG convertito uguali a quelli del DXF di riferimento, geometria identica con e senza sfondo. 8 prove di calcolo (posizioni calcolate a mano), 1 sul disegno vero, 1 con il mouse (lettera alta 135,0 px, attesi 135,1; nessun clic; PDF identico; Togli/Annulla; estrusione; salvataggio). Falliscono sulla versione vecchia.
 
+- 4 novembre: **sorgenti del lettore STEP/IGES «nello stesso posto»** (LGPL 2.1, 6d). L'utente ha fatto **due** fork, non uno: `occt-import-js` rimanda a OCCT con un sottomodulo su `git.dev.opencascade.org`, quindi da solo non contiene OpenCascade. Trovato che l'etichetta `0.0.24` non esiste: è l'ultimo commit di `main` (`41e4708`), e OCCT è la `V7_6_1` (`d2abb6d`). Controllato: `occtJs` e `occtWasm` dentro `index.html` sono identici byte per byte a `dist` di quel commit. Aggiornati `licenze/LEGGIMI.md`, «Informazioni e licenze», il commento nel lettore e `tools/incorpora-occt.js`. La prova dell'interfaccia «Informazioni e licenze» controlla i due indirizzi nei quattro posti e fallisce sulla versione vecchia.
+
 ## 6. Cose aperte
 
 - **Da chiedere per primo:** se l'utente ha provato ad aprire un DWG nella pagina su claude.ai. Nell'ambiente di prova si può controllare solo la pagina da disco e il sito simulato: dentro claude.ai la lettura non è stata provata. Se dà errore, farsi dire il messaggio.
 - **Da chiedere subito dopo:** il prossimo lavoro; il grande in elenco sono gli assiemi con accoppiamenti (vedi `IDEE.md`). Nessun lavoro è rimasto a metà.
 - **Sfondo del disegno: i tratteggi non ci sono** (scelta del 3 novembre: confondono la vista); si possono aggiungere se li chiede. **La pagina su claude.ai non è ancora ripubblicata con lo sfondo** (è ferma alla versione 20): va fatto se l'utente lo chiede; sul sito GitHub Pages arriva da solo.
-- **Da fare: il fork di occt-import-js 0.0.24.** Lo fa l'utente dal suo account GitHub (ha detto il 3 novembre che lo fa il giorno dopo), togliendo la spunta «Copy the main branch only». Quando dà l'indirizzo, aggiornare `licenze/LEGGIMI.md`, la finestra «Informazioni e licenze» (`aboutDialog` in `index.html`; la prova dell'interfaccia conta 7 testi collegati) e il commento nel lettore.
+- **Fork dei sorgenti del lettore STEP/IGES: fatti** (4 novembre, vedi Cronologia). **Non premere «Sync fork»** su `Rayuk-creator/occt-import-js` e `Rayuk-creator/OCCT`; i collegamenti puntano comunque ai commit esatti. Se si cambia versione del lettore vanno aggiornati i due indirizzi in `aboutDialog`, nel commento (`tools/incorpora-occt.js`), in `licenze/LEGGIMI.md` e nella prova dell'interfaccia.
 - Ripubblicare su claude.ai: la lettura con `path` non basta, l'Artifact tool chiede anche quella senza `path`, che mette molto testo nella chat (circa 30 000 caratteri a pagina). Dopo, avvisare l'utente che la chat è diventata pesante.
 
 - Corpi solidi, limiti: un taglio lavora sempre su tutti i corpi (in SolidWorks si può scegliere con «Ambito funzione»); i corpi si scelgono nel pannello o nella vista, non nell'albero mentre il pannello è aperto (l'albero è nascosto); serie e specchio lavorano sulle funzioni, non sui corpi.

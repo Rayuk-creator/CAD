@@ -8041,7 +8041,7 @@ self.postMessage({ hello: true });`;
       <p><b>Dati personali.</b> Il programma non raccoglie dati: il lavoro resta nel tuo browser e i file che apri non vengono mandati da nessuna parte.</p>
       <p><b>Parti di altri autori</b></p>
       <ul>
-        <li><b>occt-import-js</b> 0.0.24 (V. Kovacs) e <b>Open CASCADE Technology</b>, il lettore STEP/IGES: licenza LGPL 2.1 (${f('licenze/occt-import-js-LGPL-2.1.txt', 'testo')}, ${f('licenze/opencascade-LGPL-2.1-eccezione.txt', 'testo con l\'eccezione di OCCT')}). Sorgenti: ${a('https://github.com/kovacsv/occt-import-js', 'occt-import-js')} e ${a('https://dev.opencascade.org', 'Open CASCADE')}; come sostituirlo: ${f('licenze/LEGGIMI.md', 'LEGGIMI')}.</li>
+        <li><b>occt-import-js</b> 0.0.24 (V. Kovacs) e <b>Open CASCADE Technology</b> 7.6.1, il lettore STEP/IGES: licenza LGPL 2.1 (${f('licenze/occt-import-js-LGPL-2.1.txt', 'testo')}, ${f('licenze/opencascade-LGPL-2.1-eccezione.txt', 'testo con l\'eccezione di OCCT')}). Sorgenti di questa versione: ${a('https://github.com/Rayuk-creator/occt-import-js/tree/41e470890ae0f9dc69ac50ffd5fc73e03576f4eb', 'occt-import-js')} e ${a('https://github.com/Rayuk-creator/OCCT/tree/d2abb6d844231cb8f29be6894440874a4700e4a5', 'Open CASCADE')} (progetti d'origine: ${a('https://github.com/kovacsv/occt-import-js', 'occt-import-js')}, ${a('https://dev.opencascade.org', 'Open CASCADE')}); come sostituirlo: ${f('licenze/LEGGIMI.md', 'LEGGIMI')}.</li>
         <li><b>LibreDWG</b> (progetto GNU), compilato in WebAssembly da <b>libredwg-web</b> 0.8.2, il lettore DWG: licenza GPL 3 (${f('convertitore-dwg/COPYING', 'testo')}). Sorgenti: ${a('https://www.gnu.org/software/libredwg/', 'LibreDWG')} e ${a('https://github.com/mlightcad/libredwg-web', 'libredwg-web')}; versione e unica modifica: ${f('convertitore-dwg/LEGGIMI.md', 'LEGGIMI')}.</li>
         <li><b>csg.js</b>, © 2011 Evan Wallace: il modulo delle operazioni booleane ne segue l'algoritmo. Licenza ${f('licenze/csg.js-MIT.txt', 'MIT')}.</li>
         <li><b>Metriche dei caratteri Helvetica</b> per i PDF, © 1985–1997 Adobe Systems Incorporated: ${f('licenze/adobe-core14-afm.txt', 'avviso')}.</li>
@@ -15480,7 +15480,8 @@ if (isNode) {
 <!-- LETTORE STEP/IGES: inizio -->
 <!-- occt-import-js (https://github.com/kovacsv/occt-import-js) e Open CASCADE Technology (https://dev.opencascade.org),
      distribuiti con licenza GNU LGPL 2.1 (OCCT con l'eccezione di Open CASCADE): i testi sono nella cartella «licenze» del repository
-     https://github.com/Rayuk-creator/CAD. La libreria non è modificata; si può sostituire con un'altra versione con tools/incorpora-occt.js. -->
+     https://github.com/Rayuk-creator/CAD. La libreria non è modificata; si può sostituire con un'altra versione con tools/incorpora-occt.js.
+     Copia dei sorgenti di questa versione (0.0.24 con OCCT 7.6.1): https://github.com/Rayuk-creator/occt-import-js/tree/41e470890ae0f9dc69ac50ffd5fc73e03576f4eb e https://github.com/Rayuk-creator/OCCT/tree/d2abb6d844231cb8f29be6894440874a4700e4a5 -->
 <script id="occtJs" type="text/plain">
 var occtimportjs = (() => {
   var _scriptName = typeof document != 'undefined' ? document.currentScript?.src : undefined;

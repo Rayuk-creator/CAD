@@ -16,7 +16,9 @@ const START = '<!-- LETTORE STEP/IGES: inizio -->', END = '<!-- LETTORE STEP/IGE
 const block = START + '\n' +
   '<!-- occt-import-js (https://github.com/kovacsv/occt-import-js) e Open CASCADE Technology (https://dev.opencascade.org),\n' +
   '     distribuiti con licenza GNU LGPL 2.1 (OCCT con l\'eccezione di Open CASCADE): i testi sono nella cartella «licenze» del repository\n' +
-  '     https://github.com/Rayuk-creator/CAD. La libreria non è modificata; si può sostituire con un\'altra versione con tools/incorpora-occt.js. -->\n' +
+  '     https://github.com/Rayuk-creator/CAD. La libreria non è modificata; si può sostituire con un\'altra versione con tools/incorpora-occt.js.\n' +
+  // Se si cambia versione, aggiornare anche questa riga, licenze/LEGGIMI.md e la finestra «Informazioni e licenze».
+  '     Copia dei sorgenti di questa versione (0.0.24 con OCCT 7.6.1): https://github.com/Rayuk-creator/occt-import-js/tree/41e470890ae0f9dc69ac50ffd5fc73e03576f4eb e https://github.com/Rayuk-creator/OCCT/tree/d2abb6d844231cb8f29be6894440874a4700e4a5 -->\n' +
   '<script id="occtJs" type="text/plain">' + js + '</script>\n' +
   '<script id="occtWasm" type="application/octet-stream">' + b64 + '</script>\n' + END;
 const a = html.indexOf(START), b = html.indexOf(END);

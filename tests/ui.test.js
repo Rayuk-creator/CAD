@@ -1445,12 +1445,16 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     await page.click('#btnFile'); await page.click('#menuFile [data-act="about"]');
     const ab = await page.evaluate(() => ({ title: document.querySelector('#modalTitle').textContent, text: document.querySelector('#modalBody').textContent, links: [...document.querySelectorAll('#modalBody a')].map(a => a.href) }));
     const need = ['Copyright © 2026 Rayuk-creator', 'GNU GPL versione 3', 'senza alcuna garanzia', 'non raccoglie dati', 'occt-import-js', 'LGPL 2.1', 'LibreDWG', 'libredwg-web', 'csg.js', 'Evan Wallace', 'Adobe', 'IBM Plex', 'SIL OFL 1.1', 'Dassault', 'Autodesk'].filter(t => !ab.text.toLowerCase().includes(t.toLowerCase()));
+    // sorgenti del lettore STEP/IGES: le copie ai commit esatti (LGPL 2.1, 6d), uguali in finestra, commento della pagina e LEGGIMI
+    const srcs = ['https://github.com/Rayuk-creator/occt-import-js/tree/41e470890ae0f9dc69ac50ffd5fc73e03576f4eb', 'https://github.com/Rayuk-creator/OCCT/tree/d2abb6d844231cb8f29be6894440874a4700e4a5'];
+    const srcFs = require('fs'), srcHtml = srcFs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8'), srcBlock = srcHtml.slice(srcHtml.lastIndexOf('<!-- LETTORE STEP/IGES: inizio -->'), srcHtml.indexOf('<script id="occtJs"')), srcRead = srcFs.readFileSync(path.join(__dirname, '..', 'licenze', 'LEGGIMI.md'), 'utf8'), srcTool = srcFs.readFileSync(path.join(__dirname, '..', 'tools', 'incorpora-occt.js'), 'utf8');
+    const srcMiss = srcs.filter(u => !ab.links.includes(u) || !srcBlock.includes(u) || !srcRead.includes(u) || !srcTool.includes(u));
     const base = 'https://github.com/Rayuk-creator/CAD/blob/main/';
     const local = ab.links.filter(l => l.startsWith(base)).map(l => l.slice(base.length));
     const noFile = local.filter(l => !require('fs').existsSync(path.join(__dirname, '..', l)));
     await page.evaluate(() => App.closeModal());
     const gpl3 = /GNU GENERAL PUBLIC LICENSE\s+Version 3, 29 June 2007/.test(require('fs').readFileSync(path.join(__dirname, '..', 'LICENSE'), 'utf8'));
-    rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', ab.title === 'Informazioni e licenze' && !need.length && local.length === 9 && !noFile.length && gpl3, `mancano: ${need.join(', ') || 'nulla'}; ${local.length} testi, senza file: ${noFile.join(', ') || 'nessuno'}; LICENSE GPL 3: ${gpl3}`);
+    rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', ab.title === 'Informazioni e licenze' && !need.length && local.length === 9 && !noFile.length && gpl3 && !srcMiss.length, `sorgenti del lettore mancanti: ${srcMiss.join(', ') || 'nessuno'}; mancano: ${need.join(', ') || 'nulla'}; ${local.length} testi, senza file: ${noFile.join(', ') || 'nessuno'}; LICENSE GPL 3: ${gpl3}`);
   } catch (e) { rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', false, e.message.split('\n')[0]); await page.evaluate(() => App.closeModal && App.closeModal()).catch(() => {}); }
   // sfondo del disegno: testi e quote di un DXF sotto lo schizzo, dalla finestra all'estrusione
   try {

@@ -8,7 +8,7 @@ Dentro `index.html`, in fondo alla pagina (tra i commenti «LETTORE STEP/IGES: i
 
 - **occt-import-js** versione 0.0.24 di Viktor Kovacs, <https://github.com/kovacsv/occt-import-js>
   (file `occt-import-js.js` e `occt-import-js.wasm`, il secondo compresso con gzip e scritto in base64);
-- che contiene **Open CASCADE Technology (OCCT)**, <https://dev.opencascade.org>, compilato in WebAssembly.
+- che contiene **Open CASCADE Technology (OCCT)** versione 7.6.1, <https://dev.opencascade.org>, compilato in WebAssembly.
 
 Entrambi sono distribuiti con licenza **GNU LGPL versione 2.1**; OCCT aggiunge l'eccezione di Open CASCADE. I testi completi sono in questa cartella:
 
@@ -18,11 +18,18 @@ Entrambi sono distribuiti con licenza **GNU LGPL versione 2.1**; OCCT aggiunge l
 La libreria è inserita **senza modifiche** (impronte SHA-256 dei file originali:
 `occt-import-js.js` 8b090be386bc8ffba32222aa19f38742ae8ed35707819beb7f8ab4938a28c97a,
 `occt-import-js.wasm` 33391fc9d94ea5c869a6718488bf0a9a464222bac9bdc764dfe1690cef281952).
-Il codice sorgente è disponibile ai due indirizzi sopra. Chiunque può sostituirla con un'altra versione, anche ricompilata da sé, con:
+Chiunque può sostituirla con un'altra versione, anche ricompilata da sé, con:
 
 ```
 node tools/incorpora-occt.js <cartella dist di occt-import-js>
 ```
+
+**Codice sorgente di questa versione**, in copia su GitHub accanto al Banco CAD (fork dei progetti d'origine):
+
+- occt-import-js 0.0.24: <https://github.com/Rayuk-creator/occt-import-js/tree/41e470890ae0f9dc69ac50ffd5fc73e03576f4eb>. Il progetto non ha un'etichetta «0.0.24»: è l'ultimo commit di `main`, «Update version» (`41e4708`); i due file di `dist` sono identici byte per byte a quelli dentro `index.html`.
+- OCCT 7.6.1 (etichetta `V7_6_1`): <https://github.com/Rayuk-creator/OCCT/tree/d2abb6d844231cb8f29be6894440874a4700e4a5>. È il commit a cui occt-import-js rimanda nella cartella `occt` (sottomodulo). Il rimando punta ancora al server di Open CASCADE (`git.dev.opencascade.org`), quindi la copia di OCCT va presa da questo indirizzo: una copia di occt-import-js da sola non contiene OCCT.
+
+Per ricompilare: scegliere in `occt-import-js` quel commit, mettere OCCT `V7_6_1` nella cartella `occt`, poi seguire gli script in `tools/` di quel progetto. Non abbiamo provato a ricompilarlo: il lettore dentro la pagina è quello pubblicato da Viktor Kovacs.
 
 ## Lettore DWG
 
