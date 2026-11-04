@@ -58,4 +58,4 @@ Cose ancora da fare:
 
 - Sfondo del disegno: **fatti** il 3 novembre testi e quote. Non fatti, se servono: tratteggi, tolleranze geometriche, MULTILEADER, tabelle.
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
-- Le pagine pubblicate su claude.ai: «Banco CAD» (versione 20, con il lettore DWG) e «Convertitore DWG → DXF» sono aggiornate al 3 novembre notte. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
+- Le pagine pubblicate su claude.ai: «Banco CAD» (versione 21 del 4 novembre) e «Convertitore DWG → DXF» (3 novembre notte) sono aggiornate. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
