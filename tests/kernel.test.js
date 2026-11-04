@@ -623,6 +623,17 @@ T('Propagazione tangente: si ferma agli angoli (spigolo del blocco 80 × 50 × 1
   { D: -filA(5) * 80 });
 
 /* ---------- schizzo: risolutore ---------- */
+/* ---------- Ambito funzione dei tagli (valori a mano) ---------- */
+// due blocchi 10×10×10 staccati: A x 0..10, B x 20..30; il taglio x 5..25 passante toglie metà di ognuno
+const scope2 = which => { const d = D0('c'); const a = blk(d, 0, 0, 10, 10, 10), c = blk(d, 20, 0, 30, 10, 10, false); const b = SB(); b.rect(5, 0, 25, 10); const f = { type: 'cut', sketch: sketch(d, STD('top'), b), end: 'through', both: true }; if (which) f.scope = which(a, c); feat(d, f); return d; };
+T('Ambito funzione: taglio solo sul primo corpo: metà di A + B intero; area 400 + 600', () => scope2((a) => [a]), { V: 500 + 1000, A: 1000, bb: [[0, 0, -10], [30, 10, 0]] });
+T('Ambito funzione: taglio solo sul secondo corpo: A intero + metà di B', () => scope2((a, c) => [c]), { V: 1000 + 500, A: 1000, bb: [[0, 0, -10], [30, 10, 0]] });
+T('Ambito funzione: i due corpi scelti = tutti i corpi', () => scope2((a, c) => [a, c]), { V: 1000 });
+// serie: A e B larghi 40; il taglio largo 5 è ripetuto 3 volte a passo 10 e resta su A: 4000 − 3·500, B intero
+T('Ambito funzione: la serie di un taglio lavora sugli stessi corpi', () => { const d = D0('c'); const a = blk(d, 0, 0, 40, 10, 10); blk(d, 0, 20, 40, 30, 10, false); const b = SB(); b.rect(5, -1, 10, 35); const cut = feat(d, { type: 'cut', sketch: sketch(d, STD('top'), b), end: 'through', both: true, scope: [a] }); feat(d, { type: 'lpattern', feats: [cut], dir: { kind: 'axis', id: 'x' }, n: 3, spacing: 10 }); return d; }, { V: 2500 + 4000 });
+// due blocchi sovrapposti: il foro passante lavora su uno solo, l'altro resta pieno
+T('Ambito funzione: anche il foro lavora solo sul corpo scelto: Ø8 su 1000, area del cerchio × 10', () => { const d = D0('c'); const a = blk(d, 0, 0, 10, 10, 10); blk(d, 0, 0, 10, 10, 10, false); const b = SB(); b.pt(5, 5, { hole: true }); const s = sketch(d, face(d, nearW([0, 1, 0], 10)), b); feat(d, { type: 'hole', sketch: s, kind: 'simple', dia: 8, end: 'through', scope: [a] }); return d; }, { V: 2000 - Math.PI * 16 * 10 });
+
 const SK = [];
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
   const b = SB(); const [p1, p2, p3, p4] = b.rect(0, 0, 70, 45); const s = b.s;
@@ -1011,6 +1022,91 @@ SK.push(['PDF: foglio A3 = 1190,55 × 841,89 punti; «Ø20» centrato su x = 100
 }]);
 
 /* ---------- esecuzione ---------- */
+// ---- Ambito funzione: errori e progetti vecchi ----
+SK.push(['Ambito funzione: nessun corpo scelto, corpo sparito (errore chiaro), corpo in più (avviso); senza campo si taglia tutto come prima', () => {
+  const errOf = d => { const st = Model.regen(d); return { e: [...st.errors.values()].join(), w: [...st.warn.values()].join(), V: Model.massProperties(st, d).volume, n: st.bodies.length }; };
+  const none = errOf(scope2(() => [])), old = errOf(scope2(null));
+  const d = D0('c'); const a = blk(d, 0, 0, 10, 10, 10), c = blk(d, 20, 0, 30, 10, 10, false); feat(d, { type: 'delbody', bodies: [a] }); const b = SB(); b.rect(5, 0, 25, 10); feat(d, { type: 'cut', sketch: sketch(d, STD('top'), b), end: 'through', both: true, scope: [a] });
+  const gone = errOf(d);
+  const d2 = D0('c'); const a2 = blk(d2, 0, 0, 10, 10, 10), c2 = blk(d2, 20, 0, 30, 10, 10, false); feat(d2, { type: 'delbody', bodies: [a2] }); const b2 = SB(); b2.rect(5, 0, 25, 10); feat(d2, { type: 'cut', sketch: sketch(d2, STD('top'), b2), end: 'through', both: true, scope: [a2, c2] });
+  const part = errOf(d2);
+  return { ok: true, exp: [1, 1, 1, 500, 1000, 2], got: [/almeno un corpo/.test(none.e) ? 1 : 0, /non esistono più/.test(gone.e) ? 1 : 0, /non esistono più/.test(part.w) ? 1 : 0, part.V, old.V, old.n] };
+}]);
+
+// ---- sfondo: tratteggi, tolleranze geometriche, richiami multipli, tabelle (valori a mano) ----
+const dHatch = (loops, tail, extra = []) => ['0', 'HATCH', '8', '0', '10', 0, '20', 0, '30', 0, ...extra, '2', 'P', '70', tail.solid ? 1 : 0, '71', 0, '91', loops.length, ...loops.flat(), '75', tail.style || 0, '76', 1, ...(tail.solid ? [] : ['52', 0, '41', 1, '77', 0, '78', tail.pat.length, ...tail.pat.flatMap(p => ['53', p[0], '43', p[1], '44', p[2], '45', p[3], '46', p[4], '79', (p[5] || []).length, ...(p[5] || []).flatMap(x => ['49', x])])]), '98', 0];
+const lPoly = (pts, fl = 1) => ['92', fl | 2, '72', pts.some(p => p[2]) ? 1 : 0, '73', 1, '93', pts.length, ...pts.flatMap(p => ['10', p[0], '20', p[1], ...(pts.some(q => q[2]) ? ['42', p[2] || 0] : [])]), '97', 0];
+const sq = (a, b, fl) => lPoly([[a, a], [b, a], [b, b], [a, b]], fl);
+const hLen = H => { let s = 0; for (let i = 0; i < H.length; i += 4) s += Math.hypot(H[i + 2] - H[i], H[i + 3] - H[i + 1]); return s; };
+const loopArea = L => { let s = 0; for (let i = 0, n = L.length; i < n; i += 2) { const j = (i + 2) % n; s += L[i] * L[j + 1] - L[j] * L[i + 1]; } return Math.abs(s) / 2; };
+const hatchOf = (ents, o) => { const r = MI.parseDXF(dxfFile(ents, o), { notes: true }); return { r, n: r.notes.find(x => x.hl) }; };
+SK.push(['Sfondo, tratteggi: righe a passo 10 in un quadrato 100: 10 righe, 1000 mm; con un foro 20 × 20: 960; a tratti 6 + 4: 100 tratti, 600 mm; pieno senza righe', () => {
+  const R = [[0, 0, 0, 0, 10]];
+  const a = hatchOf([dHatch([sq(0, 100)], { pat: R })]), b = hatchOf([dHatch([sq(0, 100), sq(20, 40)], { pat: R })]), c = hatchOf([dHatch([sq(0, 100)], { pat: [[0, 0, 0, 0, 10, [6, -4]]] })]), d = hatchOf([dHatch([sq(0, 100)], { solid: true })]);
+  const Ha = MI.hatchLines(a.n), Hb = MI.hatchLines(b.n), Hc = MI.hatchLines(c.n);
+  return { ok: true, exp: [10, 1000, 960, 100, 600, 1, 0, 1, 1, 0], got: [Ha.length / 4, hLen(Ha), hLen(Hb), Hc.length / 4, hLen(Hc), a.r.noteCount.tratteggi, a.r.geo.length, d.n.hl.length, d.n.pat ? 0 : 1, MI.hatchLines(d.n).length] };
+}]);
+SK.push(['Sfondo, tratteggi: righe a 45° con passo 10 in un quadrato 100: lunghezza = area / passo (±1 %); il passo può spostare i tratti lungo la riga', () => {
+  const s = Math.SQRT1_2 * 10, H = MI.hatchLines(hatchOf([dHatch([sq(0, 100)], { pat: [[45, 0, 0, -s, s]] })]).n);
+  // seconda riga spostata di 3 lungo la direzione: a y = 10 i tratti 5 + 5 cominciano a x = 3
+  const J = MI.hatchLines(hatchOf([dHatch([sq(0, 100)], { pat: [[0, 0, 0, 3, 10, [5, -5]]] })]).n);
+  const row = []; for (let i = 0; i < J.length; i += 4) if (Math.abs(J[i + 1] - 10) < 1e-9) row.push(J[i], J[i + 2]);
+  row.sort((a, b) => a - b);
+  return { ok: true, exp: [10000 / 10, 1, 3, 8], got: [hLen(H), hLen(H) > 0 ? 1 : 0, row[row.length > 0 && row[0] === 0 ? 2 : 0], row[row.length > 0 && row[0] === 0 ? 3 : 1]] };
+}]);
+SK.push(['Sfondo, tratteggi: contorni con spigoli: polilinea curva (cerchio R10), arco antiorario, arco orario (angoli complementari), ellisse 20 × 10, spline (parabola)', () => {
+  const area = lp => loopArea(hatchOf([dHatch([lp], { solid: true })]).n.hl[0]);
+  const edges = (...e) => ['92', 1, '93', e.length, ...e.flat(), '97', 0];
+  const L = (a, b, c, d) => ['72', 1, '10', a, '20', b, '11', c, '21', d];
+  const A = (cx, cy, r, s, e, ccw) => ['72', 2, '10', cx, '20', cy, '40', r, '50', s, '51', e, '73', ccw];
+  const circ = area(lPoly([[-10, 0, 1], [10, 0, 1]]));
+  const up = area(edges(A(0, 0, 10, 0, 180, 1), L(-10, 0, 10, 0)));
+  const cw = hatchOf([dHatch([edges(A(0, 0, 10, 180, 360, 0), L(10, 0, -10, 0))], { solid: true })]).n.hl[0];    // da 180° a 0° in senso orario: passa per (0, 10)
+  const el = area(edges(['72', 3, '10', 0, '20', 0, '11', 20, '21', 0, '40', 0.5, '50', 0, '51', 360, '73', 1]));
+  const sp = area(edges(['72', 4, '94', 2, '73', 0, '74', 0, '95', 6, '96', 3, '40', 0, '40', 0, '40', 0, '40', 1, '40', 1, '40', 1, '10', 0, '20', 0, '10', 10, '20', 20, '10', 20, '20', 0], L(20, 0, 0, 0)));
+  const yMax = Math.max(...cw.filter((v, i) => i % 2));
+  return { ok: true, exp: [Math.PI * 100, Math.PI * 50, Math.PI * 50, 10, Math.PI * 200, 2 / 3 * 20 * 10], got: [circ, up, loopArea(cw), yMax, el, sp] };
+}]);
+SK.push(['Sfondo, tratteggi: stili (normale, esterno, ignora) e dentro un blocco ruotato di 90° e scalato ×2; unità in cm; motivo troppo fitto', () => {
+  const three = st => hatchOf([dHatch([sq(0, 100), sq(10, 90), sq(20, 80)], { solid: true, style: st })]).n.hl.length;
+  const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'H', '10', '0', '20', '0', ...dHatch([sq(0, 10)], { pat: [[0, 0, 0, 0, 2]] }).map(String), '0', 'ENDBLK', '0', 'ENDSEC'];
+  const ins = hatchOf([['0', 'INSERT', '8', '0', '2', 'H', '10', 100, '20', 0, '41', 2, '42', 2, '50', 90]], { blocks });
+  const H = MI.hatchLines(ins.n), xs = new Set(); for (let i = 0; i < H.length; i += 4) xs.add(Math.round(H[i] * 1e6) / 1e6);
+  // quadrato 0..10 ruotato di 90° e raddoppiato sta in x 80..100, y 0..20; righe verticali a passo 4: 5 righe lunghe 20
+  const box = [Math.min(...ins.n.hl[0].filter((v, i) => !(i % 2))), Math.max(...ins.n.hl[0].filter((v, i) => i % 2))];
+  const cm = hatchOf([dHatch([sq(0, 10)], { pat: [[0, 0, 0, 0, 2, [1, -1]]] })], { units: 5 }), a = SB();
+  MI.dxfToSketch(a.s, cm.r.geo.concat([{ t: 'line', a: [0, 0], b: [10, 0] }]), { scale: 10, notes: cm.r.notes, origin: 'file' });
+  const n = a.s.bg.find(x => x.hl), c = MI.hatchLines(n), dense = MI.hatchLines(hatchOf([dHatch([sq(0, 100)], { pat: [[0, 0, 0, 0, 0.01]] })]).n, 1000);
+  return { ok: true, exp: [3, 2, 1, 5, 100, 80, 20, 100, 20, 10, 1], got: [three(0), three(1), three(2), H.length / 4, hLen(H), box[0], box[1], Math.max(...n.hl[0]), n.pat[0].o[1], n.pat[0].d[0], dense === null ? 1 : 0, c.length ? 0 : 0].slice(0, 11) };
+}]);
+const dStyle = ['0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'DIMSTYLE', '0', 'DIMSTYLE', '2', 'ISO', '140', '2.5', '147', '0.625', '0', 'ENDTAB', '0', 'ENDSEC'];
+SK.push(['Sfondo, tolleranza geometrica: cornice alta 2 volte il testo, a metà del lato sinistro; simbolo di posizione, valore, riferimento; ruotata di 90°', () => {
+  const tol = dirn => ['0', 'TOLERANCE', '8', '0', '3', 'ISO', '10', 100, '20', 50, '30', 0, '1', '{\\Fgdt;j}%%v{\\Fgdt;n}0,1%%vA%%v%%v%%v', ...(dirn ? ['11', 0, '21', 1, '31', 0] : [])];
+  const r = MI.parseDXF(dxfFile([tol()], { tables: dStyle }), { notes: true }), t = r.notes.filter(n => n.s !== undefined), b = r.notes.filter(n => n.p && n.p.length === 10), ci = r.notes.find(n => n.c);
+  const r2 = MI.parseDXF(dxfFile([tol(true)], { tables: dStyle }), { notes: true }), b2 = r2.notes.find(n => n.p && n.p.length === 10);
+  // ruotata di 90° attorno a (100, 50): (x, y) → (100 − y, 50 + x), quindi l'angolo (0, −2,5) va a (102,5; 50) e (5, 2,5) a (97,5; 55)
+  const v = t.find(x => x.s === '0,1'), A = t.find(x => x.s === 'A');
+  return { ok: true, exp: [1, 3, 100, 47.5, 105, 52.5, 102.5, 50, 0.9, 2.5, 48.75, 1, 0, 1, 102.5, 97.5, 55], got: [r.noteCount.tolleranze, b.length, b[0].p[0], b[0].p[1], b[0].p[4], b[0].p[5], ci.c[0], ci.c[1], ci.r, v.h, v.y, A ? 1 : 0, r.skipped.tolleranze || 0, r2.noteCount.tolleranze, b2.p[0], b2.p[4], b2.p[5]] };
+}]);
+const dMLeader = (extra, tail = []) => ['0', 'MULTILEADER', '8', '0', '270', 2, '300', 'CONTEXT_DATA{', '40', 1, '10', 0, '20', 0, '30', 0, '41', 4, '140', 3, '145', 2, ...extra, '302', 'LEADER{', '290', 1, '291', 1, '10', 30, '20', 40, '30', 0, '11', 1, '21', 0, '31', 0, '90', 0, '40', 5, '304', 'LEADER_LINE{', '10', 0, '20', 0, '30', 0, '91', 0, '305', '}', '271', 0, '303', '}', '272', 9, '273', 9, '301', '}', '340', '2AF', '170', 1, ...tail];
+SK.push(['Sfondo, richiamo multiplo: linee (freccia, punto, tratto finale), freccia piena, testo su due righe; con un blocco al posto del testo; senza linee', () => {
+  const txt = ['290', 1, '304', 'uno\\Pdue', '11', 0, '21', 0, '31', 1, '340', 11, '12', 37, '22', 42, '32', 0, '13', 1, '23', 0, '33', 0, '42', 0, '43', 50, '44', 0, '45', 1, '170', 1, '90', 0, '171', 1];
+  const r = MI.parseDXF(dxfFile([dMLeader(txt)]), { notes: true }), p = r.notes.find(n => n.p), f = r.notes.find(n => n.f), T = r.notes.filter(n => n.s !== undefined);
+  const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', 'B', '330', '7F', '10', 1, '20', 1, ...dLine(1, 1, 3, 1).map(String), '0', 'ENDBLK', '0', 'ENDSEC'];
+  const rb = MI.parseDXF(dxfFile([dMLeader(['290', 0, '341', '7F', '14', 0, '24', 0, '34', 1, '15', 50, '25', 60, '35', 0, '16', 2, '26', 2, '36', 1, '46', 0])], { blocks }), { notes: true });
+  const pb = rb.notes.filter(n => n.p).find(n => n.p.length === 4);
+  const r0 = MI.parseDXF(dxfFile([dMLeader(txt).map(String).join('\n').replace(/\n170\n1$/, '\n170\n0').split('\n')]), { notes: true });
+  return { ok: true, exp: ['0,0,30,40,35,40', '0,0,1.4,2.7,2.6,1.8', 'uno', 38, 'due', 37, 4, 1, '50,60,54,60', 0],
+    got: [p.p.join(), f.f.map(v => Math.round(v * 1e6) / 1e6).join(), T[0].s, T[0].y, T[1].s, T[0].x, T[0].h, r.noteCount.richiami, pb ? pb.p.join() : 'nessuno', r0.notes.filter(n => n.p).length] };
+}]);
+SK.push(['Sfondo, tabella: blocco anonimo spostato nel punto del file; senza blocco griglia e testi dalle misure; senza sfondo tabelle contate come saltate', () => {
+  const blocks = ['0', 'SECTION', '2', 'BLOCKS', '0', 'BLOCK', '2', '*T1', '10', 0, '20', 0, ...dLine(0, 0, 20, 0).map(String), '0', 'MTEXT', '8', '0', '10', 5, '20', -5, '40', 3, '71', 1, '1', 'Pos', '0', 'ENDBLK', '0', 'ENDSEC'];
+  const tb = (nm, x, y) => ['0', 'ACAD_TABLE', '8', '0', '2', nm, '10', x, '20', y, '30', 0, '11', 1, '21', 0, '31', 0, '91', 2, '92', 2, '141', 10, '141', 10, '142', 20, '142', 30, '171', 1, '1', 'A', '171', 1, '1', 'B', '171', 1, '171', 1, '1', 'D'];
+  const r = MI.parseDXF(dxfFile([tb('*T1', 100, 200)], { blocks }), { notes: true }), l = r.notes.find(n => n.p), t = r.notes.find(n => n.s === 'Pos');
+  const g = MI.parseDXF(dxfFile([tb('*NO', 5, 5)]), { notes: true }), T = g.notes.filter(n => n.s !== undefined), A = T.find(n => n.s === 'A'), D = T.find(n => n.s === 'D'), lin = g.notes.filter(n => n.p);
+  const old = MI.parseDXF(dxfFile([tb('*T1', 100, 200)], { blocks }));
+  return { ok: true, exp: ['100,200,120,200', 105, 195 - 3, 1, 3, 3 + 3, 15, 5 - 5 - 2, 40, 5 - 10 - 5 - 2, 1], got: [l.p.join(), t.x, t.y, r.noteCount.tabelle, T.length, lin.length, A.x, A.y, D.x, D.y, old.skipped.tabelle] };
+}]);
 // ---- sfondo di riferimento: testi e quote di DXF e DWG (valori calcolati a mano) ----
 const near = (a, b, e = 1e-9) => Math.abs(a - b) <= e ? 1 : 0;
 const noteOf = (ents, o = {}) => MI.parseDXF(dxfFile(ents, o), { notes: true });

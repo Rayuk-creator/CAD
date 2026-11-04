@@ -265,11 +265,31 @@ const acadver = u8 => { const m = /\$ACADVER\s*\r?\n\s*1\s*\r?\n\s*(\S+)/.exec(B
     const conv = runConvert(M, new Uint8Array(fs.readFileSync(path.join(PROVE, 'esempio-2013.dwg'))));
     const b = IM.parseDXF(conv.dxf, { notes: true }), tb = b.notes.filter(n => n.s !== undefined);
     const inFile = t => tb.some(u => u.s === t.s && Math.abs(u.x - t.x) < 1e-3 && Math.abs(u.y - t.y) < 1e-3);
-    const lost = texts.filter(t => !inFile(t));
+    // la tabella (x 3298,8..3870,3; y sotto 839,7) nel DWG 2013 non arriva: LibreDWG la scrive vuota, vedi la prova qui sotto
+    const inTable = t => t.x > 3298 && t.x < 3871 && t.y > 650 && t.y < 840;
+    const lost = texts.filter(t => !inFile(t) && !inTable(t));
     rec('Sfondo su un disegno vero (2013): i numeri delle quote sono le misure del file, geometria uguale, DWG convertito uguale al riferimento',
       a.noteCount.quote === meas.length + 1 && linear.length >= 5 && !miss.length && same && a.noteCount.testi === 5 && b.noteCount.quote === a.noteCount.quote && b.noteCount.testi === a.noteCount.testi && !lost.length,
       `quote ${a.noteCount.quote} (${meas.length} DIMENSION + 1 ARC_DIMENSION), misure non trovate ${miss.length}/${linear.length}, testi ${a.noteCount.testi}; DWG: quote ${b.noteCount.quote}, testi ${b.noteCount.testi}, testi diversi: ${lost.map(t => t.s).join(' | ') || 'nessuno'}`);
   } catch (e) { rec('Sfondo su un disegno vero (2013)', false, 'ERRORE ' + e.message); }
+
+  // Tratteggio, tolleranza, tabella e richiamo multiplo del disegno vero. Numeri di controllo indipendenti (ezdxf 1.4.6, hatch_entity senza
+  // jiggle_origin, virtual_entities): 1297 tratti lunghi 12691,41204; punta (-2577,704; 142,429); testo «xx» a y = 605,218 e 598,552.
+  try {
+    const rif = new Uint8Array(fs.readFileSync(path.join(PROVE, 'riferimento', 'esempio-2013.dxf')));
+    const conv = runConvert(M, new Uint8Array(fs.readFileSync(path.join(PROVE, 'esempio-2013.dwg'))));
+    const look = u => {
+      const r = IM.parseDXF(u, { notes: true }), n = r.notes.find(x => x.hl), H = n ? IM.hatchLines(n) : [];
+      let L = 0; for (let i = 0; i < H.length; i += 4) L += Math.hypot(H[i + 2] - H[i], H[i + 3] - H[i + 1]);
+      const f = r.notes.find(x => x.f && Math.abs(x.f[0] + 2577.704) < 0.01), xx = r.notes.filter(x => x.s === 'xx' && x.x < 0).map(x => +x.y.toFixed(3)).join();
+      return { c: r.noteCount, segs: H.length / 4, L, f: !!f, xx, tol: r.notes.filter(x => x.s === '1' || x.s === '2' || x.s === '10').length };
+    };
+    const a = look(rif), b = look(conv.dxf), o2000 = runConvert(M, new Uint8Array(fs.readFileSync(path.join(PROVE, 'esempio-2000.dwg')))), c = look(o2000.dxf);
+    const good = (o, tb) => o.c.tratteggi === 1 && o.c.tolleranze === 1 && o.c.tabelle === tb && o.c.richiami === 1 && o.segs === 1297 && Math.abs(o.L - 12691.41204) < 1e-3 && o.f && o.xx === '605.218,598.552' && o.tol === 3;
+    // nel DWG 2013 LibreDWG scrive «0 ACAD_TABLE» senza dati: la tabella si conta come saltata; nel DWG 2000 c'è tutta
+    const sk13 = IM.parseDXF(conv.dxf, { notes: true }).skipped.tabelle;
+    rec('Sfondo su un disegno vero: tratteggio, tolleranza, tabella e richiamo uguali ai numeri di un programma indipendente, nel DXF di riferimento e nei DWG 2000 e 2013 (tabella del 2013 saltata e contata)', good(a, 1) && good(c, 1) && good(b, 0) && sk13 === 1, `DXF: ${JSON.stringify(a)}; DWG 2000: ${JSON.stringify(c)}; DWG 2013: ${JSON.stringify(b)}, tabelle saltate ${sk13}`);
+  } catch (e) { rec('Sfondo su un disegno vero (2013): tratteggio, tolleranza, tabella e richiamo', false, 'ERRORE ' + e.message); }
 
   // Il lettore dentro il Banco CAD: uguale a quello del Convertitore, stesso DXF byte per byte per tutti i disegni di prova
   try {

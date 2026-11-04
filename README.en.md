@@ -50,7 +50,7 @@ With **Progetto › Importa STL o OBJ** (Project › Import STL or OBJ) you can 
 
 With **Progetto › Importa DXF o DWG (schizzo)** (Project › Import DXF or DWG), or **Inserisci DXF o DWG** (Insert DXF or DWG) in the Sketch tab, a 2D drawing (AutoCAD, DraftSight, LibreCAD, a SolidWorks drawing…) becomes a sketch: lines, arcs, circles, polylines, ellipses, splines and blocks, in the file's units; ellipses and splines become chains of tangent arcs (biarcs) within a few thousandths of a millimetre of the true curve; dash-dot axes become centerlines. The dialog shows a preview of the drawing and lets you pick the layers to import (for example without the title block and dimensions). Then you extrude or revolve it.
 
-AutoCAD **DWG** files open directly in the same way, from release R1.4 to 2018 (so also files from AutoCAD 2019–2025), with the free LibreDWG reader inside the page. Texts and dimensions can arrive as a **grey background** under the sketch, only to look at while you dimension it: they do not drive the shape and do not end up in the part. Hatches are not imported: the final message says how many there are.
+AutoCAD **DWG** files open directly in the same way, from release R1.4 to 2018 (so also files from AutoCAD 2019–2025), with the free LibreDWG reader inside the page. Texts, dimensions, hatches, geometric tolerances, multileaders and tables can arrive as a **grey background** under the sketch, only to look at while you dimension it: they do not drive the shape and do not end up in the part. Tables in DWG files saved from 2010 onwards stay out (the reader does not give their position): the final message counts them.
 
 To **save DXF files** (for other programs) or convert many drawings at once there is the **DWG → DXF converter** (*Convertitore DWG → DXF*), a separate page (folder `convertitore-dwg/`); Banco CAD also opens the `.zip` in which the published page saves the DXF files.
 
@@ -114,7 +114,7 @@ Line, corner and centre rectangle, circle, arcs (centre-ends, 3-point, tangent),
 - **Hole wizard** to standards: clearance (ISO 273), counterbore (DIN 974-1), countersink (ISO 15065), tapped (tap drill), M3 to M20.
 - **Fillet** and **Chamfer** on edges, all processed **together** as in SolidWorks: where two fillets meet they blend, where three meet at a right angle the corner becomes a spherical patch. Arcs (slots) and the edge of an imported ellipse or spline can be filleted too; one click picks the whole curved edge. With **tangent propagation** (as in SolidWorks) one click on an edge also processes the edges that continue it without a corner, for example the whole edge of a slot.
 - **Linear pattern** (also as a grid), **Circular pattern**, **Mirror**, **Reference plane**.
-- **Solid bodies**: **Unisci risultato** (Merge result) box, folder in the tree, **Combina** (Combine: Add, Subtract, Common), **Sposta/Copia corpo** (Move/Copy body), **Elimina/Mantieni corpo** (Delete/Keep body); mass for each body, one solid per body in STEP.
+- **Solid bodies**: **Unisci risultato** (Merge result) box, folder in the tree, **Combina** (Combine: Add, Subtract, Common), **Sposta/Copia corpo** (Move/Copy body), **Elimina/Mantieni corpo** (Delete/Keep body), **Ambito funzione** (Feature scope) to choose the bodies of a cut or hole; mass for each body, one solid per body in STEP.
 - Feature tree with edit, suppress, rollback bar, undo and redo.
 
 ### Evaluate
@@ -176,7 +176,7 @@ The interface tests use the program the way a student would: they draw with the 
 
 ## Licence
 
-Banco CAD, Copyright © 2026 Rayuk-creator. It is free software under the [GNU GPL 3](LICENSE) (or later versions), with **no warranty**. Parts by other authors (STEP/IGES and DWG readers, csg.js, Adobe metrics, IBM Plex fonts) are listed in [`licenze/LEGGIMI.md`](licenze/LEGGIMI.md) and inside the program, under **Progetto › Informazioni e licenze**.
+Banco CAD, Copyright © 2026 Rayuk-creator. It is free software under the [GNU GPL 3](LICENSE) (or later versions), with the [additional terms](CONDIZIONI-AGGIUNTIVE.md) of section 7 (keep the notice, mark modified versions, the “Banco CAD” name), and **no warranty**. Parts by other authors (STEP/IGES and DWG readers, csg.js, Adobe metrics, IBM Plex fonts) are listed in [`licenze/LEGGIMI.md`](licenze/LEGGIMI.md) and inside the program, under **Progetto › Informazioni e licenze**.
 
 The program **collects no data**: everything stays in the browser, and not even the fonts are downloaded from other sites.
 

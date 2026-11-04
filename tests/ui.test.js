@@ -1454,8 +1454,57 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const noFile = local.filter(l => !require('fs').existsSync(path.join(__dirname, '..', l)));
     await page.evaluate(() => App.closeModal());
     const gpl3 = /GNU GENERAL PUBLIC LICENSE\s+Version 3, 29 June 2007/.test(require('fs').readFileSync(path.join(__dirname, '..', 'LICENSE'), 'utf8'));
-    rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', ab.title === 'Informazioni e licenze' && !need.length && local.length === 9 && !noFile.length && gpl3 && !srcMiss.length, `sorgenti del lettore mancanti: ${srcMiss.join(', ') || 'nessuno'}; mancano: ${need.join(', ') || 'nulla'}; ${local.length} testi, senza file: ${noFile.join(', ') || 'nessuno'}; LICENSE GPL 3: ${gpl3}`);
+    rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', ab.title === 'Informazioni e licenze' && !need.length && local.length === 10 && !noFile.length && gpl3 && !srcMiss.length, `sorgenti del lettore mancanti: ${srcMiss.join(', ') || 'nessuno'}; mancano: ${need.join(', ') || 'nulla'}; ${local.length} testi, senza file: ${noFile.join(', ') || 'nessuno'}; LICENSE GPL 3: ${gpl3}`);
   } catch (e) { rec('Informazioni e licenze: autore, GPL 3, parti di altri autori, marchi e privacy; tutti i testi collegati esistono', false, e.message.split('\n')[0]); await page.evaluate(() => App.closeModal && App.closeModal()).catch(() => {}); }
+  // Ambito funzione con il mouse: due blocchi, il taglio solo sul primo; poi scelta con un clic nella vista; salvataggio
+  try {
+    await fresh();
+    await page.evaluate(() => {
+      const box = (x0, y0, x1, y1) => { const s = Sketch.newSketch(); const pt = (x, y) => { const id = 'p' + (s.next++); s.ents.push({ id, t: 'pt', x, y }); return id; }; const P = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => pt(x, y)); P.forEach((a, i) => s.ents.push({ id: 'l' + (s.next++), t: 'ln', a, b: P[(i + 1) % 4] })); return s; };
+      App.change(() => { const d = App.doc; const add = f => { f.id = Model.uid(d, 'F'); f.name = Model.defaultName(d, f.type); d.features.push(f); return f.id; };
+        add({ type: 'extrude', sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(0, 0, 40, 40) }), end: 'blind', depth: 10 });
+        add({ type: 'extrude', merge: false, sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(60, 0, 100, 40) }), end: 'blind', depth: 10 });
+        window.__s3 = add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(20, 10, 80, 30) }); App.sel = []; });
+      App.r.fit(App.st.body);
+    });
+    await page.waitForTimeout(250);
+    const ok = async () => { await page.click('.pm-ok'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(150); };
+    const vol = () => page.evaluate(() => Model.massProperties(App.st, App.doc).volume);
+    const openCut = async () => { await page.evaluate(() => App.select({ kind: 'feature', id: window.__s3, sketch: true, label: 'Schizzo' })); await page.click('#cmdBar [data-cmd="cut"]'); await page.waitForTimeout(250); await page.evaluate(() => { const f = App.doc.features[App.doc.features.length - 1]; f.end = 'through'; f.both = true; App.pm.update(); }); await page.waitForTimeout(150); };
+    await openCut();
+    const seen = await page.locator('#pmScopeAll').isChecked();
+    await page.locator('#pmScopeSel').check(); await page.waitForTimeout(200);
+    const ids = await page.evaluate(() => App.st.bodies.map(b => b.id));
+    await page.locator(`#pm [data-scope="${ids[0]}"]`).check(); await page.waitForTimeout(200);
+    await ok();
+    const v1 = await vol(), saved = await page.evaluate(() => JSON.parse(JSON.stringify(App.doc.features[App.doc.features.length - 1].scope)));
+    await page.evaluate(() => App.undo()); await page.waitForTimeout(250);
+    const v0 = await vol();
+    await openCut();
+    await page.locator('#pmScopeSel').check(); await page.waitForTimeout(200);
+    const dot = await page.evaluate(() => { const r = document.querySelector('.view canvas').getBoundingClientRect(), p = App.r.project([90, 10, -20]); return { x: p[0] + r.left, y: p[1] + r.top }; });
+    await page.mouse.move(dot.x, dot.y); await page.waitForTimeout(100); await page.mouse.click(dot.x, dot.y); await page.waitForTimeout(250);
+    const picked = await page.evaluate(() => { const f = App.doc.features[App.doc.features.length - 1]; return f.scope; });
+    const box2 = picked.length === 1 && picked[0] === ids[1];
+    await ok();
+    const v2 = await vol();
+    rec('Ambito funzione con il mouse: Tutti i corpi di partenza, casella nel pannello (taglio solo sul primo corpo), Annulla, clic nella vista, salvato nella funzione', seen && Math.abs(v1 - (32000 - 20 * 20 * 10)) < 1 && saved.length === 1 && saved[0] === ids[0] && Math.abs(v0 - 32000) < 1 && box2 && Math.abs(v2 - (32000 - 20 * 20 * 10)) < 1, `V ${v1} (attesi 28000), dopo Annulla ${v0}, clic: ${JSON.stringify(picked)} (atteso ${ids[1]}), V ${v2}`);
+  } catch (e) { rec('Ambito funzione con il mouse', false, e.message.split('\n')[0]); await page.evaluate(() => { try { App.closeModal(); if (App.pm) App.cancelPM && App.cancelPM(); } catch (x) {} }); }
+  // sfondo: tratteggio, tolleranza, richiamo e tabella dal disegno vero, finestra e schizzo
+  try {
+    await fresh();
+    const rif = require('fs').readFileSync(path.join(__dirname, '..', 'convertitore-dwg', 'prove', 'riferimento', 'esempio-2013.dxf'));
+    await page.click('#btnFile'); await page.click('#menuFile [data-act="importDxf"]');
+    await page.setInputFiles('#dxfFile', { name: 'esempio-2013.dxf', mimeType: 'application/dxf', buffer: rif });
+    await page.waitForSelector('#dxfPrev svg');
+    const pv = await page.evaluate(() => ({ hatch: document.querySelectorAll('#dxfPrev .dxf-hatch').length, cap: document.querySelector('#dxfCap').textContent }));
+    await page.click('#modalActions .btn-primary');
+    await page.waitForFunction(() => App.mode === 'sketch' && document.querySelector('#modal').hidden, null, { timeout: 20000 });
+    await page.waitForTimeout(400);
+    const st = await page.evaluate(() => { const s = Sketcher.session(); return { hl: s.sk.bg.filter(n => n.hl).length, segs: s.bgHatch && s.bgHatch.segs, dense: s.bgHatch && s.bgHatch.dense, keep: s.sk.bg.find(n => n.hl).pat.length }; });
+    rec('Sfondo: tratteggio, tolleranza, richiamo e tabella del disegno vero nella finestra e nello schizzo (righe calcolate una sola volta, nel progetto il motivo)', pv.hatch === 1 && /1 tratteggio/.test(pv.cap) && /1 tolleranza geometrica/.test(pv.cap) && /1 tabella/.test(pv.cap) && st.hl === 1 && st.segs > 1200 && st.dense === 0 && st.keep === 2, `anteprima ${pv.hatch}, «${pv.cap.slice(-90)}», schizzo ${JSON.stringify(st)}`);
+    await page.keyboard.press('Escape');
+  } catch (e) { rec('Sfondo: tratteggio, tolleranza, richiamo e tabella del disegno vero', false, e.message.split('\n')[0]); await page.evaluate(() => { try { App.closeModal(); } catch (x) {} }); }
   // sfondo del disegno: testi e quote di un DXF sotto lo schizzo, dalla finestra all'estrusione
   try {
     await fresh();

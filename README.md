@@ -48,7 +48,7 @@ Con **Progetto › Importa STL o OBJ** si apre anche un pezzo fatto con un altro
 
 Con **Progetto › Importa DXF o DWG (schizzo)**, o con **Inserisci DXF o DWG** nella scheda Schizzo, un disegno 2D (AutoCAD, DraftSight, LibreCAD, tavola di SolidWorks…) entra in uno schizzo: linee, archi, cerchi, polilinee, ellissi, spline e blocchi, con l'unità del file; ellissi e spline diventano archi tangenti tra loro (biarchi) lontani pochi millesimi di millimetro dalla curva vera, gli assi tratto-punto diventano linee di mezzeria. Nella finestra si vede l'anteprima del disegno e si scelgono i layer da importare (per esempio senza cartiglio e quote). Poi si estrude o si fa ruotare.
 
-I file **DWG** di AutoCAD si aprono direttamente nello stesso modo, dalla versione R1.4 alla 2018 (e quindi anche i file di AutoCAD 2019–2025), con il lettore libero LibreDWG dentro la pagina. Testi e quote possono arrivare come **sfondo grigio** sotto lo schizzo, solo da guardare mentre lo quoti: non comandano la forma e non finiscono nel pezzo. I tratteggi non si importano: il messaggio finale dice quanti sono.
+I file **DWG** di AutoCAD si aprono direttamente nello stesso modo, dalla versione R1.4 alla 2018 (e quindi anche i file di AutoCAD 2019–2025), con il lettore libero LibreDWG dentro la pagina. Testi, quote, tratteggi, tolleranze geometriche, richiami multipli e tabelle possono arrivare come **sfondo grigio** sotto lo schizzo, solo da guardare mentre lo quoti: non comandano la forma e non finiscono nel pezzo. Le tabelle dei DWG salvati dal 2010 in poi restano fuori (il lettore non ne dà la posizione): il messaggio finale le conta.
 
 Per **salvare i DXF** (per altri programmi) o convertire molti disegni insieme c'è il **Convertitore DWG → DXF**, una pagina a parte (cartella `convertitore-dwg/`); il Banco CAD apre anche lo `.zip` con cui la pagina pubblicata salva i DXF.
 
@@ -112,7 +112,7 @@ Linea, rettangolo e rettangolo centrale, cerchio, archi (centro-estremi, 3 punti
 - **Creazione guidata fori** secondo le norme: passanti per vite (ISO 273), lamati (DIN 974-1), svasati (ISO 15065), filettati (foro di preparazione), da M3 a M20.
 - **Raccordo** e **Smusso** degli spigoli, lavorati **tutti insieme** come in SolidWorks: dove due raccordi si incontrano si raccordano tra loro, dove se ne incontrano tre ad angolo retto l'angolo diventa una porzione di sfera. Si raccordano anche gli archi (asole) e il bordo di un'ellisse o di una spline importata, che con un clic si sceglie tutto. Con la **propagazione tangente** (come in SolidWorks) un clic su uno spigolo lavora anche quelli che lo continuano senza angolo, per esempio tutto il bordo di un'asola.
 - **Serie lineare** (anche a griglia), **Serie circolare**, **Specchio**, **Piano di riferimento**.
-- **Corpi solidi**: casella **Unisci risultato**, cartella nell'albero, **Combina** (Aggiungi, Sottrai, Comune), **Sposta/Copia corpo**, **Elimina/Mantieni corpo**; massa per ogni corpo, un solido per corpo nello STEP.
+- **Corpi solidi**: casella **Unisci risultato**, cartella nell'albero, **Combina** (Aggiungi, Sottrai, Comune), **Sposta/Copia corpo**, **Elimina/Mantieni corpo**, **Ambito funzione** per scegliere i corpi di un taglio o di un foro; massa per ogni corpo, un solido per corpo nello STEP.
 - Albero di progettazione con modifica, soppressione, barra di ripristino, annulla e ripeti.
 
 ### Valuta
@@ -176,7 +176,7 @@ Le prove dell'interfaccia usano il programma come farebbe uno studente: disegnan
 
 ## Licenza
 
-Banco CAD, Copyright © 2026 Rayuk-creator. È un programma libero con licenza [GNU GPL 3](LICENSE) (o versioni successive), **senza alcuna garanzia**. Le parti di altri autori (lettori STEP/IGES e DWG, csg.js, metriche Adobe, caratteri IBM Plex) sono elencate in [`licenze/LEGGIMI.md`](licenze/LEGGIMI.md) e nel programma, in **Progetto › Informazioni e licenze**.
+Banco CAD, Copyright © 2026 Rayuk-creator. È un programma libero con licenza [GNU GPL 3](LICENSE) (o versioni successive), con le [condizioni aggiuntive](CONDIZIONI-AGGIUNTIVE.md) della sezione 7 (conservare l'avviso, indicare le versioni modificate, nome «Banco CAD»), **senza alcuna garanzia**. Le parti di altri autori (lettori STEP/IGES e DWG, csg.js, metriche Adobe, caratteri IBM Plex) sono elencate in [`licenze/LEGGIMI.md`](licenze/LEGGIMI.md) e nel programma, in **Progetto › Informazioni e licenze**.
 
 Il programma **non raccoglie dati**: tutto resta nel browser, e nemmeno i caratteri vengono scaricati da altri siti.
 

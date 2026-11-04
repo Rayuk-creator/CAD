@@ -51,11 +51,15 @@ L'utente vuole inserire il Banco CAD su **AlternativeTo**. Controllo fatto su tu
 
 Cose ancora da fare:
 
-5. **Sorgenti di occt-import-js «nello stesso posto»** (LGPL 2.1, punto 6d): **fatto** il 4 novembre con due fork (`Rayuk-creator/occt-import-js` e `Rayuk-creator/OCCT`, vedi `licenze/LEGGIMI.md`). Facoltativo lo stesso per libredwg-web 0.8.2 (la GPL 3 permette già i sorgenti su un altro server).
+5. **Sorgenti di occt-import-js «nello stesso posto»** (LGPL 2.1, punto 6d): **fatto** il 4 novembre con due fork (`Rayuk-creator/occt-import-js` e `Rayuk-creator/OCCT`, vedi `licenze/LEGGIMI.md`). Facoltativo lo stesso per libredwg-web 0.8.2 (la GPL 3 permette già i sorgenti su un altro server): chiesto il 4 novembre, il fork lo deve fare l'utente (vedi `RIPARTENZA.md`).
 9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 50 argomenti, Glossario 176 termini), da decidere con l'utente.
+
+## Tutela del nome e dell'autore (4 novembre 2026)
+
+Il marchio ora costa troppo. **Fatti:** condizioni aggiuntive GPL 3 sezione 7 (`CONDIZIONI-AGGIUNTIVE.md`), impronta SHA-256 di una frase nota solo all'autore (`IMPRONTA.md`). **Restano all'utente, se vuole:** archiviare il repository su Software Heritage, mandarsi una PEC con il file e l'impronta, conservare le prove del collegamento con «Rayuk-creator» e dell'uso del nome. Il deposito del marchio resta possibile più avanti.
 
 ## Altro ancora da fare
 
-- Sfondo del disegno: **fatti** il 3 novembre testi e quote. Non fatti, se servono: tratteggi, tolleranze geometriche, MULTILEADER, tabelle.
+- Sfondo del disegno: **fatti** il 3 novembre testi e quote, il 4 novembre tratteggi, tolleranze geometriche, MULTILEADER e tabelle (limite: le tabelle dei DWG dal 2010 in poi, che LibreDWG non scrive).
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
 - Le pagine pubblicate su claude.ai: «Banco CAD» (versione 21 del 4 novembre) e «Convertitore DWG → DXF» (3 novembre notte) sono aggiornate. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
