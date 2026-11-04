@@ -1872,7 +1872,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     rec(ASM6, ok, `segno ${db.ls}, archivio ${db.big} caratteri; riaperto ${rl.n} componenti; indietro ${back.full}/${back.inDb}/${back.db}; senza archivio «${fail.slice(0, 60)}»; ${errs.join(' / ')}`);
   } catch (e) { rec(ASM6, false, e.message.split('\n')[0]); }
 
-  const ASM8 = 'Assieme: le altre schede e i comandi: tavola della parte e ritorno, sezione, PDF, STL con tutti i triangoli, importazioni nella finestra giusta, Canc';
+  const ASM8 = 'Assieme: le altre schede e i comandi: tavola e ritorno, sezione, PDF, STL con tutti i triangoli, importazioni nella finestra giusta, Canc';
   try {
     const { c, p, errs, insert, st } = await asmSetup();
     await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
@@ -2107,6 +2107,87 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     await c.close();
     rec(ASMC1, okMass && okBom && okInt && !errs.length, `massa ${mass.kv.slice(0, 2).join(' / ')}, y ${mass.kv[4]} (attesi ${(ma + mb).toFixed(2)} g, ${(Va + Vb).toFixed(2)} mm³, ${((ma * 5 + mb * 15) / (ma + mb)).toFixed(3)}); distinta ${JSON.stringify(bom)}; prima «${r0.sum}» rossi ${red0}; poi «${r1.sum}» ${r1.rows.join()} rossi ${red1}; dopo Esc ${JSON.stringify(after)}; errori ${errs.join(' | ')}`);
   } catch (e) { rec(ASMC1, false, e.message.split('\n')[0]); }
+
+  const ASMC2 = 'Assieme: Vista esplosa con il mouse (passo, trascinamento, automatica, Annulla, comprimi) e tavola con distinta, numeri di posizione e assonometria esplosa; PDF e DXF';
+  try {
+    const { c, p, errs, insert, clickW } = await asmSetup();
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    await insert('p1'); await insert('p2');
+    await p.evaluate(() => { App.project.parts[0].doc.material = 's235'; App.project.parts[1].doc.material = 'al6082'; App.change(() => { App.project.assembly.insts[1].pose = { p: [40, 0, -25], q: [1, 0, 0, 0] }; }); App.r.fit(false); });
+    await p.waitForTimeout(800);
+    const scene = () => p.evaluate(() => { const b = App.st.bodies[1], mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9]; for (const q of b.polys) for (const v of q.v) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], v[k]); mx[k] = Math.max(mx[k], v[k]); } return { mn, mx, pose: App.project.assembly.insts[1].pose.p.slice(), pm: !!App.pm, steps: App.project.assembly.explode ? App.project.assembly.explode.steps.length : 0, ex: !!(App.project.assembly.explode && App.project.assembly.explode.on) }; });
+    await p.click('[data-cmd="explode"]'); await p.waitForTimeout(200);
+    await p.evaluate(() => App.r.fit(false)); await p.waitForTimeout(700);
+    // clic sul perno (la cima, y 30), direzione Y, 40 mm: l'anteprima si muove, il passo si aggiunge, poi ✓
+    await clickW([40, 30, -25]); await p.waitForTimeout(150);
+    await p.click('[data-axis="Y"]');
+    await p.fill('#expDist', '40'); await p.waitForTimeout(150);
+    const prev = await scene();
+    await p.click('#expAdd'); await p.waitForTimeout(150);
+    const listed = await p.evaluate(() => document.querySelector('#expSteps').textContent);
+    await p.click('.pm-ok'); await p.waitForFunction(() => !App.pm); await p.waitForTimeout(200);
+    const s1 = await scene();
+    await p.screenshot({ path: path.join(OUT, 'assieme-esplosa.png') });
+    const tree = await p.evaluate(() => document.querySelector('.texplode').textContent);
+    // Annulla toglie il passo; Ripeti lo rimette
+    await p.evaluate(() => App.undo()); await p.waitForTimeout(150);
+    const su = await scene();
+    await p.evaluate(() => App.redo()); await p.waitForTimeout(150);
+    const sr = await scene();
+    // nell'albero comprime: si torna alla posizione vera, il passo resta; il trascinamento non sposta il pezzo con la vista esplosa
+    await p.click('.texplode'); await p.waitForTimeout(150);
+    const sc = await scene();
+    await p.click('.texplode'); await p.waitForTimeout(150);
+    // trascinare il componente nel pannello: la distanza segue il mouse lungo Y, nella misura vera
+    await p.click('[data-cmd="explode"]'); await p.waitForTimeout(200);
+    await clickW([40, 30 + 40, -25]); await p.waitForTimeout(100);
+    await p.click('[data-axis="Y"]');
+    await p.fill('#expDist', '10'); await p.waitForTimeout(150);
+    const dragInfo = await p.evaluate(() => { const a = App.r.project([40, 80, -25]), b = App.r.project([40, 90, -25]), r = document.querySelector('#view').getBoundingClientRect(); return { x: a[0] + r.left, y: a[1] + r.top, px: Math.abs(b[1] - a[1]) / 10 }; });
+    await p.mouse.move(dragInfo.x, dragInfo.y); await p.mouse.down(); await p.mouse.move(dragInfo.x, dragInfo.y - 30, { steps: 4 }); await p.mouse.up(); await p.waitForTimeout(150);
+    const dist = await p.evaluate(() => parseFloat(document.querySelector('#expDist').value));
+    // Esc annulla tutto il pannello
+    await p.evaluate(() => App.closePM(false)); await p.waitForTimeout(150);
+    const sa = await scene();
+    // automatica
+    await p.click('[data-cmd="explode"]'); await p.waitForTimeout(200);
+    await p.click('[data-axis="Y"]');
+    await p.fill('#expGap', '12');
+    await p.click('#expAuto'); await p.waitForTimeout(150);
+    await p.click('.pm-ok'); await p.waitForFunction(() => !App.pm); await p.waitForTimeout(150);
+    const sAuto = await scene();
+    // messa in tavola dell'assieme
+    await p.click('[data-ct="drawing"]'); await p.waitForTimeout(500);
+    const sheet = await p.evaluate(() => { const s = document.querySelector('#sheetHolder svg'), b = s.querySelector('[data-bom]'); return {
+      mode: App.mode, isAsm: !!Drawing.assembly(), name: document.querySelector('#docName').value, off: document.querySelector('#docName').disabled, sel: document.querySelector('#partSel').value,
+      bom: [...b.querySelectorAll('text')].map(t => t.textContent), balloons: [...s.querySelectorAll('[data-balloons] text')].map(t => t.textContent), lines: s.querySelectorAll('[data-explode] line').length,
+      frame: [...s.querySelectorAll('text')].map(t => t.textContent).join('|'), box: [...s.querySelectorAll('[data-balloons] circle[r="4"]')].map(c => [+c.getAttribute('cx'), +c.getAttribute('cy')]), tip: [...s.querySelectorAll('[data-balloons] line')].map(l => [+l.getAttribute('x2'), +l.getAttribute('y2')]), W: +s.getAttribute('viewBox').split(' ')[2], H: +s.getAttribute('viewBox').split(' ')[3] }; });
+    await p.screenshot({ path: path.join(OUT, 'assieme-tavola.png') });
+    const pdf = await p.evaluate(async () => { await App.savePdf(); const b = App.lastPdf && (App.lastPdf.bytes || App.lastPdf); return { n: b ? b.length : 0, file: App.lastPdf && App.lastPdf.file }; });
+    const dxf = await p.evaluate(() => Drawing.toDXF());
+    // senza distinta e senza numeri: spariscono; dopo si torna all'assieme e alla parte: la parte ha la sua tavola
+    const off = await p.evaluate(() => { const d = Drawing.state(); d.bom = false; d.balloons = false; d.exploded = false; Drawing.redraw(); const s = document.querySelector('#sheetHolder svg'); const r = { bom: !!s.querySelector('[data-bom]'), bal: !!s.querySelector('[data-balloons]'), expl: !!s.querySelector('[data-explode]') }; d.bom = true; d.balloons = true; d.exploded = true; return r; });
+    // sezione dell'assieme montato, sul piano frontale a z = -25: i due pezzi tagliati insieme; con il tratteggio
+    const sec = await p.evaluate(() => { const d = Drawing.state(); d.section = { view: 'front', plane: 'front', offset: -25, label: 'A' }; Drawing.redraw(); const s = document.querySelector('#sheetHolder svg'); const r = { txt: [...s.querySelectorAll('[data-view="front"] text')].map(t => t.textContent).join(), lines: s.querySelectorAll('[data-view="front"] line').length, shaded: 0 }; d.section = null; d.shaded = true; Drawing.redraw(); r.shaded = document.querySelectorAll('#sheetHolder [data-shade] polygon').length; d.shaded = false; Drawing.redraw(); return r; });
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(300);
+    const back = await p.evaluate(() => ({ mode: App.mode, name: document.querySelector('#docName').value, off: document.querySelector('#docName').disabled, drawing: !!App.project.assembly.drawing }));
+    await p.evaluate(() => App.openPart('p1')); await p.waitForTimeout(200);
+    await p.click('[data-ct="drawing"]'); await p.waitForTimeout(400);
+    const part = await p.evaluate(() => { const s = document.querySelector('#sheetHolder svg'); return { isAsm: !!Drawing.assembly(), bom: !!s.querySelector('[data-bom]'), bal: !!s.querySelector('[data-balloons]'), name: document.querySelector('#docName').value, off: document.querySelector('#docName').disabled }; });
+    await p.click('[data-ct="features"]'); await p.waitForTimeout(100);
+    await c.close();
+    const document_ok = x => x.shaded > 10;
+    const nearN = (a, b, t = 1e-6) => Math.abs(a - b) <= t;
+    const okExp = nearN(prev.mn[1], 40) && nearN(prev.mx[1], 70) && prev.pose[1] === 0 && /Perno<1>: Y \+40,00 mm/.test(listed) && s1.steps === 1 && s1.ex && nearN(s1.mn[1], 40) && s1.pose[1] === 0 && /1 passo/.test(tree)
+      && su.steps === 0 && nearN(su.mn[1], 0) && sr.steps === 1 && nearN(sr.mn[1], 40) && !sc.ex && nearN(sc.mn[1], 0) && sc.steps === 1 && nearN(dist, 10 + 30 / dragInfo.px, 0.02) && sa.steps === 1 && nearN(sa.mn[1], 40) && sa.ex;
+    // automatica: piastra y 0..10, perno y 0..30: centri 5 e 15; perno da 0 a 10 + 12: 22
+    const okAuto = sAuto.steps === 1 && nearN(sAuto.mn[1], 22) && sAuto.ex;
+    const inside = sheet.box.every(q => q[0] > 20 + 4 && q[0] < sheet.W - 10 - 4 && q[1] > 10 + 4 && q[1] < sheet.H - 10 - 4);
+    const okSheet = sheet.mode === 'drawing' && sheet.isAsm && sheet.name === 'Assieme1' && sheet.off && sheet.sel === 'asm' && sheet.bom.join('|') === 'Pos.|Denominazione|Materiale|Q.tà|Massa cad. (g)|1|Piastra|Acciaio S235JR|1|289,34|2|Perno|Alluminio EN AW-6082|1|25,45'
+      && sheet.balloons.join() === '1,2' && sheet.lines === 1 && inside && /Vedi la distinta base/.test(sheet.frame) && /314,79 g/.test(sheet.frame) && /Assieme1/.test(sheet.frame) && /A–A/.test(sec.txt) && sec.lines > 10 && document_ok(sec) && pdf.n > 1000 && /Assieme1-tavola\.pdf/.test(pdf.file || '')
+      && /\nDenominazione\r?\n/.test(dxf) && /\nPiastra\r?\n/.test(dxf) && /\nAcciaio S235JR\r?\n/.test(dxf) && !off.bom && !off.bal && !off.expl && back.mode === 'assembly' && !back.off && back.name === 'Assieme1' && back.drawing && !part.isAsm && !part.bom && !part.bal && part.name !== 'Assieme1' && !part.off;
+    rec(ASMC2, okExp && okAuto && okSheet && !errs.length, `anteprima y ${prev.mn[1]}..${prev.mx[1]}, vero ${prev.pose[1]}; «${listed}»; dopo ✓ ${s1.mn[1]}; «${tree}»; annulla ${su.steps}/${su.mn[1]}; ripeti ${sr.steps}/${sr.mn[1]}; comprimi ${sc.ex}/${sc.mn[1]}; trascinato ${dist} (atteso ${(10 + 30 / dragInfo.px).toFixed(3)}); Esc ${sa.steps}/${sa.mn[1]}; automatica ${sAuto.steps}/${sAuto.mn[1]}; tavola ${JSON.stringify({ ...sheet, frame: undefined })}; pdf ${JSON.stringify(pdf)}; dxf ${dxf.length}; spenti ${JSON.stringify(off)}; sezione ${JSON.stringify(sec)}; ritorno ${JSON.stringify(back)}; parte ${JSON.stringify(part)}; errori ${errs.join(' | ')}`);
+  } catch (e) { rec(ASMC2, false, e.message.split('\n')[0]); }
 
   await browser.close();
   const f = results.filter(r => !r.ok).length;

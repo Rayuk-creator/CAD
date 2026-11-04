@@ -7479,14 +7479,14 @@ self.postMessage({ hello: true });`;
   }
 
   /* ---------------- scena: i componenti come un corpo solo, per la vista, la selezione e le misure ---------------- */
-  function scene(asm, infos) {
+  function scene(asm, infos, opts = {}) {
     const tags = new G.Tags();
     const body = [], bodies = [];
     const topo = { verts: [], polyVerts: [], edges: [], surfKeys: [], faceKeys: [] };
     for (const inst of asm.insts) {
       const info = infos.get(inst.part);
       if (!info || info.empty || inst.hidden) continue;
-      const st = info.st, pose = inst.pose, T = st.topo;
+      const st = info.st, pose = opts.exploded ? explodedPose(asm, inst) : inst.pose, T = st.topo;
       const t0 = tags.list.length, p0 = body.length, v0 = topo.verts.length;
       for (const tg of st.tags.list) {
         const nt = { ...tg, name: inst.id + '/' + tg.name, src: tg.name, inst: inst.id };
@@ -7510,6 +7510,49 @@ self.postMessage({ hello: true });`;
       bodies.push({ id: inst.id, name: inst.id, polys, start: p0 });
     }
     return { body, bodies, bodySeq: bodies.length, tags, topo, frames: new Map(), errors: new Map(), warn: new Map(), info: new Map(), holes: [], tools: new Map(), isAssembly: true };
+  }
+
+  /* ---------------- vista esplosa: i passi spostano solo ciò che si vede, le posizioni vere e gli accoppiamenti non cambiano ---------------- */
+  const isExploded = asm => !!(asm.explode && asm.explode.on && asm.explode.steps.length);
+  function explodeOffset(asm, id) {
+    let o = [0, 0, 0];
+    if (asm.explode) for (const s of asm.explode.steps) if (s.insts.includes(id)) o = add(o, mul(s.dir, s.dist));
+    return o;
+  }
+  const explodedPose = (asm, inst) => ({ p: add(inst.pose.p, explodeOffset(asm, inst.id)), q: inst.pose.q });
+  // il percorso del centro di ogni componente spostato, un tratto per passo (le linee di esplosione)
+  function explodeLines(asm, infos) {
+    const out = [];
+    if (!asm.explode) return out;
+    for (const inst of asm.insts) {
+      const info = infos.get(inst.part);
+      if (!info || info.empty) continue;
+      let q = toWorld(inst.pose, info.c);
+      const pts = [q];
+      for (const s of asm.explode.steps) if (s.insts.includes(inst.id) && s.dist) { q = add(q, mul(s.dir, s.dist)); pts.push(q); }
+      if (pts.length > 1) out.push({ inst: inst.id, pts });
+    }
+    return out;
+  }
+  // esplosione automatica: in ordine lungo la direzione il primo resta fermo, ogni altro va oltre il precedente, con lo spazio gap in mezzo
+  function autoExplode(asm, infos, dir, gap) {
+    const rows = [];
+    asm.insts.forEach((inst, order) => {
+      const info = infos.get(inst.part);
+      if (!info || info.empty) return;
+      let lo = Infinity, hi = -Infinity;
+      for (const p of info.st.body) for (const v of p.v) { const d = dot(toWorld(inst.pose, v), dir); if (d < lo) lo = d; if (d > hi) hi = d; }
+      rows.push({ inst, lo, hi, order });
+    });
+    rows.sort((a, b) => (a.lo + a.hi) / 2 - (b.lo + b.hi) / 2 || a.order - b.order);
+    const steps = [];
+    let cur = rows.length ? rows[0].hi : 0;
+    for (const r of rows.slice(1)) {
+      const dist = Math.max(0, cur + gap - r.lo);
+      cur = r.hi + dist;
+      if (dist > 0) steps.push({ id: uid(asm, 'X'), insts: [r.inst.id], dir: dir.slice(), dist });
+    }
+    return steps;
   }
 
   /* ---------------- calcoli sull'assieme: massa, distinta base, interferenze ---------------- */
@@ -7598,7 +7641,7 @@ self.postMessage({ hello: true });`;
     return { list: sortInterferences(list), pairs: setup.pairs.length, failed };
   }
 
-  const api = { massOf, bom, interferences, interferenceSetup, interferencePair, sortInterferences, newAssembly, addInst, uid, instLabel, partInfo, datumsOf, identity, toWorld, toLocal, dirWorld, entityOf, worldEnt, MATE_TYPES, MATE_LABEL, allowedTypes, suggest, mateDefaults, mateRows, solve, solveStatus, drag, scene, qexp, qmul, qnorm, qrot, moved, fitPlane, fitCylinder, fitCone, fitSphere };
+  const api = { isExploded, explodeOffset, explodedPose, explodeLines, autoExplode, massOf, bom, interferences, interferenceSetup, interferencePair, sortInterferences, newAssembly, addInst, uid, instLabel, partInfo, datumsOf, identity, toWorld, toLocal, dirWorld, entityOf, worldEnt, MATE_TYPES, MATE_LABEL, allowedTypes, suggest, mateDefaults, mateRows, solve, solveStatus, drag, scene, qexp, qmul, qnorm, qrot, moved, fitPlane, fitCylinder, fitCone, fitSphere };
   if (isNode) module.exports = api; else root.Assembly = api;
 })(this);
 
@@ -8265,6 +8308,7 @@ self.postMessage({ hello: true });`;
     print: I('<path d="M6 9V3h12v6M6 17H4v-7h16v7h-2M7 14h10v7H7z"/>'),
     verify: I('<path d="M4 12l5 5L20 6"/>'),
     bom: I('<path d="M4 5h16v14H4zM4 10h16M4 15h16M9 5v14"/>'),
+    explode: I('<path d="M5 15l6 3 6-3-6-3zM5 7l6 3 6-3-6-3z"/><path d="M19 4v5M19 15v5M17 6l2-2 2 2M17 18l2 2 2-2"/>'),
     interf: I('<rect x="3" y="3" width="12" height="12" rx="1"/><rect x="9" y="9" width="12" height="12" rx="1"/><path d="M9 15l6-6M9 12l3-3M12 15l3-3"/>'),
   };
 
@@ -8486,6 +8530,7 @@ self.postMessage({ hello: true });`;
       }
     }
     if (App.pm && App.pm.preview) { const pv = App.pm.preview(); if (pv) { if (pv.lines) out.lines.push(...pv.lines); if (pv.faces) out.faces.push(...pv.faces); } }
+    if (App.mode === 'assembly') out.lines.push(...App.asm.explodeExtra());
     if (App.mode === 'sketch' && Sketcher.extra3d) { const e = Sketcher.extra3d(); out.lines.push(...e.lines); out.faces.push(...e.faces); }
     return out;
   }
@@ -9091,6 +9136,7 @@ self.postMessage({ hello: true });`;
       ['asmMass', 'Proprietà di massa', 'Massa, volume, area e baricentro di tutto l\'assieme e di ogni componente', { icon: 'mass' }],
       ['bom', 'Distinta base', 'L\'elenco delle parti dell\'assieme, con quantità, materiale e massa'],
       ['interf', 'Verifica interferenze', 'Trova i componenti che si compenetrano e per quale volume'],
+      ['explode', 'Vista esplosa', 'Allontana i componenti per mostrare come si montano, senza cambiare le posizioni vere'],
       '-',
       ['measure', 'Misura', 'Distanze, diametri e angoli tra gli elementi selezionati'],
       ['section', 'Vista in sezione', 'Taglia la vista con un piano'],
@@ -9099,10 +9145,11 @@ self.postMessage({ hello: true });`;
   App.TOOLBARS = TOOLBARS;
   App.setCmdTab = function (tab) {
     if (tab === 'assembly' && App.mode !== 'assembly') { App.asm.enter(); return; }
-    if (tab !== 'assembly' && App.mode === 'assembly') App.asm.leave();
+    const fromAsm = App.mode === 'assembly';
+    if (tab !== 'assembly' && fromAsm) App.asm.leave();
     cmdTab = tab;
     document.querySelectorAll('.cmd-tabs [data-ct]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.ct === tab)));
-    if (tab === 'drawing') { if (App.mode === 'sketch') { Sketcher.exit(true); } Drawing.enter(); }
+    if (tab === 'drawing') { if (App.mode === 'sketch') { Sketcher.exit(true); } Drawing.enter(fromAsm ? App.asm.drawingContext() : null); }
     else if (App.mode === 'drawing') Drawing.exit();
     App.updateCommands();
   };
@@ -9147,6 +9194,7 @@ self.postMessage({ hello: true });`;
       case 'asmMass': return App.asm.massDialog();
       case 'bom': return App.asm.bomDialog();
       case 'interf': return App.asm.openInterf();
+      case 'explode': return App.asm.openExplode();
       case 'material': return materialDialog();
       case 'mass': return massDialog();
       case 'measure': return Features.measure();
@@ -10332,7 +10380,7 @@ self.postMessage({ hello: true });`;
     // mostra un assieme (quello vero o un'anteprima): App.st diventa la scena, così vista, selezione e misure funzionano come nella parte
     function show(a) {
       shown = a;
-      const st = Assembly.scene(a, infos);
+      const st = Assembly.scene(a, infos, { exploded: Assembly.isExploded(a) });
       for (const b of st.bodies) { const i = a.insts.find(x => x.id === b.id); if (i) b.name = label(i); }
       App.st = st;
       verts = null;
@@ -10564,6 +10612,10 @@ self.postMessage({ hello: true });`;
         const title = inst.fixed ? 'Fissa: non si muove' : dof ? `Sotto definita: restano ${dof} gradi di libertà` : 'Definita: nessun grado di libertà';
         t.append(node('extrude', pre + label(inst), { cls: 'tchild tinst' + (sel ? ' sel' : ''), title: title + '. Doppio clic per aprire la parte.', on: e => App.select({ kind: 'body', id: inst.id, label: label(inst) }, e.ctrlKey || e.metaKey), dbl: () => openPart(inst.part), ctx: e => instMenu(e, inst) }));
       }
+      if (a.explode && a.explode.steps.length) {
+        const on = Assembly.isExploded(a), n = a.explode.steps.length;
+        t.append(node('explode', `Vista esplosa (${n} ${n === 1 ? 'passo' : 'passi'})${on ? '' : ' · compressa'}`, { cls: 'texplode', title: 'Clic: esplodi o comprimi. Doppio clic: modifica i passi.', on: () => toggleExplode(), dbl: () => openExplode(), ctx: e => showCtx(e.clientX, e.clientY, [[on ? 'Comprimi' : 'Esplodi', () => toggleExplode()], ['Modifica i passi', () => openExplode()]]) }));
+      }
       t.append(node('mate', 'Accoppiamenti (' + a.mates.length + ')', { title: 'I legami tra i componenti' }));
       for (const m of a.mates) {
         const s = last && last.status.get(m.id), err = s && !s.ok ? s.err : '';
@@ -10619,7 +10671,9 @@ self.postMessage({ hello: true });`;
       return { inst: inst.id, k: 'edge', a: st.tags.byName.get(it.ref.a).src, b: st.tags.byName.get(it.ref.b).src, p: Assembly.toLocal(pose, it.ref.p) };
     }
     const ITEM_LABEL = E => E.datum ? E.name : E.origin ? 'Origine' : E.t === 'plane' ? 'Faccia piana' : E.t === 'point' ? (E.sphere ? 'Sfera' : 'Vertice') : !E.round ? 'Spigolo rettilineo' : E.circle ? 'Spigolo circolare' : E.cone ? 'Faccia conica' : 'Faccia cilindrica';
+    function collapse() { const a = asm(); if (Assembly.isExploded(a)) { a.explode.on = false; show(a); App.save(); } }
     function openMate(edit) {
+      collapse();
       const real = asm();
       if (real.insts.length < 2) { toast('Servono almeno due componenti: premi Inserisci parte.'); return; }
       if (App.pm) App.closePM(false);
@@ -10758,6 +10812,7 @@ self.postMessage({ hello: true });`;
 
     /* ---------- spostare i componenti ---------- */
     function dragStart(x, y, rot, inPM) {
+      if (Assembly.isExploded(asm())) return false;   // nella vista esplosa il trascinamento gira la vista
       const f = App.r.pickFace(x, y);
       if (!f) return false;
       const inst = instOfTag(App.st.tags.get(App.st.body[f.poly].t));
@@ -10789,6 +10844,7 @@ self.postMessage({ hello: true });`;
       return false;
     }
     function openMove() {
+      collapse();
       const a = asm();
       if (!a.insts.some(i => !i.fixed)) { toast('Nessun componente da spostare: sono tutti fissi.'); return; }
       if (App.pm) App.closePM(false);
@@ -10898,7 +10954,107 @@ self.postMessage({ hello: true });`;
         cancel() { run = null; },
       });
     }
-    return { massDialog, bomDialog, openInterf, regen, show, refreshPartSel, enter, leave, insertPart, insertDialog, insertFile, copyInst, setFixed, deleteInst, deleteMate, openMate, openMove, click, contextMenu, dblclick, key, renderTree, vertexAt, dragStart, dragMove, dragEnd, instOfItem, get last() { return last; }, get infos() { return infos; } };
+    /* ---------- vista esplosa ---------- */
+    function toggleExplode() { const a = asm(); a.explode.on = !a.explode.on; show(a); App.r.fit(); App.save(); }
+    const DIRS = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    function explodeExtra() {
+      if (App.mode !== 'assembly' || !shown || !Assembly.isExploded(shown)) return [];
+      return Assembly.explodeLines(shown, infos).map(l => { const pts = []; for (let i = 1; i < l.pts.length; i++) pts.push(l.pts[i - 1], l.pts[i]); return { pts, color: [0.15, 0.3, 0.6], dash: true }; });
+    }
+    function openExplode() {
+      refreshInfos();
+      const real = asm();
+      if (!real.insts.some(i => { const f = infos.get(i.part); return f && !f.empty; })) { toast('L\'assieme è vuoto: premi Inserisci parte.'); return; }
+      if (App.pm) App.closePM(false);
+      const before = snapshot();
+      if (!real.explode) real.explode = { on: true, steps: [] };
+      real.explode.on = true;
+      const size = App.r.radius || 50;
+      const S = { insts: [], axis: 1, sign: 1, dist: Math.round(size), gap: Math.round(size / 2), drag: null };
+      const dir = () => mul(DIRS[S.axis], S.sign);
+      const draft = () => S.insts.length && S.dist ? { insts: S.insts, dir: dir(), dist: S.dist } : null;
+      const preview = () => {
+        const d = draft();
+        show(d ? { ...real, explode: { on: true, steps: [...real.explode.steps, d] } } : real);
+      };
+      const mark = () => { App.sel = S.insts.map(id => ({ kind: 'body', id, label: label(instById(id)) })); App.recolor(); };
+      const stepText = s => `${s.insts.map(id => { const i = instById(id); return i ? label(i) : '?'; }).join(', ')}: ${['X', 'Y', 'Z'][s.dir.findIndex(v => Math.abs(v) > 0.5)]} ${s.dir.some(v => v < -0.5) ? '−' : '+'}${fmt(s.dist)} mm`;
+      App.openPM({
+        title: 'Vista esplosa', icon: 'explode', hint: 'Fai clic sui componenti da spostare, scegli la direzione e la distanza. Puoi anche trascinarli.',
+        filter: ['face'],
+        build(b) {
+          const box = el('div', { class: 'selbox active' });
+          if (!S.insts.length) box.append(el('span', { class: 'empty' }, 'Nessun componente: fai clic nella vista'));
+          for (const id of S.insts) box.append(el('span', { class: 'chip' }, label(instById(id)), el('button', { type: 'button', 'aria-label': 'Togli', onclick: () => { S.insts = S.insts.filter(x => x !== id); mark(); preview(); App.refreshPM(); } }, '×')));
+          const g = el('div', { class: 'grp' }, el('h3', {}, 'Nuovo passo'), box);
+          const row = el('div', { class: 'btnrow' });
+          ['X', 'Y', 'Z'].forEach((t, k) => row.append(el('button', { class: 'relbtn', type: 'button', 'data-axis': t, 'aria-pressed': String(S.axis === k), onclick: () => { S.axis = k; preview(); App.refreshPM(); } }, t)));
+          row.append(el('button', { class: 'relbtn', type: 'button', id: 'expInv', 'aria-pressed': String(S.sign < 0), onclick: () => { S.sign = -S.sign; preview(); App.refreshPM(); } }, 'Inverti'));
+          g.append(row);
+          const inp = el('input', { type: 'number', id: 'expDist', step: 'any', min: '0', value: String(S.dist) });
+          inp.addEventListener('input', () => { const v = parseFloat(inp.value); S.dist = v > 0 ? v : 0; preview(); });
+          g.append(el('div', { class: 'row' }, el('label', { for: 'expDist' }, 'Distanza (mm)'), inp));
+          g.append(el('button', { class: 'btn btn-primary', type: 'button', id: 'expAdd', disabled: !S.insts.length || !S.dist, onclick: () => { real.explode.steps.push({ id: Assembly.uid(real, 'X'), insts: S.insts.slice(), dir: dir(), dist: S.dist }); S.insts = []; mark(); preview(); App.refreshPM(); } }, 'Aggiungi il passo'));
+          b.append(g);
+          const list = el('div', { class: 'rellist', id: 'expSteps' });
+          real.explode.steps.forEach((s, i) => list.append(el('div', { class: 'ri' }, `${i + 1}. ${stepText(s)}`, el('button', { type: 'button', onclick: () => { real.explode.steps = real.explode.steps.filter(x => x !== s); preview(); App.refreshPM(); } }, 'Elimina'))));
+          b.append(el('div', { class: 'grp' }, el('h3', {}, 'Passi di esplosione'), real.explode.steps.length ? list : el('p', { class: 'note' }, 'Nessun passo.')));
+          const ga = el('input', { type: 'number', id: 'expGap', step: 'any', min: '0', value: String(S.gap) });
+          ga.addEventListener('input', () => { const v = parseFloat(ga.value); S.gap = v >= 0 ? v : 0; });
+          b.append(el('div', { class: 'grp' }, el('h3', {}, 'Esplosione automatica'), el('p', { class: 'note' }, 'Mette i componenti in fila lungo la direzione scelta sopra. Sostituisce i passi già fatti.'),
+            el('div', { class: 'row' }, el('label', { for: 'expGap' }, 'Spazio tra i pezzi (mm)'), ga),
+            el('button', { class: 'relbtn', type: 'button', id: 'expAuto', onclick: () => { real.explode.steps = Assembly.autoExplode(real, infos, dir(), S.gap); S.insts = []; mark(); preview(); App.r.fit(); App.refreshPM(); } }, 'Disponi in automatico')));
+        },
+        pick(it) {
+          const inst = instOfItem(it);
+          if (!inst) return;
+          S.insts = S.insts.includes(inst.id) ? S.insts.filter(x => x !== inst.id) : [...S.insts, inst.id];
+          mark(); preview(); App.refreshPM();
+        },
+        down(x, y) {
+          if (!S.insts.length) return false;
+          const f = App.r.pickFace(x, y);
+          const inst = f && instOfTag(App.st.tags.get(App.st.body[f.poly].t));
+          if (!inst || !S.insts.includes(inst.id)) return false;
+          S.drag = { x, y, d0: S.dist, p: f.point, inst: inst.id, moved: false };
+          return true;
+        },
+        move(x, y, e, dragging) {
+          if (!dragging || !S.drag) return false;
+          const D0 = S.drag;
+          if (!D0.moved && Math.hypot(x - D0.x, y - D0.y) <= 4) return true;
+          D0.moved = true;
+          // lo spostamento del puntatore lungo la direzione vista sullo schermo; la distanza resta positiva
+          const a = App.r.project(D0.p), c = App.r.project(add(D0.p, dir()));
+          const u = [c[0] - a[0], c[1] - a[1]], uu = u[0] * u[0] + u[1] * u[1];
+          if (uu < 1e-6) return true;
+          S.dist = Math.max(0, Math.round((D0.d0 + ((x - D0.x) * u[0] + (y - D0.y) * u[1]) / uu) * 100) / 100);
+          preview();
+          const i = $('#expDist'); if (i) i.value = String(S.dist);
+          return true;
+        },
+        up() {
+          const D0 = S.drag; S.drag = null;
+          if (D0 && !D0.moved) { S.insts = S.insts.filter(x => x !== D0.inst); mark(); preview(); }
+          App.refreshPM();
+        },
+        ok() {
+          if (S.insts.length && S.dist) real.explode.steps.push({ id: Assembly.uid(real, 'X'), insts: S.insts.slice(), dir: dir(), dist: S.dist });
+          real.explode.on = real.explode.steps.length > 0;
+          App.sel = []; App.commit(before); show(real); App.r.fit(); status();
+        },
+        cancel() { App.sel = []; App.project.assembly = JSON.parse(before); show(asm()); status(); },
+      });
+      mark(); preview();
+    }
+    // tutto ciò che serve alla tavola dell'assieme
+    function drawingContext() {
+      refreshInfos();
+      const a = asm(), st = Assembly.scene(a, infos);
+      const exp = a.explode && a.explode.steps.length ? Assembly.scene(a, infos, { exploded: true }) : null;
+      return { asm: a, st, exp, lines: exp ? Assembly.explodeLines(a, infos) : [], bom: Assembly.bom(a, infos), mass: Assembly.massOf(a, infos), doc: { name: a.name, features: [], material: 'none', isAssembly: true } };
+    }
+    return { drawingContext, explodeExtra, openExplode, toggleExplode, collapse, massDialog, bomDialog, openInterf, regen, show, refreshPartSel, enter, leave, insertPart, insertDialog, insertFile, copyInst, setFixed, deleteInst, deleteMate, openMate, openMove, click, contextMenu, dblclick, key, renderTree, vertexAt, dragStart, dragMove, dragEnd, instOfItem, get last() { return last; }, get infos() { return infos; } };
   })();
   App.init = init;
   document.addEventListener('DOMContentLoaded', () => { /* avvio in fondo al file */ });
@@ -14239,7 +14395,16 @@ self.postMessage({ hello: true });`;
       title: { school: 'Istituto Tecnico – Meccanica e Meccatronica', title: '', author: '', date: new Date().toISOString().slice(0, 10), number: 'TAV. 01', classe: '4ª', tol: 'ISO 2768-mK', notes: 'Smussi non quotati 0,5 × 45°. Spigoli vivi arrotondati.' },
     };
   }
-  D.state = function () { const App = A(); if (!App.drawingState) App.drawingState = defaultState(); return App.drawingState; };
+  // tavola dell'assieme: contesto dato da App.asm.drawingContext; null = tavola della parte
+  let asmCtx = null;
+  D.assembly = () => asmCtx;
+  const curSt = () => asmCtx ? asmCtx.st : A().st;
+  const curDoc = () => asmCtx ? asmCtx.doc : A().doc;
+  D.setAssembly = c => { asmCtx = c; }; D.curSt = curSt; D.curDoc = curDoc;
+  D.state = function () {
+    if (asmCtx) { if (!asmCtx.asm.drawing) asmCtx.asm.drawing = { ...defaultState(), bom: true, balloons: true, exploded: !!asmCtx.exp }; return asmCtx.asm.drawing; }
+    const App = A(); if (!App.drawingState) App.drawingState = defaultState(); return App.drawingState;
+  };
 
   /* ---------------- assonometria ombreggiata ---------------- */
   // Come lo stile «Ombreggiato con spigoli» di SolidWorks: facce piene con il loro colore (quello del file STEP/IGES,
@@ -14266,9 +14431,9 @@ self.postMessage({ hello: true });`;
   function layout(st, dsArg, docArg) {
     const App = A();
     const ds = dsArg || D.state();
-    const doc = docArg || App.doc;
+    const doc = docArg || curDoc();
     const [W, H] = SHEETS[ds.sheet] || SHEETS.A4V;
-    const key = JSON.stringify([doc.features, ds.sheet, ds.scale, ds.views, ds.hidden, ds.offsets, ds.section, !!ds.shaded]);
+    const key = JSON.stringify([doc.features, ds.sheet, ds.scale, ds.views, ds.hidden, ds.offsets, ds.section, !!ds.shaded, ds.bom, ds.balloons, ds.exploded]);
     if (!dsArg && cache && cache.key === key && cache.stRef === st) return cache;
     const views = [];
     const order = ['front', 'top', 'left', 'right', 'bottom', 'back'].filter(v => ds.views[v]);
@@ -14291,10 +14456,14 @@ self.postMessage({ hello: true });`;
       views.push(cv);
     }
     let iso = null;
-    if (ds.views.iso) { iso = computeView(st, VIEWS.iso, { hidden: false }); iso.id = 'iso'; iso.V = VIEWS.iso; iso.axes = []; if (ds.shaded) iso.fill = shadeView(st, VIEWS.iso); }
+    const isoExp = !!(asmCtx && ds.exploded && asmCtx.exp), isoSt = isoExp ? asmCtx.exp : st;
+    if (ds.views.iso) { iso = computeView(isoSt, VIEWS.iso, { hidden: false }); iso.id = 'iso'; iso.V = VIEWS.iso; iso.axes = []; if (ds.shaded) iso.fill = shadeView(isoSt, VIEWS.iso); }
+    // tavola dell'assieme: la distinta base sta sopra il cartiglio, i numeri di posizione intorno all'assonometria
+    const bomH = asmCtx && ds.bom !== false ? BOM_ROW * (asmCtx.bom.length + 1) : 0;
+    const balloonPad = iso && asmCtx && ds.balloons !== false ? 2 * BALLOON_PAD : 0;
     // scala automatica: la più grande che fa stare tutto
     // spazio per le quote: 22 mm a sinistra e in alto, 8 mm agli altri lati; il cartiglio è alto 46 mm
-    const area = { x0: 20 + 22, y0: 10 + 22, x1: W - 10 - 8, y1: H - 10 - 8 - 46 };
+    const area = { x0: 20 + 22, y0: 10 + 22, x1: W - 10 - 8, y1: H - 10 - 8 - 46 - bomH };
     const ext = cv => [cv.bbox.mx[0] - cv.bbox.mn[0], cv.bbox.mx[1] - cv.bbox.mn[1]];
     const fr = views.find(v => v.id === 'front');
     const gap = 30;
@@ -14337,7 +14506,7 @@ self.postMessage({ hello: true });`;
       // regione libera: a destra delle viste o sotto, sopra/accanto al cartiglio
       let vx1 = -Infinity, vy1 = -Infinity;
       for (const v of views) { vx1 = Math.max(vx1, v.ox + v.bbox.mx[0] * v.s); vy1 = Math.max(vy1, v.oy - v.bbox.mn[1] * v.s); }
-      const tbTop = H - 10 - 46, tbLeft = W - 10 - 180;
+      const tbTop = H - 10 - 46 - bomH, tbLeft = W - 10 - 180;
       const regions = [
         { x0: vx1 + 18, y0: area.y0 - 10, x1: W - 10 - 6, y1: tbTop - 6 },
         { x0: area.x0 - 10, y0: vy1 + 22, x1: tbLeft - 6, y1: H - 10 - 6 },
@@ -14351,7 +14520,7 @@ self.postMessage({ hello: true });`;
         for (const rg of regions) {
           const rw = rg.x1 - rg.x0, rh = rg.y1 - rg.y0;
           if (rw <= 0 || rh <= 0) continue;
-          if (iw * is <= rw && ih * is <= rh) {
+          if (iw * is + balloonPad <= rw && ih * is <= rh) {
             if (rg.notTB && !(rg.x0 > tbLeft || ih * is <= tbTop - 6 - rg.y0)) continue;
             if (!best || is > best.is) best = { is, rg, sc };
           }
@@ -14364,6 +14533,8 @@ self.postMessage({ hello: true });`;
       const cx = (best.rg.x0 + best.rg.x1) / 2, cy = (best.rg.y0 + best.rg.y1) / 2;
       iso.ox = cx - (iso.bbox.mn[0] + iso.bbox.mx[0]) / 2 * best.is + off[0];
       iso.oy = cy + (iso.bbox.mn[1] + iso.bbox.mx[1]) / 2 * best.is + off[1];
+      if (isoExp) iso.lines = asmCtx.lines.flatMap(l => l.pts.slice(1).map((q, i) => [[dot(l.pts[i], VIEWS.iso.r), dot(l.pts[i], VIEWS.iso.u)], [dot(q, VIEWS.iso.r), dot(q, VIEWS.iso.u)]]));
+      if (balloonPad) iso.balloons = placeBalloons(iso, isoSt, asmCtx, W, H);
       views.push(iso);
     }
     const res = { key, stRef: st, views, W, H, scaleTxt, s };
@@ -14371,9 +14542,66 @@ self.postMessage({ hello: true });`;
     return res;
   }
   D.invalidate = () => { cache = null; };
+  // un punto del componente che si vede nell'assonometria: al centro di una faccia rivolta verso chi guarda, senza altre facce davanti
+  function visiblePoint(body, all, V) {
+    const cands = [];
+    for (const p of body.polys) {
+      if (dot(p.p.n, V.b) <= 0.05) continue;
+      for (let i = 1; i < p.v.length - 1; i++) {
+        const a = p.v[0], b = p.v[i], c = p.v[i + 1];
+        cands.push({ c: [0, 1, 2].map(k => (a[k] + b[k] + c[k]) / 3), area: len(cross(sub(b, a), sub(c, a))) });
+      }
+    }
+    cands.sort((x, y) => y.area - x.area);
+    const hidden = q => {
+      const qx = dot(q, V.r), qy = dot(q, V.u), qd = dot(q, V.b);
+      for (const p of all) {
+        const v0 = p.v[0];
+        for (let i = 1; i < p.v.length - 1; i++) {
+          const A = [dot(v0, V.r), dot(v0, V.u)], B = [dot(p.v[i], V.r), dot(p.v[i], V.u)], C = [dot(p.v[i + 1], V.r), dot(p.v[i + 1], V.u)];
+          const det = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
+          if (Math.abs(det) < 1e-12) continue;
+          const u = ((qx - A[0]) * (C[1] - A[1]) - (qy - A[1]) * (C[0] - A[0])) / det, w = ((B[0] - A[0]) * (qy - A[1]) - (B[1] - A[1]) * (qx - A[0])) / det;
+          if (u < 0 || w < 0 || u + w > 1) continue;
+          const d = dot(v0, V.b) * (1 - u - w) + dot(p.v[i], V.b) * u + dot(p.v[i + 1], V.b) * w;
+          if (d > qd + 1e-6) return true;
+        }
+      }
+      return false;
+    };
+    for (const c of cands.slice(0, 40)) if (!hidden(c.c)) return c.c;
+    return cands.length ? cands[0].c : body.polys[0].v[0];
+  }
+  // numeri di posizione: uno per ogni riga della distinta, sul primo componente di quella parte; ai due lati dell'assonometria, in ordine di altezza, così le linee non si incrociano
+  function placeBalloons(iso, st, ctx, W, H) {
+    const V = VIEWS.iso, list = [];
+    for (const r of ctx.bom) {
+      if (!r.solid) continue;
+      const inst = ctx.asm.insts.find(i => i.part === r.part);
+      const body = inst && st.bodies.find(b => b.id === inst.id);
+      if (!body) continue;
+      const q = visiblePoint(body, st.body, V);
+      list.push({ item: r.item, inst: inst.id, tip: [iso.ox + dot(q, V.r) * iso.s, iso.oy - dot(q, V.u) * iso.s] });
+    }
+    const xl = iso.ox + iso.bbox.mn[0] * iso.s - BALLOON_PAD / 2, xr = iso.ox + iso.bbox.mx[0] * iso.s + BALLOON_PAD / 2;
+    // metà a sinistra e metà a destra, secondo dove sta il pezzo
+    list.sort((a, b) => a.tip[0] - b.tip[0]).forEach((b, i) => { b.left = i < list.length / 2; });
+    const y0 = 10 + 7, y1 = H - 10 - 7;
+    for (const left of [true, false]) {
+      const side = list.filter(b => b.left === left).sort((a, b) => a.tip[1] - b.tip[1]);
+      let y = -Infinity;
+      for (const b of side) { y = Math.max(b.tip[1], y + BALLOON_R * 2 + 1.5); b.pos = [Math.max(20 + 7, Math.min(W - 10 - 7, left ? xl : xr)), y]; }
+      // se la colonna esce in basso dal foglio, risale
+      let over = side.length ? side[side.length - 1].pos[1] - y1 : 0;
+      if (over > 0) { let lim = y1; for (let i = side.length - 1; i >= 0; i--) { side[i].pos[1] = Math.min(side[i].pos[1], lim); lim = side[i].pos[1] - BALLOON_R * 2 - 1.5; } }
+      for (const b of side) b.pos[1] = Math.max(y0, b.pos[1]);
+    }
+    return list;
+  }
 
   /* ---------------- SVG ---------------- */
   const LW = { vis: 0.5, thin: 0.25, frame: 0.7 };
+  const BOM_ROW = 6, BALLOON_R = 4, BALLOON_PAD = 14;
   const DASH_HID = '3 0.75';                 // ISO 128: tratto 12d, spazio 3d (d = 0,25)
   const DASH_AXIS = '6 0.75 0.25 0.75';      // tratto lungo 24d, spazio 3d, punto, spazio 3d
   function fmtNum(v) {
@@ -14383,9 +14611,9 @@ self.postMessage({ hello: true });`;
   }
   D.fmtNum = fmtNum;
   function render(opts = {}) {
-    const App = A(), st = opts.st || App.st;
+    const App = A(), st = opts.st || curSt();
     const ds = opts.ds || D.state();
-    const doc = opts.doc || App.doc;
+    const doc = opts.doc || curDoc();
     const L = layout(st, opts.ds, opts.doc);
     const { W, H } = L;
     const out = [];
@@ -14459,6 +14687,12 @@ self.postMessage({ hello: true });`;
         }
         out.push('</g>');
       }
+      if (cv.lines && cv.lines.length) {
+        out.push(`<g data-explode="1" stroke="#000" stroke-width="${LW.thin}" stroke-dasharray="${DASH_AXIS}" fill="none">`);
+        for (const [a, b] of cv.lines) { const p = toP(cv, a), q = toP(cv, b); out.push(`<line x1="${f2(p[0])}" y1="${f2(p[1])}" x2="${f2(q[0])}" y2="${f2(q[1])}"/>`); }
+        out.push('</g>');
+      }
+      if (cv.balloons) out.push(balloonSVG(cv.balloons, f2));
       if (isIso && cv.scaleTxt && cv.scaleTxt !== L.scaleTxt) {
         const bt = toP(cv, [(cv.bbox.mn[0] + cv.bbox.mx[0]) / 2, cv.bbox.mn[1]]);
         out.push(`<text x="${f2(bt[0])}" y="${f2(bt[1] + 6)}" font-size="3.5" text-anchor="middle">(${cv.scaleTxt})</text>`);
@@ -14630,6 +14864,40 @@ self.postMessage({ hello: true });`;
   }
 
   /* ---------------- squadratura e cartiglio ---------------- */
+  function balloonSVG(list, f2) {
+    const o = ['<g data-balloons="1">'];
+    for (const b of list) {
+      // la linea parte dal bordo del cerchio e finisce con un punto sul pezzo
+      const dx = b.tip[0] - b.pos[0], dy = b.tip[1] - b.pos[1], l = Math.hypot(dx, dy) || 1;
+      const sx = b.pos[0] + dx / l * BALLOON_R, sy = b.pos[1] + dy / l * BALLOON_R;
+      o.push(`<line x1="${f2(sx)}" y1="${f2(sy)}" x2="${f2(b.tip[0])}" y2="${f2(b.tip[1])}" stroke="#000" stroke-width="${LW.thin}"/>`);
+      o.push(`<circle cx="${f2(b.tip[0])}" cy="${f2(b.tip[1])}" r="0.5" fill="#000" stroke="none"/>`);
+      o.push(`<circle cx="${f2(b.pos[0])}" cy="${f2(b.pos[1])}" r="${BALLOON_R}" fill="#fff" stroke="#000" stroke-width="${LW.thin}"/>`);
+      o.push(`<text x="${f2(b.pos[0])}" y="${f2(b.pos[1] + 1.5)}" font-size="4.2" text-anchor="middle" fill="#000">${b.item}</text>`);
+    }
+    o.push('</g>');
+    return o.join('');
+  }
+  // distinta base sopra il cartiglio, come ISO 7573: l'intestazione in basso, la posizione 1 subito sopra, e si sale
+  function bomSVG(tx, ty, rows) {
+    const esc = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const col = [{ w: 12, t: 'Pos.', a: 'c' }, { w: 70, t: 'Denominazione', a: 'l' }, { w: 50, t: 'Materiale', a: 'l' }, { w: 14, t: 'Q.tà', a: 'c' }, { w: 34, t: 'Massa cad. (g)', a: 'r' }];
+    const o = ['<g data-bom="1">'];
+    const line = (y, vals, bold) => {
+      let x = tx;
+      col.forEach((c, i) => {
+        o.push(`<rect x="${x}" y="${y}" width="${c.w}" height="${BOM_ROW}" fill="#fff" stroke="#000" stroke-width="${LW.thin}"/>`);
+        const v = String(vals[i]), max = Math.floor(c.w / 1.45), txt = v.length > max ? v.slice(0, max - 1) + '…' : v;
+        const tx0 = c.a === 'c' ? x + c.w / 2 : c.a === 'r' ? x + c.w - 1.5 : x + 1.5;
+        o.push(`<text x="${tx0}" y="${y + BOM_ROW - 1.7}" font-size="3" fill="#000"${c.a === 'c' ? ' text-anchor="middle"' : c.a === 'r' ? ' text-anchor="end"' : ''}${bold ? ' font-weight="bold"' : ''}>${esc(txt)}</text>`);
+        x += c.w;
+      });
+    };
+    line(ty - BOM_ROW, col.map(c => c.t), true);
+    rows.forEach((r, i) => line(ty - BOM_ROW * (i + 2), [r.item, r.name, r.solid && r.material.id !== 'none' ? r.material.name : '—', r.qty, r.solid ? fmtNum(r.unitMass) : '—']));
+    o.push('</g>');
+    return o.join('');
+  }
   function frameSVG(W, H, L, ds, doc, st) {
     const o = [];
     const x0 = 20, y0 = 10, x1 = W - 10, y1 = H - 10;
@@ -14643,7 +14911,7 @@ self.postMessage({ hello: true });`;
     const t = ds.title || {};
     const App = A();
     const mat = Model.MATERIALS.find(m => m.id === doc.material) || Model.MATERIALS[0];
-    const mp = st && st.body.length ? Model.massProperties(st, doc) : null;
+    const mp = doc.isAssembly ? null : st && st.body.length ? Model.massProperties(st, doc) : null;
     const esc = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const cell = (x, y, w, h, label, value, size = 3.5, bold = false) => {
       o.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#000" stroke-width="${LW.thin}"/>`);
@@ -14665,8 +14933,15 @@ self.postMessage({ hello: true });`;
     o.push(`<text x="${tx + 141.2}" y="${ty + 16.6}" font-size="1.9">Metodo E</text>`);
     o.push(projSymbol(tx + 160, ty + 20));
     // riga 3
+    if (doc.isAssembly) {
+      const m = asmCtx.mass;
+      cell(tx, ty + 24, 60, 11, 'Materiale', ds.bom !== false ? 'Vedi la distinta base' : '—', 3);
+      cell(tx + 60, ty + 24, 30, 11, 'Massa', m.comps.length && !m.noMaterial.length ? fmtNum(m.mass) + ' g' : '—', 3);
+      if (ds.bom !== false) o.push(bomSVG(tx, ty, asmCtx.bom));
+    } else {
     cell(tx, ty + 24, 60, 11, 'Materiale', mat.id === 'none' ? '—' : mat.name, 3);
     cell(tx + 60, ty + 24, 30, 11, 'Massa', mp && mat.id !== 'none' ? fmtNum(mp.mass) + ' g' : '—', 3);
+    }
     cell(tx + 90, ty + 24, 50, 11, 'Tolleranze generali', t.tol || '', 3);
     cell(tx + 140, ty + 24, 40, 11, 'Numero del disegno', t.number || '', 3.5, true);
     // riga 4: note
@@ -14732,6 +15007,24 @@ self.postMessage({ hello: true });`;
         else { const a = P(cv, ax.a), b = P(cv, ax.b); const d = norm([b[0] - a[0], b[1] - a[1], 0]); line('ASSI', [a[0] - d[0] * 3, a[1] - d[1] * 3], [b[0] + d[0] * 3, b[1] + d[1] * 3]); }
       }
     }
+    // assieme: linee di esplosione, numeri di posizione, distinta base
+    const svgItems = (svg, lay) => {
+      let m;
+      const rl = /<line x1="([\d.\-e]+)" y1="([\d.\-e]+)" x2="([\d.\-e]+)" y2="([\d.\-e]+)"/g;
+      while ((m = rl.exec(svg))) line(lay, [+m[1], H - +m[2]], [+m[3], H - +m[4]]);
+      const rc = /<circle cx="([\d.\-e]+)" cy="([\d.\-e]+)" r="([\d.\-e]+)"/g;
+      while ((m = rc.exec(svg))) { g(0, 'CIRCLE'); g(8, lay); g(10, (+m[1]).toFixed(4)); g(20, (H - +m[2]).toFixed(4)); g(30, 0); g(40, m[3]); }
+      const rr = /<rect x="([\d.\-e]+)" y="([\d.\-e]+)" width="([\d.\-e]+)" height="([\d.\-e]+)"/g;
+      while ((m = rr.exec(svg))) { const x = +m[1], y = H - +m[2], w = +m[3], h = +m[4]; line(lay, [x, y], [x + w, y]); line(lay, [x + w, y], [x + w, y - h]); line(lay, [x + w, y - h], [x, y - h]); line(lay, [x, y - h], [x, y]); }
+      const rt = /<text x="([\d.\-e]+)" y="([\d.\-e]+)" font-size="([\d.]+)"([^>]*)>([^<]*)<\/text>/g;
+      while ((m = rt.exec(svg))) { const al = /middle/.test(m[4]) ? 1 : /end/.test(m[4]) ? 2 : 0; g(0, 'TEXT'); g(8, lay); g(10, (+m[1]).toFixed(4)); g(20, (H - +m[2]).toFixed(4)); g(30, 0); g(40, m[3]); g(1, m[5].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')); if (al) { g(72, al); g(11, (+m[1]).toFixed(4)); g(21, (H - +m[2]).toFixed(4)); g(31, 0); } }
+    };
+    const f4 = x => (Math.round(x * 1000) / 1000).toString();
+    for (const cv of L.views) {
+      for (const [a, b] of cv.lines || []) line('ASSI', P(cv, a), P(cv, b));
+      if (cv.balloons) svgItems(balloonSVG(cv.balloons, f4), 'QUOTE');
+    }
+    if (asmCtx && ds.bom !== false) svgItems(bomSVG(L.W - 10 - 180, H - 10 - 46, asmCtx.bom), 'QUOTE');
     // squadratura e quote dall'SVG: linee semplici
     const W = L.W;
     const fr = [[20, 10], [W - 10, 10], [W - 10, H - 10], [20, H - 10]];
@@ -15005,14 +15298,18 @@ self.postMessage({ hello: true });`;
       sc.scrollTop += a.top + fy * a.height - e.clientY;
     }, { passive: false });
   };
-  D.enter = function () {
+  D.enter = function (ctx) {
     const App = A();
     if (App.pm) App.closePM(false);
-    if (!App.st || !App.st.body.length) {
-      App.toast('Per la messa in tavola serve un solido: crea prima la parte.');
-      setTimeout(() => App.setCmdTab('features'), 0);
+    D.setAssembly(ctx || null);
+    if (!D.curSt() || !D.curSt().body.length) {
+      const wasAsm = !!D.assembly();
+      D.setAssembly(null);
+      App.toast(wasAsm ? 'Per la tavola dell\'assieme serve almeno un componente con un solido.' : 'Per la messa in tavola serve un solido: crea prima la parte.');
+      setTimeout(() => App.setCmdTab(wasAsm ? 'assembly' : 'features'), 0);
       return;
     }
+    if (D.assembly()) { const n = document.querySelector('#docName'), sl = document.querySelector('#partSel'); n.value = D.assembly().doc.name; n.disabled = true; sl.value = 'asm'; }
     active = true;
     App.mode = 'drawing';
     document.querySelector('#app').dataset.mode = 'drawing';
@@ -15021,7 +15318,7 @@ self.postMessage({ hello: true });`;
     document.querySelector('#corner').hidden = true;
     D.invalidate();
     D.state();
-    if (!D.state().title.title) D.state().title.title = App.doc.name || 'Parte1';
+    if (!D.state().title.title) D.state().title.title = D.curDoc().name || 'Parte1';
     draw(true);
     renderPanel(); // dopo il disegno: la scala automatica è già nota
     App.setStatus('Messa in tavola: trascina le viste per spostarle; usa Quota per aggiungere le quote.');
@@ -15029,6 +15326,7 @@ self.postMessage({ hello: true });`;
   D.exit = function () {
     const App = A();
     active = false; tool = null; picks = [];
+    if (D.assembly()) { const n = document.querySelector('#docName'); n.disabled = false; n.value = App.doc.name || 'Parte1'; D.setAssembly(null); D.invalidate(); }
     App.mode = 'part';
     document.querySelector('#app').dataset.mode = 'part';
     document.querySelector('#view').hidden = false;
@@ -15058,8 +15356,8 @@ self.postMessage({ hello: true });`;
       case 'dAuto': autoDims(); return;
       case 'dSection': sectionDialog(); return;
       case 'dFit': fitZoom(); return;
-      case 'dSvg': { const { svg } = D.render(); App.offerFile((App.doc.name || 'tavola') + '.svg', 'image/svg+xml', '<?xml version="1.0" encoding="UTF-8"?>\n' + svg, 'Esporta SVG'); return; }
-      case 'dDxf': App.offerFile((App.doc.name || 'tavola') + '.dxf', 'application/dxf', D.toDXF(), 'Esporta DXF'); return;
+      case 'dSvg': { const { svg } = D.render(); App.offerFile((D.curDoc().name || 'tavola') + '.svg', 'image/svg+xml', '<?xml version="1.0" encoding="UTF-8"?>\n' + svg, 'Esporta SVG'); return; }
+      case 'dDxf': App.offerFile((D.curDoc().name || 'tavola') + '.dxf', 'application/dxf', D.toDXF(), 'Esporta DXF'); return;
       case 'dPdf': App.savePdf(); return;
       case 'dPrint': printSheet(); return;
     }
@@ -15069,7 +15367,7 @@ self.postMessage({ hello: true });`;
   D.toPDF = async function () {
     const r = D.render();
     const svg = new DOMParser().parseFromString(r.svg, 'image/svg+xml').documentElement;
-    const name = (A().doc && A().doc.name) || 'tavola';
+    const name = (D.curDoc() && D.curDoc().name) || 'tavola';
     const doc = new Export.Doc({ title: name + ' – tavola' });
     const pg = doc.addPage(r.L.W, r.L.H);
     const stats = Export.svgToPage(pg, svg, { hscale: 82 });
@@ -15289,7 +15587,7 @@ self.postMessage({ hello: true });`;
     const ds = D.state();
     const sec = ds.section || { view: 'front', plane: 'front', offset: 0, label: 'A' };
     const opts = [['front', 'Vista frontale (piano parallelo al frontale)'], ['top', 'Vista dall\'alto (piano parallelo al superiore)'], ['left', 'Vista da sinistra (piano parallelo al destro)']];
-    const bb = App.st ? CSG.bbox(App.st.body) : { mn: [0, 0, 0], mx: [0, 0, 0] };
+    const bb = D.curSt() ? CSG.bbox(D.curSt().body) : { mn: [0, 0, 0], mx: [0, 0, 0] };
     const mid = k => (bb.mn[k] + bb.mx[k]) / 2;
     App.modal('Vista in sezione', `
       <div class="row"><label for="secV">Vista da sezionare</label><select id="secV" style="width:280px">${opts.map(([v, t]) => `<option value="${v}" ${sec.view === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
@@ -15320,7 +15618,7 @@ self.postMessage({ hello: true });`;
     if (App.dl) {
       const sz = svg.replace(/<svg /, `<svg style="width:${L.W}mm;height:${L.H}mm;display:block" `);
       const html = `<!doctype html><html><head><meta charset="utf-8"><title>Tavola</title><style>@page{size:${L.W}mm ${L.H}mm;margin:0}html,body{margin:0;background:#fff}</style></head><body>${sz}<script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`;
-      App.offerFile(((App.doc && App.doc.name) || 'tavola') + '-tavola.html', 'text/html', html, 'Stampa');
+      App.offerFile(((D.curDoc() && D.curDoc().name) || 'tavola') + '-tavola.html', 'text/html', html, 'Stampa');
       App.toast('Apri il file salvato in Chrome: parte la stampa in scala (scegli «Dimensioni effettive» o «100%», oppure «Salva come PDF»).', 7000);
       return;
     }
@@ -15372,10 +15670,14 @@ self.postMessage({ hello: true });`;
       chk('Linee nascoste (tratteggiate)', ds.hidden, v => { ds.hidden = v; }),
       chk('Assi e linee di centro', ds.axes !== false, v => { ds.axes = v; }),
       el('p', { class: 'note' }, 'Trascina le viste sul foglio per spostarle: quelle proiettate restano allineate alla vista frontale.')));
+    if (D.assembly()) body.append(grp('Assieme',
+      chk('Distinta base sopra il cartiglio', ds.bom !== false, v => { ds.bom = v; }),
+      chk('Numeri di posizione', ds.balloons !== false, v => { ds.balloons = v; }),
+      D.assembly().exp ? chk('Assonometria esplosa', !!ds.exploded, v => { ds.exploded = v; }) : el('p', { class: 'note' }, 'Con una vista esplosa nell\'assieme, qui si può mostrarla nell\'assonometria.')));
     const secInfo = ds.section ? `Sezione ${ds.section.label}–${ds.section.label} nella ${D.VIEWS[ds.section.view].name.toLowerCase()} (piano a ${App.fmt(ds.section.offset)} mm).` : 'Nessuna sezione.';
     body.append(grp('Sezione', el('p', { class: 'note' }, secInfo), el('button', { class: 'relbtn', type: 'button', onclick: sectionDialog }, ds.section ? 'Modifica la sezione' : 'Aggiungi una sezione')));
     body.append(grp('Cartiglio', txt('Titolo', 'title'), txt('Numero del disegno', 'number'), txt('Disegnato da', 'author'), txt('Classe', 'classe'), txt('Data', 'date'), txt('Istituto', 'school'), txt('Tolleranze generali', 'tol'), txt('Note', 'notes'),
-      el('p', { class: 'note' }, 'Materiale e massa arrivano dalla parte (Valuta › Materiale).')));
+      el('p', { class: 'note' }, D.assembly() ? 'La massa è quella di tutto l\'assieme; i materiali sono nella distinta base.' : 'Materiale e massa arrivano dalla parte (Valuta › Materiale).')));
     const dl = el('div', { class: 'rellist' });
     for (const d of ds.dims) dl.append(el('div', { class: 'ri', style: selDim === d.id ? 'outline:1px solid var(--accent)' : '' }, dimLabel(d), el('button', { type: 'button', onclick: () => delDim(d.id) }, 'Elimina')));
     body.append(grp('Quote (' + ds.dims.length + ')', ds.dims.length ? dl : el('p', { class: 'note' }, 'Nessuna quota. Usa «Quota» o «Quote di ingombro».'), ds.dims.length ? el('button', { class: 'relbtn', type: 'button', onclick: () => { ds.dims = []; App.save(); draw(); renderPanel(); } }, 'Elimina tutte le quote') : null));
@@ -15553,6 +15855,9 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Assieme', 'Distinta base', ['BOM', 'bill of materials', 'elenco parti', 'lista parti'], 'L\'elenco delle parti che servono per costruire l\'assieme: numero, nome, materiale, quantità e massa. Componenti della stessa parte fanno una riga sola.'],
     ['Assieme', 'Interferenza', ['compenetrazione', 'collisione', 'sovrapposizione'], 'Due componenti che occupano lo stesso spazio: nella realtà non si potrebbero montare così (a meno che non sia voluto, come un accoppiamento forzato). Si misura con il volume in comune. Due facce che si toccano soltanto non sono un\'interferenza.'],
     ['Assieme', 'Verifica interferenze', ['interference detection', 'controllo interferenze'], 'Il comando che controlla tutti i componenti a coppie e mostra il volume in comune di ognuna, anche in rosso nella vista. Con i pezzi fatti nel programma il volume è calcolato sulle superfici vere; con quelli importati, fatti di triangoli, uno strato sottilissimo è segnato «forse solo contatto».'],
+    ['Assieme', 'Vista esplosa', ['esplosione', 'esplodi', 'comprimi', 'exploded view', 'passo di esplosione'], 'I componenti si allontanano tra loro per mostrare come si montano. È fatta di passi: quali componenti, in quale direzione, di quanto. Le posizioni vere e gli accoppiamenti non cambiano: comprimendola tutto torna al suo posto.'],
+    ['Assieme', 'Numero di posizione', ['pallino', 'balloon', 'bolla', 'riferimento'], 'Il numero in un cerchio che nella tavola dell\'assieme indica un pezzo: è lo stesso numero della sua riga nella distinta base.'],
+    ['Assieme', 'Tavola dell\'assieme', ['messa in tavola dell\'assieme', 'disegno d\'assieme', 'complessivo'], 'Il disegno di tutto l\'assieme: viste, assonometria (anche esplosa), numeri di posizione e distinta base sopra il cartiglio. Si apre con la scheda Messa in tavola quando si è nell\'assieme.'],
     ['Assieme', 'Parte fissa', ['fissa', 'libera', '(f)', 'componente fisso'], 'Un componente che non si muove: gli altri si sistemano rispetto a lui. Nell\'albero ha (f) davanti al nome. La prima parte inserita è fissa; con il tasto destro si sceglie Fissa o Libera.'],
     ['Assieme', 'Accoppiamento', ['accoppiamenti', 'mate', 'mates'], 'Un legame tra due elementi di due componenti (facce, spigoli o vertici). Ogni accoppiamento toglie gradi di libertà: il risolutore sposta i componenti liberi il meno possibile per rispettarli tutti.'],
     ['Assieme', 'Tipo di accoppiamento', ['elementi da accoppiare'], 'Il modo in cui si legano i due elementi scelti: coincidente, concentrico, parallelo, perpendicolare, distanza o angolo. Sono attivi solo i tipi possibili con quegli elementi.'],
@@ -17575,6 +17880,44 @@ ASM.push(['Interferenza: pezzi con molti poligoni: la zona in comune tagliata pr
   return eqs([n > 2000 ? 1 : 0, one.list.length, all.list.length, one.list[0].volume, all.list[0].volume], [1, 1, 1, V, V], 1e-3);
 }]);
 
+/* ---------- vista esplosa ---------- */
+ASM.push(['Vista esplosa: i passi si sommano; la scena esplosa si sposta, le posizioni vere, la massa e le interferenze no; compressa torna com\'era', () => {
+  const docs = { a: block(40, 40, 10, 's235'), b: block(40, 40, 10, 's235') }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([20, 5, -20]) });
+  const m0 = Assembly.massOf(asm, infos).centroid[1];
+  asm.explode = { on: true, steps: [{ id: 'X1', insts: [B.id], dir: [0, 1, 0], dist: 30 }, { id: 'X2', insts: [B.id], dir: [0, 0, -1], dist: 7 }, { id: 'X3', insts: [A.id], dir: [1, 0, 0], dist: 3 }] };
+  const box = (sc, id) => { const b = sc.bodies.find(x => x.id === id), mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity]; for (const p of b.polys) for (const v of p.v) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], v[k]); mx[k] = Math.max(mx[k], v[k]); } return [...mn, ...mx]; };
+  const e = box(Assembly.scene(asm, infos, { exploded: true }), B.id), ea = box(Assembly.scene(asm, infos, { exploded: true }), A.id), r = box(Assembly.scene(asm, infos), B.id);
+  const off = Assembly.explodeOffset(asm, B.id), V = Assembly.interferences(asm, infos).list[0].volume, m1 = Assembly.massOf(asm, infos).centroid[1];
+  const onFlag = Assembly.isExploded(asm); asm.explode.on = false; const offFlag = Assembly.isExploded(asm); asm.explode = { on: true, steps: [] }; const empty = Assembly.isExploded(asm);
+  return eqs([...e, ea[0], ea[3], ...r, ...off, B.pose.p[1], V, m1 - m0, onFlag ? 1 : 0, offFlag ? 1 : 0, empty ? 1 : 0],
+    [20, 35, -67, 60, 45, -27, 3, 43, 20, 5, -60, 60, 15, -20, 0, 30, -7, 5, 2000, 0, 1, 0, 0]);
+}]);
+ASM.push(['Vista esplosa: le linee vanno dal centro del componente, un tratto per passo, anche ruotato; chi non si muove non ha linee', () => {
+  const docs = { a: block(40, 20, 10) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'a', { pose: asmPose([100, 0, 0], Assembly.qexp([0, 0, PI / 2])) });
+  asm.explode = { on: true, steps: [{ id: 'X1', insts: [B.id], dir: [0, 1, 0], dist: 10 }, { id: 'X2', insts: [B.id], dir: [1, 0, 0], dist: 5 }] };
+  // centro (20, 5, -10), ruotato attorno a Z: (-5, 20, -10), spostato: (95, 20, -10)
+  const L = Assembly.explodeLines(asm, infos);
+  return eqs([L.length, L[0].inst === B.id ? 1 : 0, L[0].pts.length, ...L[0].pts[0], ...L[0].pts[1], ...L[0].pts[2], A.id === B.id ? 1 : 0], [1, 1, 3, 95, 20, -10, 95, 30, -10, 100, 30, -10, 0]);
+}]);
+ASM.push(['Esplosione automatica: in fila lungo la direzione, con lo spazio voluto; il primo resta fermo; chi è già lontano non si muove', () => {
+  const docs = { a: block(40, 40, 10), p: pin(5, 30), e: D0('vuota') }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  // blocco y 0..10 (centro 5), perno y -10..20 (centro 5, viene dopo a pari merito), perno y 22..52 (centro 37)
+  const A = Assembly.addInst(asm, 'a'), P = Assembly.addInst(asm, 'p', { pose: asmPose([20, -10, -20]) }), Q = Assembly.addInst(asm, 'p', { pose: asmPose([20, 22, -20]) }); Assembly.addInst(asm, 'e');
+  const s = Assembly.autoExplode(asm, infos, [0, 1, 0], 15);
+  // P: da -10 a 10 + 15 = 25: 35; poi la sua cima è a 55. Q: da 22 a 55 + 15 = 70: 48
+  const near = Assembly.autoExplode(asm, infos, [0, 1, 0], 0);
+  // gap 0: P: da -10 a 10: 20, cima 40; Q: da 22 a 40: 18
+  asm.insts[2].pose = asmPose([20, 500, -20]);
+  const far = Assembly.autoExplode(asm, infos, [0, 1, 0], 15);
+  // Q è già oltre: non si muove
+  const down = Assembly.autoExplode(asm, infos, [0, -1, 0], 5);
+  // verso -Y: Q (-530..-500, centro -515) fermo; poi il blocco (-10..0) e P (-20..10) a pari merito: il blocco è già oltre Q e non si muove; P va da -20 a 0 + 5: 25
+  return eqs([s.length, s[0].insts[0] === P.id ? 1 : 0, s[0].dist, s[1].insts[0] === Q.id ? 1 : 0, s[1].dist, s[0].dir[1], near[0].dist, near[1].dist, far.length, far[0].dist, down.length, down[0].insts[0] === P.id ? 1 : 0, down[0].dist, A.id === P.id ? 1 : 0],
+    [2, 1, 35, 1, 48, 1, 20, 18, 1, 35, 1, 1, 25, 0]);
+}]);
+
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
   const rows = [];
@@ -18146,6 +18489,19 @@ if (isNode) {
     steps: ['Dai a ogni parte il suo materiale: apri la parte e usa **Materiale** nella scheda Valuta.', 'Nella scheda Assieme premi **Proprietà di massa**: massa, volume, area, baricentro e ingombro di tutto l\'assieme, poi una riga per ogni componente.', 'Premi **Distinta base**: una riga per ogni parte, con la quantità, il materiale, la massa di un pezzo e la massa totale.'],
     tips: ['Il baricentro è pesato con la massa: una parte di acciaio conta quasi tre volte una uguale di alluminio.', 'Una parte senza materiale è calcolata con densità 1 g/cm³, e la finestra lo dice.', 'Componenti della stessa parte fanno una riga sola della distinta base.'],
     terms: ['Proprietà di massa dell\'assieme', 'Distinta base'],
+  });
+  add('Assieme', 'esplosa', 'Fare la vista esplosa', {
+    why: 'Mostrare come si monta la macchina, con i pezzi allontanati lungo una direzione.',
+    cmd: { tab: 'assembly', id: 'explode' },
+    steps: ['Premi **Vista esplosa**.', 'Fai clic sui componenti da spostare, scegli la direzione **X**, **Y** o **Z** (**Inverti** per il verso opposto) e scrivi la distanza, oppure trascina un componente scelto.', 'Premi **Aggiungi il passo** e continua con gli altri componenti, poi ✓.', 'Per fare prima: **Disponi in automatico** mette i componenti in fila lungo la direzione scelta, con lo spazio che dici.', 'Nell\'albero, un clic su **Vista esplosa** esplode o comprime; un doppio clic modifica i passi.'],
+    tips: ['Le posizioni vere non cambiano: massa e interferenze si calcolano sull\'assieme montato.', 'Nella vista esplosa il mouse gira la vista. Accoppiamento e Sposta parte comprimono da soli la vista.', 'La direzione è un asse dell\'assieme: non si sceglie da una faccia.', 'Esporta STEP e Salva PDF lavorano su ciò che si vede.'],
+    terms: ['Vista esplosa'],
+  });
+  add('Assieme', 'tavola-assieme', 'Fare la tavola dell\'assieme', {
+    why: 'Avere il disegno complessivo da consegnare: viste, pezzi numerati e distinta base.',
+    steps: ['Stando nell\'assieme, apri la scheda **Messa in tavola**: si apre la tavola dell\'assieme (dalla parte, si apre quella della parte).', 'Nel pannello, gruppo **Assieme**: **Distinta base**, **Numeri di posizione** e, se c\'è la vista esplosa, **Assonometria esplosa**.', 'Quote, sezione, cartiglio, PDF, SVG e DXF funzionano come nella tavola della parte.'],
+    tips: ['Ogni numero di posizione è lo stesso della riga nella distinta base. La riga 1 sta subito sopra l\'intestazione, come vuole la norma ISO 7573.', 'I numeri di posizione si mettono da soli ai lati dell\'assonometria e non si possono ancora trascinare. Scegli la scala con l\'assonometria già a posto.', 'Nella sezione tutti i componenti hanno lo stesso tratteggio.'],
+    terms: ['Tavola dell\'assieme', 'Numero di posizione', 'Distinta base'],
   });
   add('Assieme', 'interferenze', 'Controllare se i componenti si compenetrano', {
     why: 'Scoprire prima di costruire che due pezzi occupano lo stesso spazio, e di quanto.',

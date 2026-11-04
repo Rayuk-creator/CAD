@@ -1815,6 +1815,44 @@ ASM.push(['Interferenza: pezzi con molti poligoni: la zona in comune tagliata pr
   return eqs([n > 2000 ? 1 : 0, one.list.length, all.list.length, one.list[0].volume, all.list[0].volume], [1, 1, 1, V, V], 1e-3);
 }]);
 
+/* ---------- vista esplosa ---------- */
+ASM.push(['Vista esplosa: i passi si sommano; la scena esplosa si sposta, le posizioni vere, la massa e le interferenze no; compressa torna com\'era', () => {
+  const docs = { a: block(40, 40, 10, 's235'), b: block(40, 40, 10, 's235') }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([20, 5, -20]) });
+  const m0 = Assembly.massOf(asm, infos).centroid[1];
+  asm.explode = { on: true, steps: [{ id: 'X1', insts: [B.id], dir: [0, 1, 0], dist: 30 }, { id: 'X2', insts: [B.id], dir: [0, 0, -1], dist: 7 }, { id: 'X3', insts: [A.id], dir: [1, 0, 0], dist: 3 }] };
+  const box = (sc, id) => { const b = sc.bodies.find(x => x.id === id), mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity]; for (const p of b.polys) for (const v of p.v) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], v[k]); mx[k] = Math.max(mx[k], v[k]); } return [...mn, ...mx]; };
+  const e = box(Assembly.scene(asm, infos, { exploded: true }), B.id), ea = box(Assembly.scene(asm, infos, { exploded: true }), A.id), r = box(Assembly.scene(asm, infos), B.id);
+  const off = Assembly.explodeOffset(asm, B.id), V = Assembly.interferences(asm, infos).list[0].volume, m1 = Assembly.massOf(asm, infos).centroid[1];
+  const onFlag = Assembly.isExploded(asm); asm.explode.on = false; const offFlag = Assembly.isExploded(asm); asm.explode = { on: true, steps: [] }; const empty = Assembly.isExploded(asm);
+  return eqs([...e, ea[0], ea[3], ...r, ...off, B.pose.p[1], V, m1 - m0, onFlag ? 1 : 0, offFlag ? 1 : 0, empty ? 1 : 0],
+    [20, 35, -67, 60, 45, -27, 3, 43, 20, 5, -60, 60, 15, -20, 0, 30, -7, 5, 2000, 0, 1, 0, 0]);
+}]);
+ASM.push(['Vista esplosa: le linee vanno dal centro del componente, un tratto per passo, anche ruotato; chi non si muove non ha linee', () => {
+  const docs = { a: block(40, 20, 10) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'a', { pose: asmPose([100, 0, 0], Assembly.qexp([0, 0, PI / 2])) });
+  asm.explode = { on: true, steps: [{ id: 'X1', insts: [B.id], dir: [0, 1, 0], dist: 10 }, { id: 'X2', insts: [B.id], dir: [1, 0, 0], dist: 5 }] };
+  // centro (20, 5, -10), ruotato attorno a Z: (-5, 20, -10), spostato: (95, 20, -10)
+  const L = Assembly.explodeLines(asm, infos);
+  return eqs([L.length, L[0].inst === B.id ? 1 : 0, L[0].pts.length, ...L[0].pts[0], ...L[0].pts[1], ...L[0].pts[2], A.id === B.id ? 1 : 0], [1, 1, 3, 95, 20, -10, 95, 30, -10, 100, 30, -10, 0]);
+}]);
+ASM.push(['Esplosione automatica: in fila lungo la direzione, con lo spazio voluto; il primo resta fermo; chi è già lontano non si muove', () => {
+  const docs = { a: block(40, 40, 10), p: pin(5, 30), e: D0('vuota') }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  // blocco y 0..10 (centro 5), perno y -10..20 (centro 5, viene dopo a pari merito), perno y 22..52 (centro 37)
+  const A = Assembly.addInst(asm, 'a'), P = Assembly.addInst(asm, 'p', { pose: asmPose([20, -10, -20]) }), Q = Assembly.addInst(asm, 'p', { pose: asmPose([20, 22, -20]) }); Assembly.addInst(asm, 'e');
+  const s = Assembly.autoExplode(asm, infos, [0, 1, 0], 15);
+  // P: da -10 a 10 + 15 = 25: 35; poi la sua cima è a 55. Q: da 22 a 55 + 15 = 70: 48
+  const near = Assembly.autoExplode(asm, infos, [0, 1, 0], 0);
+  // gap 0: P: da -10 a 10: 20, cima 40; Q: da 22 a 40: 18
+  asm.insts[2].pose = asmPose([20, 500, -20]);
+  const far = Assembly.autoExplode(asm, infos, [0, 1, 0], 15);
+  // Q è già oltre: non si muove
+  const down = Assembly.autoExplode(asm, infos, [0, -1, 0], 5);
+  // verso -Y: Q (-530..-500, centro -515) fermo; poi il blocco (-10..0) e P (-20..10) a pari merito: il blocco è già oltre Q e non si muove; P va da -20 a 0 + 5: 25
+  return eqs([s.length, s[0].insts[0] === P.id ? 1 : 0, s[0].dist, s[1].insts[0] === Q.id ? 1 : 0, s[1].dist, s[0].dir[1], near[0].dist, near[1].dist, far.length, far[0].dist, down.length, down[0].insts[0] === P.id ? 1 : 0, down[0].dist, A.id === P.id ? 1 : 0],
+    [2, 1, 35, 1, 48, 1, 20, 18, 1, 35, 1, 1, 25, 0]);
+}]);
+
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
   const rows = [];
