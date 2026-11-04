@@ -40,12 +40,11 @@ Chiesto dall'utente il 28 ottobre 2026. **La base è fatta il 4 novembre 2026** 
 
 **Ancora da fare, in una chat nuova:**
 
-- **Calcoli sull'assieme** (prima): proprietà di massa dell'assieme, distinta base, interferenze (parti che si compenetrano, e per quale volume).
 - **Presentazione** (dopo): vista esplosa e tavola dell'assieme.
 - Più assiemi per progetto e sottoassiemi.
 - Tori e superfici libere nelle facce curve degli STEP; scegliere piani e origine anche nella vista.
 
-**Fatti il 4 novembre:** accoppiamenti con i piani e l'origine delle parti; coni e sfere nelle facce curve degli STEP; vertici che si ritrovano quando cambia la parte.
+**Fatti il 4 novembre:** calcoli sull'assieme (massa, distinta base, interferenze); accoppiamenti con i piani e l'origine delle parti; coni e sfere nelle facce curve degli STEP; vertici che si ritrovano quando cambia la parte.
 - Se servirà: parti collegate a file separati (scartate per ora: funzionerebbero solo in Chrome ed Edge).
 
 ## Viti, bulloni e filettature (lavoro successivo, chiesto il 4 novembre 2026)

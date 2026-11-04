@@ -284,6 +284,25 @@ const CASES = [
     const ents = doc => { const info = Assembly.partInfo(doc); return { info, es: entOf(info.st).map(name => ({ name, E: Assembly.entityOf({ inst: 'I', k: 'face', name }, info) })) }; };
     const vec = (m, lab, g, e, tol = 1e-5) => [0, 1, 2].forEach(k => eqn(m, lab + ' ' + 'xyz'[k], g[k], e[k], tol));
     const test = (title, fn) => { n++; const m = []; let note = ''; try { note = fn(m) || ''; } catch (e) { m.push('ERRORE ' + e.message); } if (m.length) fail++; console.log((m.length ? 'NO  ' : 'OK  ') + title + '\n      ' + (m.join('; ') || note || 'scarti sotto la tolleranza')); };
+    test('Assieme: interferenze tra pezzi STEP (triangoli): perno uguale al foro = nessuna o «forse solo contatto»; R 16 e R 15,2 nel foro R 15 = corona vera entro lo 0,5 %, sicura', m => {
+      const run = (R, turn) => {
+        const docs = { a: asmDoc(stepPlateHole(60, 40, 10, 15)).doc, b: asmDoc(stepCylinder(R, 40)).doc };
+        const infos = new Map(Object.entries(docs).map(([k, d]) => [k, Assembly.partInfo(d)]));
+        const asm = Assembly.newAssembly(); Assembly.addInst(asm, 'a'); Assembly.addInst(asm, 'b', { pose: { p: [30, 20, -10], q: Assembly.qexp([0, 0, turn]) } });
+        return { r: Assembly.interferences(asm, infos), mass: Assembly.massOf(asm, infos) };
+      };
+      const same = run(15, 0.0713).r;
+      eqn(m, 'coppie', same.pairs, 1);
+      if (same.list.some(x => !x.doubt)) m.push('perno uguale al foro dato per interferenza sicura: ' + same.list[0].volume);
+      for (const R of [16, 15.2]) {
+        const { r, mass } = run(R, 0.0713), V = Math.PI * (R * R - 225) * 10;
+        eqn(m, 'interferenze R ' + R, r.list.length, 1); eqn(m, 'sicura R ' + R, r.list[0].doubt ? 1 : 0, 0);
+        if (Math.abs(r.list[0].volume - V) / V > 0.005) m.push(`R ${R}: ${r.list[0].volume} invece di ${V}`);
+        const Vm = 60 * 40 * 10 - Math.PI * 225 * 10 + Math.PI * R * R * 40;
+        if (Math.abs(mass.volume - Vm) / Vm > 5e-4) m.push(`massa: volume ${mass.volume} invece di ${Vm}`);
+      }
+      return 'perno uguale: ' + (same.list.length ? 'dubbio ' + same.list[0].volume.toFixed(4) + ' mm³' : 'nessuna');
+    });
     test('Assieme: cono di uno STEP, asse Z: faccia conica (non cilindro, non sfera), asse, tangente 0,5 e apice calcolati a mano; le due basi restano piane', m => {
       const { es } = ents(asmDoc(stepCone(5, 15, 20)).doc);
       const c = es.filter(e => e.E.cone), pl = es.filter(e => e.E.t === 'plane');

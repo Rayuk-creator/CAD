@@ -1704,6 +1704,117 @@ ASM.push(['Accoppiamenti possibili: Concentrico solo tra elementi tondi; Angolo 
   return eqs([has(T(P, P), 'concentric'), has(T(R, R), 'concentric'), has(T(R, Lx), 'concentric'), has(T(R, V), 'concentric'), has(T(S, S), 'concentric'), has(T(V, V), 'concentric'), has(T(V, V), 'angle'), has(T(V, V), 'parallel'), has(T(P, V), 'perpendicular'), has(T(P, P), 'distance'), has(T(V, R), 'distance'), Assembly.suggest(R, R) === 'concentric' ? 1 : 0, Assembly.suggest(P, P) === 'coincident' ? 1 : 0], [0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1]);
 }]);
 
+/* ---------- calcoli sull'assieme: massa, distinta base, interferenze (valori a mano) ---------- */
+const block = (L, W, H, mat) => { const d = D0('blocco'); const b = SB(); b.rect(0, 0, L, W); const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: H }); if (mat) d.material = mat; return d; };   // x 0..L, y 0..H, z -W..0
+const ball = R => { const d = D0('sfera'); const b = SB(); const c = b.pt(0, 0), t = b.pt(0, R), n = b.pt(0, -R); b.arc(c, n, t); b.line(t, n); const s = sketch(d, STD('front'), b); feat(d, { type: 'revolve', sketch: s, axis: { kind: 'line', sk: s, ent: b.center(0, -R - 5, 0, R + 5) }, angle: 360 }); return d; };
+function interOf(docs, poses) {
+  const infos = asmSet(docs), asm = Assembly.newAssembly(), keys = Object.keys(docs);
+  const insts = poses.map(([k, p, q]) => Assembly.addInst(asm, k, { pose: asmPose(p, q) }));
+  return { r: Assembly.interferences(asm, infos), insts, keys };
+}
+const ROTX90 = Assembly.qexp([PI / 2, 0, 0]), TURN = Assembly.qexp([0, 0.0713, 0]);   // TURN: le faccette del perno non cadono su quelle del foro
+ASM.push(['Massa dell\'assieme: due materiali; volume, area e massa sommati, baricentro pesato con la massa, non con il volume', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }; docs.a.material = 's235'; docs.b.material = 'al6082';
+  const infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 'a'); Assembly.addInst(asm, 'b', { pose: asmPose([40, 0, -25]) });
+  const m = Assembly.massOf(asm, infos);
+  const Va = 80 * 50 * 10 - PI * 100 * 10, Vb = PI * 100 * 30;
+  const Aa = 2 * (80 * 50 - PI * 100) + 2 * (80 + 50) * 10 + 2 * PI * 10 * 10, Ab = 2 * PI * 100 + 2 * PI * 10 * 30;
+  const ma = Va * 7.85 / 1000, mb = Vb * 2.7 / 1000;
+  // piastra: baricentro y 5; perno: y 15; x e z sull'asse del foro
+  return eqs([m.volume, m.area, m.mass, m.centroid[0], m.centroid[1], m.centroid[2], m.comps.length, m.bbox.mn[1], m.bbox.mx[1], m.bbox.mn[0], m.bbox.mx[0]],
+    [Va + Vb, Aa + Ab, ma + mb, 40, (ma * 5 + mb * 15) / (ma + mb), -25, 2, 0, 30, 0, 80], 1e-5);
+}]);
+ASM.push(['Massa dell\'assieme: il baricentro segue la posizione e la rotazione di ogni componente', () => {
+  const docs = { a: block(40, 20, 10, 's235'), b: block(40, 20, 10, 's235') }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 'a'); Assembly.addInst(asm, 'b', { pose: asmPose([100, 0, 0], Assembly.qexp([0, 0, PI / 2])) });
+  // A: centro (20, 5, -10). B: (20, 5, -10) ruotato di 90° attorno a Z = (-5, 20, -10), più lo spostamento = (95, 20, -10)
+  const m = Assembly.massOf(asm, infos);
+  return eqs([m.comps[0].centroid[0], m.comps[1].centroid[0], m.comps[1].centroid[1], m.comps[1].centroid[2], m.centroid[0], m.centroid[1], m.centroid[2], m.mass, m.bbox.mn[0], m.bbox.mx[0], m.bbox.mn[1], m.bbox.mx[1]],
+    [20, 95, 20, -10, 57.5, 12.5, -10, 2 * 8000 * 7.85 / 1000, 0, 100, 0, 40]);
+}]);
+ASM.push(['Massa dell\'assieme: componenti uguali contati tutti; parte senza solido e parte senza materiale segnalate; assieme vuoto a zero', () => {
+  const docs = { a: block(10, 10, 10, 'c40'), b: block(10, 10, 10), e: D0('vuota') }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const m0 = Assembly.massOf(asm, infos);
+  Assembly.addInst(asm, 'a'); Assembly.addInst(asm, 'a', { pose: asmPose([50, 0, 0]) }); Assembly.addInst(asm, 'a', { pose: asmPose([100, 0, 0]) }); const e = Assembly.addInst(asm, 'e'); Assembly.addInst(asm, 'b', { pose: asmPose([200, 0, 0]) }); Assembly.addInst(asm, 'b', { pose: asmPose([300, 0, 0]) });
+  const m = Assembly.massOf(asm, infos);
+  return eqs([m0.mass, m0.volume, m0.bbox === null ? 1 : 0, m.volume, m.mass, m.comps.length, m.noSolid.length, m.noSolid[0] === e.id ? 1 : 0, m.noMaterial.length, m.noMaterial[0] === 'b' ? 1 : 0],
+    [0, 0, 1, 5000, 3 * 1000 * 7.85 / 1000 + 2 * 1000 * 1 / 1000, 5, 1, 1, 1, 1]);
+}]);
+ASM.push(['Distinta base: una riga per parte nell\'ordine d\'ingresso, quantità, massa unitaria e totale; la somma è la massa dell\'assieme', () => {
+  const docs = { a: block(10, 10, 10, 'c40'), b: pin(10, 30), e: D0('vuota') }; docs.b.material = 'al6082';
+  const infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 'b'); Assembly.addInst(asm, 'a', { pose: asmPose([50, 0, 0]) }); Assembly.addInst(asm, 'b', { pose: asmPose([100, 0, 0]) }); Assembly.addInst(asm, 'e'); Assembly.addInst(asm, 'b', { pose: asmPose([200, 0, 0]) });
+  const r = Assembly.bom(asm, infos), m = Assembly.massOf(asm, infos), u = PI * 100 * 30 * 2.7 / 1000;
+  return eqs([r.length, r[0].item, r[0].name === 'perno' ? 1 : 0, r[0].qty, r[0].unitMass, r[0].mass, r[0].material.id === 'al6082' ? 1 : 0, r[1].item, r[1].name === 'blocco' ? 1 : 0, r[1].qty, r[1].mass, r[2].qty, r[2].solid ? 1 : 0, r[2].mass, r.reduce((s, x) => s + x.mass, 0) - m.mass],
+    [3, 1, 1, 3, u, 3 * u, 1, 2, 1, 1, 7.85, 1, 0, 0, 0], 1e-5);
+}]);
+ASM.push(['Interferenza: due blocchi: volume 20 × 5 × 20 e suo baricentro', () => {
+  const { r, insts } = interOf({ a: block(40, 40, 10), b: block(40, 40, 10) }, [['a', [0, 0, 0]], ['b', [20, 5, -20]]]), x = r.list[0];
+  // A: x 0..40, y 0..10, z -40..0; B: x 20..60, y 5..15, z -60..-20
+  return eqs([r.list.length, r.pairs, x.volume, x.centroid[0], x.centroid[1], x.centroid[2], x.a === insts[0].id ? 1 : 0, x.b === insts[1].id ? 1 : 0, x.doubt ? 1 : 0], [1, 1, 2000, 30, 7.5, -30, 1, 1, 0]);
+}]);
+ASM.push(['Interferenza: blocchi che si toccano su una faccia, su uno spigolo e su un vertice, o staccati di 0,001 mm: nessuna', () => {
+  const n = p => interOf({ a: block(40, 40, 10), b: block(40, 40, 10) }, [['a', [0, 0, 0]], ['b', p]]).r.list.length;
+  return eqs([n([40, 0, 0]), n([0, 10, 0]), n([0, 0, -40]), n([40, 10, 0]), n([40, 10, -40]), n([40.001, 0, 0]), n([10, 10, -5])], [0, 0, 0, 0, 0, 0, 0]);
+}]);
+ASM.push(['Interferenza: compenetrazione di 0,001 mm tra due blocchi: si trova, con il volume giusto', () => {
+  const { r } = interOf({ a: block(40, 40, 10), b: block(40, 40, 10) }, [['a', [0, 0, 0]], ['b', [39.999, 0, 0]]]);
+  return eqs([r.list.length, r.list[0].volume], [1, 0.001 * 40 * 10], 1e-7);
+}]);
+ASM.push(['Interferenza: blocco ruotato di 90° attorno a X: conta anche la rotazione', () => {
+  // la rotazione manda (x, y, z) in (x, -z, y): B va in x 0..40, y 0..40, z 0..10; spostato di (10, 5, -5): x 10..50, y 5..45, z -5..5; in comune con A: x 10..40, y 5..10, z -5..0
+  const { r } = interOf({ a: block(40, 40, 10), b: block(40, 40, 10) }, [['a', [0, 0, 0]], ['b', [10, 5, -5], ROTX90]]), x = r.list[0];
+  return eqs([r.list.length, x.volume, x.centroid[0], x.centroid[1], x.centroid[2]], [1, 30 * 5 * 5, 25, 7.5, -2.5]);
+}]);
+ASM.push(['Interferenza: perno uguale al foro (faccette girate), più piccolo o spostato di lato: le superfici vere si toccano soltanto o si staccano', () => {
+  const n = (r, p, q) => interOf({ a: plateHole(80, 50, 10, 40, 25, 10), b: pin(r, 30) }, [['a', [0, 0, 0]], ['b', p, q]]).r.list.length;
+  return eqs([n(10, [40, -10, -25]), n(10, [40, -10, -25], TURN), n(9.9, [40, -10, -25], TURN), n(5, [37, -10, -25], TURN)], [0, 0, 0, 0]);
+}]);
+ASM.push(['Interferenza: perno più grande del foro: la corona vera π(R² − r²)h, anche di 0,01 mm, non le faccette', () => {
+  const v = R => interOf({ a: plateHole(80, 50, 10, 40, 25, 10), b: pin(R, 30) }, [['a', [0, 0, 0]], ['b', [40, -10, -25], TURN]]).r.list[0].volume;
+  return eqs([v(10.5), v(10.01), v(11)], [PI * (10.5 * 10.5 - 100) * 10, PI * (10.01 * 10.01 - 100) * 10, PI * (121 - 100) * 10], 1e-3);
+}]);
+ASM.push(['Interferenza: perno che attraversa un blocco pieno: πr²h; due cilindri incrociati: la lente calcolata a mano', () => {
+  const v1 = interOf({ a: block(80, 50, 10), b: pin(10, 30) }, [['a', [0, 0, 0]], ['b', [40, -10, -25]]]).r.list[0].volume;
+  const v2 = interOf({ a: pin(10, 30), b: pin(10, 30) }, [['a', [0, 0, 0]], ['b', [5, 0, 0]]]).r.list[0].volume;
+  return eqs([v1, v2], [PI * 100 * 10, (2 * 100 * Math.acos(0.25) - 2.5 * Math.sqrt(400 - 25)) * 30], 1e-3);
+}]);
+ASM.push(['Interferenza: sfera tagliata a metà dalla faccia di un blocco: la semisfera vera 2/3 π R³ e il suo baricentro 3/8 R', () => {
+  const { r } = interOf({ a: block(80, 80, 40), b: ball(10) }, [['a', [0, 0, 0]], ['b', [40, 40, -40]]]), x = r.list[0];
+  return eqs([r.list.length, x.volume, x.centroid[0], x.centroid[1], x.centroid[2]], [1, 2 / 3 * PI * 1000, 40, 40 - 3.75, -40], 1e-2);
+}]);
+ASM.push(['Interferenza: due copie nello stesso punto: il pezzo intero; tre componenti: 3 coppie, la più grande per prima', () => {
+  const v0 = interOf({ a: pin(10, 30) }, [['a', [0, 0, 0]], ['a', [0, 0, 0]]]).r.list[0].volume;
+  const { r, insts } = interOf({ a: block(40, 40, 10), b: block(40, 40, 10) }, [['a', [0, 0, 0]], ['b', [39, 0, 0]], ['b', [0, 0, -38]]]);
+  // A-C: x 0..40, z -40..-38 = 40·2·10; A-B: x 39..40, z -40..0 = 1·40·10; B-C: x 39..40, z -40..-38 = 1·2·10
+  return eqs([v0, r.pairs, r.list.length, r.list[0].volume, r.list[0].b === insts[2].id && r.list[0].a === insts[0].id ? 1 : 0, r.list[1].volume, r.list[1].b === insts[1].id ? 1 : 0, r.list[2].volume, r.list[2].a === insts[1].id ? 1 : 0], [PI * 100 * 30, 3, 3, 800, 1, 400, 1, 20, 1], 1e-3);
+}]);
+ASM.push(['Interferenza: perno e foro uguali con molti raggi e angoli (resti di calcolo, anche positivi); sfera nella sua cavità; sfera più grande: la calotta vera', () => {
+  const out = [], exp = [];
+  for (const R of [1.5, 6, 47.3, 200]) for (const a of [0.01, 0.0713, 0.5, 2.1]) {
+    const { r } = interOf({ a: plateHole(R * 4, R * 4, R, R * 2, R * 2, R), b: pin(R, R * 3) }, [['a', [0, 0, 0]], ['b', [R * 2, -R, -R * 2], Assembly.qexp([0, a, 0])]]);
+    out.push(r.list.length); exp.push(0);
+  }
+  // blocco x, z -40..40, y 0..40 con una cavità semisferica R 10 in basso, al centro
+  const cavity = () => { const d = D0('cavita'); const b = SB(); b.rect(-40, -40, 40, 40); const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 40 }); const c = SB(); c.center(0, -60, 0, 60); const o = c.pt(0, 0), t = c.pt(0, 10), n = c.pt(0, -10); c.arc(o, n, t); c.line(t, n); const q = sketch(d, STD('front'), c); feat(d, { type: 'revcut', sketch: q, angle: 360 }); return d; };
+  const eq = R => interOf({ a: cavity(), b: ball(R) }, [['a', [0, 0, 0]], ['b', [0, 0, 0], Assembly.qexp([0.3, 0.2, 0.1])]]).r.list;
+  out.push(eq(10).length, eq(9).length); exp.push(0, 0);
+  const big = eq(10.5);
+  out.push(big.length, big[0].volume); exp.push(1, 2 / 3 * PI * (10.5 ** 3 - 1000));
+  return eqs(out, exp, 1e-2);
+}]);
+ASM.push(['Interferenza: pezzi con molti poligoni: la zona in comune tagliata prima dà lo stesso risultato del calcolo intero', () => {
+  const many = () => { const d = D0('fori'); const b = SB(); b.rect(0, 0, 300, 300); for (let i = 0; i < 6; i++) for (let j = 0; j < 6; j++) b.circle(25 + i * 50, 25 + j * 50, 4); const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 10 }); return d; };
+  const docs = { a: many() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 'a'); Assembly.addInst(asm, 'a', { pose: asmPose([275, 2, -290]) });
+  const n = infos.get('a').st.body.length;
+  const one = Assembly.interferences(asm, infos), all = Assembly.interferences(asm, infos, { clip: false });
+  // zona in comune: x 275..300, z -300..-290, y 2..10 = 25·10·8 = 2000, meno il foro di A (25+250, 25+250 = fuori) e di B: fuori anch'essi
+  const V = 25 * 10 * 8;
+  return eqs([n > 2000 ? 1 : 0, one.list.length, all.list.length, one.list[0].volume, all.list[0].volume], [1, 1, 1, V, V], 1e-3);
+}]);
+
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
   const rows = [];

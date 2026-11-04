@@ -137,7 +137,7 @@ Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nasc
 
 ![Guida «Come si fa»: raccordo e smusso degli spigoli](docs/img/guida.png)
 
-- **Guida** (pulsante in alto): 54 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
+- **Guida** (pulsante in alto): 56 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
 - **Glossario**: oltre 190 termini spiegati in parole semplici (comandi, relazioni, opzioni, norme). La piccola **ⓘ** accanto ai titoli dei pannelli apre la spiegazione della voce.
 
 ## Calcoli verificati

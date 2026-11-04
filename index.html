@@ -191,6 +191,7 @@ input, select, textarea { font: inherit; color: var(--ink); }
 .seg button { flex: 1; border: 0; background: var(--panel); padding: 5px 4px; font-size: 12.5px; cursor: pointer; border-right: 1px solid var(--line); }
 .seg button:last-child { border-right: 0; }
 .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.asm-int { display: block; width: 100%; text-align: left; margin-top: 6px; height: auto; padding: 6px 8px; line-height: 1.35; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
 .kv dt { color: var(--ink-2); }
 .kv dd { margin: 0; font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
@@ -6700,6 +6701,7 @@ self.postMessage({ hello: true });`;
   const isNode = typeof module !== 'undefined' && typeof window === 'undefined';
   const Model = isNode ? require('./model.js') : root.Model;
   const G = isNode ? require('./geom.js') : root.Geom;
+  const CSG = isNode ? require('./csg.js') : root.CSG;
 
   const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -6752,7 +6754,7 @@ self.postMessage({ hello: true });`;
     if (empty) { mn = [0, 0, 0]; mx = [0, 0, 0]; }
     // piani creati nella parte (quelli che esistono davvero a questo punto dell'albero), con il loro nome
     const planes = doc.features.filter(f => f.type === 'plane' && st.planes.has(f.id)).map(f => ({ id: f.id, name: f.name }));
-    return { st, planes, bbox: { mn, mx }, c: mul(add(mn, mx), 0.5), r: len(sub(mx, mn)) / 2, empty, ents: new Map(), used: new Set(st.body.map(p => p.t)) };
+    return { doc, st, planes, bbox: { mn, mx }, c: mul(add(mn, mx), 0.5), r: len(sub(mx, mn)) / 2, empty, ents: new Map(), used: new Set(st.body.map(p => p.t)) };
   }
   // piani e origine di una parte, che si possono usare negli accoppiamenti
   function datumsOf(info) {
@@ -7510,7 +7512,93 @@ self.postMessage({ hello: true });`;
     return { body, bodies, bodySeq: bodies.length, tags, topo, frames: new Map(), errors: new Map(), warn: new Map(), info: new Map(), holes: [], tools: new Map(), isAssembly: true };
   }
 
-  const api = { newAssembly, addInst, uid, instLabel, partInfo, datumsOf, identity, toWorld, toLocal, dirWorld, entityOf, worldEnt, MATE_TYPES, MATE_LABEL, allowedTypes, suggest, mateDefaults, mateRows, solve, solveStatus, drag, scene, qexp, qmul, qnorm, qrot, moved, fitPlane, fitCylinder, fitCone, fitSphere };
+  /* ---------------- calcoli sull'assieme: massa, distinta base, interferenze ---------------- */
+  // proprietà di massa di una parte (una volta sola: un'altra parte o un altro materiale fanno un altro info)
+  function partMass(info) {
+    if (!info || info.empty) return null;
+    if (!info.mp) info.mp = Model.massProperties(info.st, info.doc);
+    return info.mp;
+  }
+  // somme sulle parti vere (con le superfici esatte), non sulla scena: il baricentro è pesato con la massa, perché ogni parte ha il suo materiale
+  function massOf(asm, infos) {
+    const comps = [], noSolid = [], noMaterial = [];
+    let volume = 0, area = 0, mass = 0, c = [0, 0, 0];
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const inst of asm.insts) {
+      const info = infos.get(inst.part), m = partMass(info);
+      if (!m) { noSolid.push(inst.id); continue; }
+      const centroid = toWorld(inst.pose, m.centroid);
+      comps.push({ id: inst.id, part: inst.part, volume: m.volume, area: m.area, mass: m.mass, centroid, material: m.material });
+      volume += m.volume; area += m.area; mass += m.mass;
+      c = add(c, mul(centroid, m.mass));
+      if (info.doc.material === 'none' && !noMaterial.includes(inst.part)) noMaterial.push(inst.part);
+      for (const p of info.st.body) for (const v of p.v) { const w = toWorld(inst.pose, v); for (let k = 0; k < 3; k++) { if (w[k] < mn[k]) mn[k] = w[k]; if (w[k] > mx[k]) mx[k] = w[k]; } }
+    }
+    return { comps, noSolid, noMaterial, volume, area, mass, centroid: mass > 0 ? mul(c, 1 / mass) : [0, 0, 0], bbox: comps.length ? { mn, mx } : null };
+  }
+  // distinta base: una riga per parte, nell'ordine in cui le parti entrano nell'assieme
+  function bom(asm, infos) {
+    const rows = new Map();
+    for (const inst of asm.insts) {
+      let r = rows.get(inst.part);
+      if (!r) {
+        const info = infos.get(inst.part), m = partMass(info);
+        r = { item: rows.size + 1, part: inst.part, name: info && info.doc ? info.doc.name : 'Parte', qty: 0, material: m ? m.material : null, unitMass: m ? m.mass : 0, mass: 0, solid: !!m };
+        rows.set(inst.part, r);
+      }
+      r.qty++; r.mass += r.unitMass;
+    }
+    return [...rows.values()];
+  }
+  // sotto questa frazione del componente più piccolo due parti si toccano soltanto (resti di calcolo sulle superfici esatte)
+  const INT_TOL = 1e-8;
+  // scostamento delle facce a triangoli di un corpo importato (STEP, IGES, STL, OBJ): la stessa misura della lettura dei file, 0,0005 dell'ingombro
+  const INT_MESH_DEV = 5e-4;
+  // oltre questi poligoni ogni componente si taglia prima con la zona in comune dei due ingombri (più largo del 1 %), così la vite non paga tutta la piastra
+  const INT_CLIP = 2000;
+  function boxPolys(mn, mx) {
+    const c = (x, y, z) => [x ? mx[0] : mn[0], y ? mx[1] : mn[1], z ? mx[2] : mn[2]];
+    return [[c(0, 0, 0), c(0, 1, 0), c(1, 1, 0), c(1, 0, 0)], [c(0, 0, 1), c(1, 0, 1), c(1, 1, 1), c(0, 1, 1)], [c(0, 0, 0), c(1, 0, 0), c(1, 0, 1), c(0, 0, 1)], [c(0, 1, 0), c(0, 1, 1), c(1, 1, 1), c(1, 1, 0)], [c(0, 0, 0), c(0, 0, 1), c(0, 1, 1), c(0, 1, 0)], [c(1, 0, 0), c(1, 1, 0), c(1, 1, 1), c(1, 0, 1)]].map(v => CSG.poly(v, -1));
+  }
+  // i componenti e le coppie da controllare (il calcolo di ogni coppia è a parte: l'interfaccia lascia respirare la pagina tra una e l'altra)
+  function interferenceSetup(asm, infos) {
+    const sc = scene(asm, infos);
+    const parts = sc.bodies.map(b => {
+      const inst = asm.insts.find(i => i.id === b.id), m = partMass(infos.get(inst.part));
+      return { id: b.id, polys: b.polys, box: CSG.bbox(b.polys), volume: m.volume };
+    });
+    const pairs = [];
+    for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) pairs.push([parts[i], parts[j]]);
+    return { tags: sc.tags, pairs };
+  }
+  // il volume in comune di una coppia, calcolato sulle superfici vere; due corpi che si toccano soltanto danno null
+  function interferencePair(setup, [A, B], opts = {}) {
+    const lo = [0, 1, 2].map(k => Math.max(A.box.mn[k], B.box.mn[k])), hi = [0, 1, 2].map(k => Math.min(A.box.mx[k], B.box.mx[k]));
+    if (lo.some((v, k) => v > hi[k] + CSG.EPS)) return null;
+    let pa = A.polys, pb = B.polys;
+    if (opts.clip !== false && pa.length + pb.length > INT_CLIP) {
+      const pad = 0.01 * len(sub(hi, lo)) + 1, box = boxPolys(lo.map(v => v - pad), hi.map(v => v + pad));
+      pa = CSG.intersect(pa, box); pb = CSG.intersect(pb, box);
+    }
+    const r = CSG.intersect(pa, pb);
+    if (!r.length) return null;
+    const m = G.massProps(r, setup.tags);
+    if (!(m.volume > INT_TOL * Math.min(A.volume, B.volume))) return null;
+    // con un corpo a triangoli, uno strato più sottile del suo scostamento può essere solo un contatto
+    const devs = [A, B].filter(X => r.some(p => { const t = setup.tags.get(p.t); return t && t.mesh && t.inst === X.id; })).map(X => INT_MESH_DEV * len(sub(X.box.mx, X.box.mn)));
+    return { a: A.id, b: B.id, volume: m.volume, centroid: m.centroid, polys: r, doubt: devs.length > 0 && 2 * m.volume / (m.areaMesh + m.areaRev) < 2 * Math.max(...devs) };
+  }
+  const sortInterferences = list => list.sort((x, y) => y.volume - x.volume);
+  function interferences(asm, infos, opts) {
+    const setup = interferenceSetup(asm, infos), list = [], failed = [];
+    for (const pair of setup.pairs) {
+      try { const x = interferencePair(setup, pair, opts); if (x) list.push(x); }
+      catch (e) { failed.push({ a: pair[0].id, b: pair[1].id }); }
+    }
+    return { list: sortInterferences(list), pairs: setup.pairs.length, failed };
+  }
+
+  const api = { massOf, bom, interferences, interferenceSetup, interferencePair, sortInterferences, newAssembly, addInst, uid, instLabel, partInfo, datumsOf, identity, toWorld, toLocal, dirWorld, entityOf, worldEnt, MATE_TYPES, MATE_LABEL, allowedTypes, suggest, mateDefaults, mateRows, solve, solveStatus, drag, scene, qexp, qmul, qnorm, qrot, moved, fitPlane, fitCylinder, fitCone, fitSphere };
   if (isNode) module.exports = api; else root.Assembly = api;
 })(this);
 
@@ -7915,7 +8003,9 @@ self.postMessage({ hello: true });`;
       this.bindAttr(F.loc.aPos, 'tpos', 3); this.bindAttr(F.loc.aNor, 'tnor', 3); this.bindAttr(F.loc.aCol, 'tcol', 3);
       gl.enable(gl.BLEND); gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA); gl.blendColor(0, 0, 0, fc.alpha || 0.35);
       gl.depthMask(false);
+      if (fc.over) gl.disable(gl.DEPTH_TEST);   // si vede anche dentro i pezzi (il volume di un'interferenza)
       gl.drawArrays(gl.TRIANGLES, 0, fc.pos.length / 3);
+      if (fc.over) gl.enable(gl.DEPTH_TEST);
       gl.depthMask(true); gl.disable(gl.BLEND);
       gl.useProgram(L.p);
     }
@@ -8174,6 +8264,8 @@ self.postMessage({ hello: true });`;
     export: I('<path d="M12 3v12M7 10l5 5 5-5M4 19h16"/>'),
     print: I('<path d="M6 9V3h12v6M6 17H4v-7h16v7h-2M7 14h10v7H7z"/>'),
     verify: I('<path d="M4 12l5 5L20 6"/>'),
+    bom: I('<path d="M4 5h16v14H4zM4 10h16M4 15h16M9 5v14"/>'),
+    interf: I('<rect x="3" y="3" width="12" height="12" rx="1"/><rect x="9" y="9" width="12" height="12" rx="1"/><path d="M9 15l6-6M9 12l3-3M12 15l3-3"/>'),
   };
 
   /* ================= persistenza e annulla ================= */
@@ -8996,6 +9088,10 @@ self.postMessage({ hello: true });`;
       ['mate', 'Accoppiamento', 'Lega due elementi di due componenti: coincidente, concentrico, parallelo, perpendicolare, distanza, angolo'],
       ['movepart', 'Sposta parte', 'Sposta o ruota un componente nei gradi di libertà che gli restano (anche su tablet)'],
       '-',
+      ['asmMass', 'Proprietà di massa', 'Massa, volume, area e baricentro di tutto l\'assieme e di ogni componente', { icon: 'mass' }],
+      ['bom', 'Distinta base', 'L\'elenco delle parti dell\'assieme, con quantità, materiale e massa'],
+      ['interf', 'Verifica interferenze', 'Trova i componenti che si compenetrano e per quale volume'],
+      '-',
       ['measure', 'Misura', 'Distanze, diametri e angoli tra gli elementi selezionati'],
       ['section', 'Vista in sezione', 'Taglia la vista con un piano'],
     ],
@@ -9048,6 +9144,9 @@ self.postMessage({ hello: true });`;
       case 'addPart': return addNewPart();
       case 'mate': return App.asm.openMate();
       case 'movepart': return App.asm.openMove();
+      case 'asmMass': return App.asm.massDialog();
+      case 'bom': return App.asm.bomDialog();
+      case 'interf': return App.asm.openInterf();
       case 'material': return materialDialog();
       case 'mass': return massDialog();
       case 'measure': return Features.measure();
@@ -10712,7 +10811,94 @@ self.postMessage({ hello: true });`;
         up() { dragEnd(); },
       });
     }
-    return { regen, show, refreshPartSel, enter, leave, insertPart, insertDialog, insertFile, copyInst, setFixed, deleteInst, deleteMate, openMate, openMove, click, contextMenu, dblclick, key, renderTree, vertexAt, dragStart, dragMove, dragEnd, instOfItem, get last() { return last; }, get infos() { return infos; } };
+    /* ---------- calcoli: massa, distinta base, interferenze ---------- */
+    function massDialog() {
+      refreshInfos();
+      const m = Assembly.massOf(asm(), infos);
+      if (!m.comps.length) { toast('Nell\'assieme non c\'è ancora nessun componente con un solido: premi Inserisci parte.'); return; }
+      const bb = m.bbox;
+      const nameOf = id => esc(label(instById(id)));
+      const rows = m.comps.map(c => `<tr><td>${nameOf(c.id)}</td><td>${esc(c.material.name)}</td><td class="num">${fmt(c.volume, 2)}</td><td class="num">${fmt(c.mass, 2)}</td></tr>`).join('');
+      const notes = [];
+      if (m.noMaterial.length) notes.push(`Senza materiale: ${esc(m.noMaterial.map(partName).join(', '))}. Per queste parti la massa è calcolata con densità 1 g/cm³: scegli il materiale nella parte per avere la massa vera.`);
+      if (m.noSolid.length) notes.push(`Senza solido, quindi non contati: ${m.noSolid.map(nameOf).join(', ')}.`);
+      modal('Proprietà di massa dell\'assieme', `<dl class="kv" id="asmMassKv">
+        <dt>Massa</dt><dd>${fmt(m.mass, 2)} g</dd>
+        <dt>Volume</dt><dd>${fmt(m.volume, 2)} mm³</dd>
+        <dt>Area della superficie</dt><dd>${fmt(m.area, 2)} mm²</dd>
+        <dt>Baricentro X</dt><dd>${fmt(m.centroid[0], 3)} mm</dd>
+        <dt>Baricentro Y</dt><dd>${fmt(m.centroid[1], 3)} mm</dd>
+        <dt>Baricentro Z</dt><dd>${fmt(m.centroid[2], 3)} mm</dd>
+        <dt>Ingombro X × Y × Z</dt><dd>${fmt(bb.mx[0] - bb.mn[0])} × ${fmt(bb.mx[1] - bb.mn[1])} × ${fmt(bb.mx[2] - bb.mn[2])} mm</dd>
+      </dl>
+      <h3>Per ogni componente</h3><div class="st-wrap"><table class="st-table" id="asmMassComps"><thead><tr><th>Componente</th><th>Materiale</th><th class="num">Volume (mm³)</th><th class="num">Massa (g)</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${notes.map(n => `<p class="note">${n}</p>`).join('')}
+      <p class="note">Il baricentro è riferito all'origine dell'assieme ed è pesato con la massa, perché ogni parte ha il suo materiale. Il volume in comune di due componenti che si compenetrano conta due volte: per trovarli usa Verifica interferenze.</p>`, [{ label: 'Chiudi', primary: true }]);
+    }
+    function bomDialog() {
+      refreshInfos();
+      const rows = Assembly.bom(asm(), infos);
+      if (!rows.length) { toast('L\'assieme è vuoto: premi Inserisci parte.'); return; }
+      const body = rows.map(r => `<tr><td class="num">${r.item}</td><td>${esc(r.name)}</td><td>${r.solid ? esc(r.material.name) : 'Senza solido'}</td><td class="num">${r.qty}</td><td class="num">${r.solid ? fmt(r.unitMass, 2) : '—'}</td><td class="num">${r.solid ? fmt(r.mass, 2) : '—'}</td></tr>`).join('');
+      const qty = rows.reduce((s, r) => s + r.qty, 0), mass = rows.reduce((s, r) => s + r.mass, 0);
+      modal('Distinta base', `<div class="st-wrap"><table class="st-table" id="asmBom"><thead><tr><th class="num">N.</th><th>Parte</th><th>Materiale</th><th class="num">Q.tà</th><th class="num">Massa cad. (g)</th><th class="num">Massa tot. (g)</th></tr></thead><tbody>${body}</tbody><tfoot><tr><th></th><th>Totale</th><th></th><th class="num">${qty}</th><th></th><th class="num">${fmt(mass, 2)}</th></tr></tfoot></table></div>`, [{ label: 'Chiudi', primary: true }]);
+    }
+    function openInterf() {
+      refreshInfos();
+      if (asm().insts.length < 2) { toast('Per cercare le interferenze servono almeno due componenti.'); return; }
+      if (App.pm) App.closePM(false);
+      let run = null, res = null, chosen = -1, shape = null;
+      const pick = i => { chosen = i; shape = i >= 0 ? { ...App.polyFaces(res.list[i].polys, [0.86, 0.15, 0.12], 0.8), over: true } : null; App.refreshPM(); App.redraw(); };
+      const start = () => {
+        const setup = Assembly.interferenceSetup(asm(), infos), token = {};
+        run = { token, done: 0, total: setup.pairs.length };
+        res = null; shape = null; chosen = -1;
+        const list = [], failed = [];
+        const step = () => {
+          if (!run || run.token !== token) return;
+          if (run.done >= run.total) { res = { list: Assembly.sortInterferences(list), pairs: run.total, failed }; run = null; App.refreshPM(); App.redraw(); if (res.list.length) pick(0); return; }
+          const pair = setup.pairs[run.done];
+          try { const x = Assembly.interferencePair(setup, pair); if (x) list.push(x); }
+          catch (e) { failed.push({ a: pair[0].id, b: pair[1].id }); }
+          run.done++;
+          App.refreshPM();
+          setTimeout(step, 0);
+        };
+        App.refreshPM();
+        setTimeout(step, 30);
+      };
+      const nameOf = id => label(instById(id));
+      App.openPM({
+        title: 'Verifica interferenze', icon: 'interf', hint: 'Premi Calcola: il volume in comune di ogni coppia di componenti si vede in rosso.',
+        filter: [],
+        build(b) {
+          const g = el('div', { class: 'grp' }, el('h3', {}, 'Componenti'));
+          g.append(el('p', { class: 'note' }, `Si controllano tutti i ${asm().insts.length} componenti, a coppie.`));
+          if (run) {
+            g.append(el('p', { class: 'note', id: 'asmIntProg' }, `Coppia ${Math.min(run.done + 1, run.total)} di ${run.total}…`));
+            g.append(el('button', { class: 'btn', type: 'button', id: 'asmIntStop', onclick: () => { run = null; App.refreshPM(); } }, 'Interrompi'));
+          } else g.append(el('button', { class: 'btn btn-primary', type: 'button', id: 'asmIntRun', onclick: start }, 'Calcola'));
+          b.append(g);
+          if (!res) return;
+          const r = el('div', { class: 'grp', id: 'asmIntRes' }, el('h3', {}, 'Risultati'));
+          const nn = res.list.length;
+          r.append(el('p', { class: nn ? 'note err' : 'note ok', id: 'asmIntSum' }, nn ? `${nn} ${nn === 1 ? 'interferenza' : 'interferenze'} su ${res.pairs} ${res.pairs === 1 ? 'coppia' : 'coppie'}.` : `Nessuna interferenza su ${res.pairs} ${res.pairs === 1 ? 'coppia' : 'coppie'}.`));
+          res.list.forEach((x, i) => {
+            const btn = el('button', { class: 'relbtn asm-int', type: 'button', 'aria-pressed': String(i === chosen), 'data-int': String(i), onclick: () => pick(i) });
+            btn.textContent = `${nameOf(x.a)} e ${nameOf(x.b)}: ${fmt(x.volume, 3)} mm³${x.doubt ? ' (forse solo contatto)' : ''}`;
+            r.append(btn);
+          });
+          if (res.list.some(x => x.doubt)) r.append(el('p', { class: 'note' }, '«Forse solo contatto»: i pezzi importati sono fatti di triangoli, e uno strato così sottile può nascere solo da quelli. Controlla le misure nel programma d\'origine.'));
+          for (const f of res.failed) r.append(el('p', { class: 'note err' }, `${nameOf(f.a)} e ${nameOf(f.b)}: non si è potuto calcolare (pezzi troppo complessi).`));
+          b.append(r);
+        },
+        pick() {},
+        preview() { return shape ? { faces: [shape] } : null; },
+        ok() { run = null; },
+        cancel() { run = null; },
+      });
+    }
+    return { massDialog, bomDialog, openInterf, regen, show, refreshPartSel, enter, leave, insertPart, insertDialog, insertFile, copyInst, setFixed, deleteInst, deleteMate, openMate, openMove, click, contextMenu, dblclick, key, renderTree, vertexAt, dragStart, dragMove, dragEnd, instOfItem, get last() { return last; }, get infos() { return infos; } };
   })();
   App.init = init;
   document.addEventListener('DOMContentLoaded', () => { /* avvio in fondo al file */ });
@@ -15363,6 +15549,10 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Assieme', 'Componente', ['componenti', 'istanza', 'copia il componente'], 'Una parte messa nell\'assieme, con la sua posizione. La stessa parte può comparire più volte: Vite<1>, Vite<2>. Sono copie della stessa parte: se modifichi la parte, cambiano tutte.'],
     ['Assieme', 'Inserisci parte', ['inserire una parte'], 'Aggiunge un componente all\'assieme: una parte del progetto, oppure un file STEP, IGES, STL, OBJ o un progetto esportato, che viene copiato nel progetto.'],
     ['Assieme', 'Nuova parte', ['aggiungi una parte', 'parti'], 'Crea una parte vuota in questo progetto e la apre. L\'elenco accanto al nome, in alto, passa da una parte all\'altra.'],
+    ['Assieme', 'Proprietà di massa dell\'assieme', ['massa dell\'assieme', 'peso dell\'assieme', 'baricentro dell\'assieme'], 'Massa, volume, area, baricentro e ingombro di tutti i componenti insieme. Ogni parte usa il suo materiale; il baricentro è pesato con la massa. Il volume in comune di due componenti che si compenetrano conta due volte.'],
+    ['Assieme', 'Distinta base', ['BOM', 'bill of materials', 'elenco parti', 'lista parti'], 'L\'elenco delle parti che servono per costruire l\'assieme: numero, nome, materiale, quantità e massa. Componenti della stessa parte fanno una riga sola.'],
+    ['Assieme', 'Interferenza', ['compenetrazione', 'collisione', 'sovrapposizione'], 'Due componenti che occupano lo stesso spazio: nella realtà non si potrebbero montare così (a meno che non sia voluto, come un accoppiamento forzato). Si misura con il volume in comune. Due facce che si toccano soltanto non sono un\'interferenza.'],
+    ['Assieme', 'Verifica interferenze', ['interference detection', 'controllo interferenze'], 'Il comando che controlla tutti i componenti a coppie e mostra il volume in comune di ognuna, anche in rosso nella vista. Con i pezzi fatti nel programma il volume è calcolato sulle superfici vere; con quelli importati, fatti di triangoli, uno strato sottilissimo è segnato «forse solo contatto».'],
     ['Assieme', 'Parte fissa', ['fissa', 'libera', '(f)', 'componente fisso'], 'Un componente che non si muove: gli altri si sistemano rispetto a lui. Nell\'albero ha (f) davanti al nome. La prima parte inserita è fissa; con il tasto destro si sceglie Fissa o Libera.'],
     ['Assieme', 'Accoppiamento', ['accoppiamenti', 'mate', 'mates'], 'Un legame tra due elementi di due componenti (facce, spigoli o vertici). Ogni accoppiamento toglie gradi di libertà: il risolutore sposta i componenti liberi il meno possibile per rispettarli tutti.'],
     ['Assieme', 'Tipo di accoppiamento', ['elementi da accoppiare'], 'Il modo in cui si legano i due elementi scelti: coincidente, concentrico, parallelo, perpendicolare, distanza o angolo. Sono attivi solo i tipi possibili con quegli elementi.'],
@@ -17274,6 +17464,117 @@ ASM.push(['Accoppiamenti possibili: Concentrico solo tra elementi tondi; Angolo 
   return eqs([has(T(P, P), 'concentric'), has(T(R, R), 'concentric'), has(T(R, Lx), 'concentric'), has(T(R, V), 'concentric'), has(T(S, S), 'concentric'), has(T(V, V), 'concentric'), has(T(V, V), 'angle'), has(T(V, V), 'parallel'), has(T(P, V), 'perpendicular'), has(T(P, P), 'distance'), has(T(V, R), 'distance'), Assembly.suggest(R, R) === 'concentric' ? 1 : 0, Assembly.suggest(P, P) === 'coincident' ? 1 : 0], [0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1]);
 }]);
 
+/* ---------- calcoli sull'assieme: massa, distinta base, interferenze (valori a mano) ---------- */
+const block = (L, W, H, mat) => { const d = D0('blocco'); const b = SB(); b.rect(0, 0, L, W); const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: H }); if (mat) d.material = mat; return d; };   // x 0..L, y 0..H, z -W..0
+const ball = R => { const d = D0('sfera'); const b = SB(); const c = b.pt(0, 0), t = b.pt(0, R), n = b.pt(0, -R); b.arc(c, n, t); b.line(t, n); const s = sketch(d, STD('front'), b); feat(d, { type: 'revolve', sketch: s, axis: { kind: 'line', sk: s, ent: b.center(0, -R - 5, 0, R + 5) }, angle: 360 }); return d; };
+function interOf(docs, poses) {
+  const infos = asmSet(docs), asm = Assembly.newAssembly(), keys = Object.keys(docs);
+  const insts = poses.map(([k, p, q]) => Assembly.addInst(asm, k, { pose: asmPose(p, q) }));
+  return { r: Assembly.interferences(asm, infos), insts, keys };
+}
+const ROTX90 = Assembly.qexp([PI / 2, 0, 0]), TURN = Assembly.qexp([0, 0.0713, 0]);   // TURN: le faccette del perno non cadono su quelle del foro
+ASM.push(['Massa dell\'assieme: due materiali; volume, area e massa sommati, baricentro pesato con la massa, non con il volume', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }; docs.a.material = 's235'; docs.b.material = 'al6082';
+  const infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 'a'); Assembly.addInst(asm, 'b', { pose: asmPose([40, 0, -25]) });
+  const m = Assembly.massOf(asm, infos);
+  const Va = 80 * 50 * 10 - PI * 100 * 10, Vb = PI * 100 * 30;
+  const Aa = 2 * (80 * 50 - PI * 100) + 2 * (80 + 50) * 10 + 2 * PI * 10 * 10, Ab = 2 * PI * 100 + 2 * PI * 10 * 30;
+  const ma = Va * 7.85 / 1000, mb = Vb * 2.7 / 1000;
+  // piastra: baricentro y 5; perno: y 15; x e z sull'asse del foro
+  return eqs([m.volume, m.area, m.mass, m.centroid[0], m.centroid[1], m.centroid[2], m.comps.length, m.bbox.mn[1], m.bbox.mx[1], m.bbox.mn[0], m.bbox.mx[0]],
+    [Va + Vb, Aa + Ab, ma + mb, 40, (ma * 5 + mb * 15) / (ma + mb), -25, 2, 0, 30, 0, 80], 1e-5);
+}]);
+ASM.push(['Massa dell\'assieme: il baricentro segue la posizione e la rotazione di ogni componente', () => {
+  const docs = { a: block(40, 20, 10, 's235'), b: block(40, 20, 10, 's235') }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 'a'); Assembly.addInst(asm, 'b', { pose: asmPose([100, 0, 0], Assembly.qexp([0, 0, PI / 2])) });
+  // A: centro (20, 5, -10). B: (20, 5, -10) ruotato di 90° attorno a Z = (-5, 20, -10), più lo spostamento = (95, 20, -10)
+  const m = Assembly.massOf(asm, infos);
+  return eqs([m.comps[0].centroid[0], m.comps[1].centroid[0], m.comps[1].centroid[1], m.comps[1].centroid[2], m.centroid[0], m.centroid[1], m.centroid[2], m.mass, m.bbox.mn[0], m.bbox.mx[0], m.bbox.mn[1], m.bbox.mx[1]],
+    [20, 95, 20, -10, 57.5, 12.5, -10, 2 * 8000 * 7.85 / 1000, 0, 100, 0, 40]);
+}]);
+ASM.push(['Massa dell\'assieme: componenti uguali contati tutti; parte senza solido e parte senza materiale segnalate; assieme vuoto a zero', () => {
+  const docs = { a: block(10, 10, 10, 'c40'), b: block(10, 10, 10), e: D0('vuota') }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const m0 = Assembly.massOf(asm, infos);
+  Assembly.addInst(asm, 'a'); Assembly.addInst(asm, 'a', { pose: asmPose([50, 0, 0]) }); Assembly.addInst(asm, 'a', { pose: asmPose([100, 0, 0]) }); const e = Assembly.addInst(asm, 'e'); Assembly.addInst(asm, 'b', { pose: asmPose([200, 0, 0]) }); Assembly.addInst(asm, 'b', { pose: asmPose([300, 0, 0]) });
+  const m = Assembly.massOf(asm, infos);
+  return eqs([m0.mass, m0.volume, m0.bbox === null ? 1 : 0, m.volume, m.mass, m.comps.length, m.noSolid.length, m.noSolid[0] === e.id ? 1 : 0, m.noMaterial.length, m.noMaterial[0] === 'b' ? 1 : 0],
+    [0, 0, 1, 5000, 3 * 1000 * 7.85 / 1000 + 2 * 1000 * 1 / 1000, 5, 1, 1, 1, 1]);
+}]);
+ASM.push(['Distinta base: una riga per parte nell\'ordine d\'ingresso, quantità, massa unitaria e totale; la somma è la massa dell\'assieme', () => {
+  const docs = { a: block(10, 10, 10, 'c40'), b: pin(10, 30), e: D0('vuota') }; docs.b.material = 'al6082';
+  const infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 'b'); Assembly.addInst(asm, 'a', { pose: asmPose([50, 0, 0]) }); Assembly.addInst(asm, 'b', { pose: asmPose([100, 0, 0]) }); Assembly.addInst(asm, 'e'); Assembly.addInst(asm, 'b', { pose: asmPose([200, 0, 0]) });
+  const r = Assembly.bom(asm, infos), m = Assembly.massOf(asm, infos), u = PI * 100 * 30 * 2.7 / 1000;
+  return eqs([r.length, r[0].item, r[0].name === 'perno' ? 1 : 0, r[0].qty, r[0].unitMass, r[0].mass, r[0].material.id === 'al6082' ? 1 : 0, r[1].item, r[1].name === 'blocco' ? 1 : 0, r[1].qty, r[1].mass, r[2].qty, r[2].solid ? 1 : 0, r[2].mass, r.reduce((s, x) => s + x.mass, 0) - m.mass],
+    [3, 1, 1, 3, u, 3 * u, 1, 2, 1, 1, 7.85, 1, 0, 0, 0], 1e-5);
+}]);
+ASM.push(['Interferenza: due blocchi: volume 20 × 5 × 20 e suo baricentro', () => {
+  const { r, insts } = interOf({ a: block(40, 40, 10), b: block(40, 40, 10) }, [['a', [0, 0, 0]], ['b', [20, 5, -20]]]), x = r.list[0];
+  // A: x 0..40, y 0..10, z -40..0; B: x 20..60, y 5..15, z -60..-20
+  return eqs([r.list.length, r.pairs, x.volume, x.centroid[0], x.centroid[1], x.centroid[2], x.a === insts[0].id ? 1 : 0, x.b === insts[1].id ? 1 : 0, x.doubt ? 1 : 0], [1, 1, 2000, 30, 7.5, -30, 1, 1, 0]);
+}]);
+ASM.push(['Interferenza: blocchi che si toccano su una faccia, su uno spigolo e su un vertice, o staccati di 0,001 mm: nessuna', () => {
+  const n = p => interOf({ a: block(40, 40, 10), b: block(40, 40, 10) }, [['a', [0, 0, 0]], ['b', p]]).r.list.length;
+  return eqs([n([40, 0, 0]), n([0, 10, 0]), n([0, 0, -40]), n([40, 10, 0]), n([40, 10, -40]), n([40.001, 0, 0]), n([10, 10, -5])], [0, 0, 0, 0, 0, 0, 0]);
+}]);
+ASM.push(['Interferenza: compenetrazione di 0,001 mm tra due blocchi: si trova, con il volume giusto', () => {
+  const { r } = interOf({ a: block(40, 40, 10), b: block(40, 40, 10) }, [['a', [0, 0, 0]], ['b', [39.999, 0, 0]]]);
+  return eqs([r.list.length, r.list[0].volume], [1, 0.001 * 40 * 10], 1e-7);
+}]);
+ASM.push(['Interferenza: blocco ruotato di 90° attorno a X: conta anche la rotazione', () => {
+  // la rotazione manda (x, y, z) in (x, -z, y): B va in x 0..40, y 0..40, z 0..10; spostato di (10, 5, -5): x 10..50, y 5..45, z -5..5; in comune con A: x 10..40, y 5..10, z -5..0
+  const { r } = interOf({ a: block(40, 40, 10), b: block(40, 40, 10) }, [['a', [0, 0, 0]], ['b', [10, 5, -5], ROTX90]]), x = r.list[0];
+  return eqs([r.list.length, x.volume, x.centroid[0], x.centroid[1], x.centroid[2]], [1, 30 * 5 * 5, 25, 7.5, -2.5]);
+}]);
+ASM.push(['Interferenza: perno uguale al foro (faccette girate), più piccolo o spostato di lato: le superfici vere si toccano soltanto o si staccano', () => {
+  const n = (r, p, q) => interOf({ a: plateHole(80, 50, 10, 40, 25, 10), b: pin(r, 30) }, [['a', [0, 0, 0]], ['b', p, q]]).r.list.length;
+  return eqs([n(10, [40, -10, -25]), n(10, [40, -10, -25], TURN), n(9.9, [40, -10, -25], TURN), n(5, [37, -10, -25], TURN)], [0, 0, 0, 0]);
+}]);
+ASM.push(['Interferenza: perno più grande del foro: la corona vera π(R² − r²)h, anche di 0,01 mm, non le faccette', () => {
+  const v = R => interOf({ a: plateHole(80, 50, 10, 40, 25, 10), b: pin(R, 30) }, [['a', [0, 0, 0]], ['b', [40, -10, -25], TURN]]).r.list[0].volume;
+  return eqs([v(10.5), v(10.01), v(11)], [PI * (10.5 * 10.5 - 100) * 10, PI * (10.01 * 10.01 - 100) * 10, PI * (121 - 100) * 10], 1e-3);
+}]);
+ASM.push(['Interferenza: perno che attraversa un blocco pieno: πr²h; due cilindri incrociati: la lente calcolata a mano', () => {
+  const v1 = interOf({ a: block(80, 50, 10), b: pin(10, 30) }, [['a', [0, 0, 0]], ['b', [40, -10, -25]]]).r.list[0].volume;
+  const v2 = interOf({ a: pin(10, 30), b: pin(10, 30) }, [['a', [0, 0, 0]], ['b', [5, 0, 0]]]).r.list[0].volume;
+  return eqs([v1, v2], [PI * 100 * 10, (2 * 100 * Math.acos(0.25) - 2.5 * Math.sqrt(400 - 25)) * 30], 1e-3);
+}]);
+ASM.push(['Interferenza: sfera tagliata a metà dalla faccia di un blocco: la semisfera vera 2/3 π R³ e il suo baricentro 3/8 R', () => {
+  const { r } = interOf({ a: block(80, 80, 40), b: ball(10) }, [['a', [0, 0, 0]], ['b', [40, 40, -40]]]), x = r.list[0];
+  return eqs([r.list.length, x.volume, x.centroid[0], x.centroid[1], x.centroid[2]], [1, 2 / 3 * PI * 1000, 40, 40 - 3.75, -40], 1e-2);
+}]);
+ASM.push(['Interferenza: due copie nello stesso punto: il pezzo intero; tre componenti: 3 coppie, la più grande per prima', () => {
+  const v0 = interOf({ a: pin(10, 30) }, [['a', [0, 0, 0]], ['a', [0, 0, 0]]]).r.list[0].volume;
+  const { r, insts } = interOf({ a: block(40, 40, 10), b: block(40, 40, 10) }, [['a', [0, 0, 0]], ['b', [39, 0, 0]], ['b', [0, 0, -38]]]);
+  // A-C: x 0..40, z -40..-38 = 40·2·10; A-B: x 39..40, z -40..0 = 1·40·10; B-C: x 39..40, z -40..-38 = 1·2·10
+  return eqs([v0, r.pairs, r.list.length, r.list[0].volume, r.list[0].b === insts[2].id && r.list[0].a === insts[0].id ? 1 : 0, r.list[1].volume, r.list[1].b === insts[1].id ? 1 : 0, r.list[2].volume, r.list[2].a === insts[1].id ? 1 : 0], [PI * 100 * 30, 3, 3, 800, 1, 400, 1, 20, 1], 1e-3);
+}]);
+ASM.push(['Interferenza: perno e foro uguali con molti raggi e angoli (resti di calcolo, anche positivi); sfera nella sua cavità; sfera più grande: la calotta vera', () => {
+  const out = [], exp = [];
+  for (const R of [1.5, 6, 47.3, 200]) for (const a of [0.01, 0.0713, 0.5, 2.1]) {
+    const { r } = interOf({ a: plateHole(R * 4, R * 4, R, R * 2, R * 2, R), b: pin(R, R * 3) }, [['a', [0, 0, 0]], ['b', [R * 2, -R, -R * 2], Assembly.qexp([0, a, 0])]]);
+    out.push(r.list.length); exp.push(0);
+  }
+  // blocco x, z -40..40, y 0..40 con una cavità semisferica R 10 in basso, al centro
+  const cavity = () => { const d = D0('cavita'); const b = SB(); b.rect(-40, -40, 40, 40); const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 40 }); const c = SB(); c.center(0, -60, 0, 60); const o = c.pt(0, 0), t = c.pt(0, 10), n = c.pt(0, -10); c.arc(o, n, t); c.line(t, n); const q = sketch(d, STD('front'), c); feat(d, { type: 'revcut', sketch: q, angle: 360 }); return d; };
+  const eq = R => interOf({ a: cavity(), b: ball(R) }, [['a', [0, 0, 0]], ['b', [0, 0, 0], Assembly.qexp([0.3, 0.2, 0.1])]]).r.list;
+  out.push(eq(10).length, eq(9).length); exp.push(0, 0);
+  const big = eq(10.5);
+  out.push(big.length, big[0].volume); exp.push(1, 2 / 3 * PI * (10.5 ** 3 - 1000));
+  return eqs(out, exp, 1e-2);
+}]);
+ASM.push(['Interferenza: pezzi con molti poligoni: la zona in comune tagliata prima dà lo stesso risultato del calcolo intero', () => {
+  const many = () => { const d = D0('fori'); const b = SB(); b.rect(0, 0, 300, 300); for (let i = 0; i < 6; i++) for (let j = 0; j < 6; j++) b.circle(25 + i * 50, 25 + j * 50, 4); const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 10 }); return d; };
+  const docs = { a: many() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 'a'); Assembly.addInst(asm, 'a', { pose: asmPose([275, 2, -290]) });
+  const n = infos.get('a').st.body.length;
+  const one = Assembly.interferences(asm, infos), all = Assembly.interferences(asm, infos, { clip: false });
+  // zona in comune: x 275..300, z -300..-290, y 2..10 = 25·10·8 = 2000, meno il foro di A (25+250, 25+250 = fuori) e di B: fuori anch'essi
+  const V = 25 * 10 * 8;
+  return eqs([n > 2000 ? 1 : 0, one.list.length, all.list.length, one.list[0].volume, all.list[0].volume], [1, 1, 1, V, V], 1e-3);
+}]);
+
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
   const rows = [];
@@ -17838,6 +18139,20 @@ if (isNode) {
     steps: ['Con il mouse: trascina il componente con il tasto sinistro. Si muove solo nei gradi di libertà che gli restano, e gli accoppiamenti restano veri.', 'Per ruotare, oppure su tablet: premi **Sposta parte**, scegli **Sposta** o **Ruota** e trascina il componente.', 'Per girare la vista nell\'assieme trascina nel vuoto o su un componente fisso, oppure tieni premuta la rotella.'],
     tips: ['Annulla riporta il componente dov\'era.', 'Un componente legato ad altri li porta con sé, se possono seguirlo.'],
     terms: ['Sposta parte', 'Gradi di libertà dell\'assieme'],
+  });
+  add('Assieme', 'calcoli-assieme', 'Massa e distinta base di un assieme', {
+    why: 'Sapere quanto pesa la macchina montata, dov\'è il suo baricentro e quali pezzi servono per costruirla.',
+    cmd: { tab: 'assembly', id: 'asmMass' },
+    steps: ['Dai a ogni parte il suo materiale: apri la parte e usa **Materiale** nella scheda Valuta.', 'Nella scheda Assieme premi **Proprietà di massa**: massa, volume, area, baricentro e ingombro di tutto l\'assieme, poi una riga per ogni componente.', 'Premi **Distinta base**: una riga per ogni parte, con la quantità, il materiale, la massa di un pezzo e la massa totale.'],
+    tips: ['Il baricentro è pesato con la massa: una parte di acciaio conta quasi tre volte una uguale di alluminio.', 'Una parte senza materiale è calcolata con densità 1 g/cm³, e la finestra lo dice.', 'Componenti della stessa parte fanno una riga sola della distinta base.'],
+    terms: ['Proprietà di massa dell\'assieme', 'Distinta base'],
+  });
+  add('Assieme', 'interferenze', 'Controllare se i componenti si compenetrano', {
+    why: 'Scoprire prima di costruire che due pezzi occupano lo stesso spazio, e di quanto.',
+    cmd: { tab: 'assembly', id: 'interf' },
+    steps: ['Metti i componenti nella posizione da controllare.', 'Premi **Verifica interferenze**, poi **Calcola**.', 'Nell\'elenco ogni riga dice i due componenti e il volume in comune. Fai clic su una riga: quel volume si vede in rosso, anche dentro i pezzi.', 'Correggi la parte o l\'accoppiamento e ricalcola.'],
+    tips: ['Due facce a contatto non sono un\'interferenza: un perno dello stesso diametro del foro non viene segnalato.', 'Con pezzi importati (STEP, IGES, STL, OBJ) uno strato sottilissimo porta la scritta «forse solo contatto», perché quei pezzi sono fatti di triangoli.', 'Con pezzi molto complessi il calcolo può tenere ferma la pagina per qualche minuto.'],
+    terms: ['Interferenza', 'Verifica interferenze'],
   });
   add('Valuta', 'autoverifica', 'Autoverifica del programma', {
     why: 'Controllare che i calcoli del programma siano giusti.',

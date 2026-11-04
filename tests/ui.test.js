@@ -2059,6 +2059,55 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     rec(ASM7, ok, `senza comando ${fmtv(p1)}; con il comando ${fmtv(p2)} (atteso +${moved.toFixed(4)}); larghezza ${over.sw}/${over.cw}, elenco fino a ${over.r}; ${errs.join(' / ')}`);
   } catch (e) { rec(ASM7, false, e.message.split('\n')[0]); }
 
+  const ASMC1 = 'Assieme: Proprietà di massa, Distinta base e Verifica interferenze con il mouse: valori a mano, volume in rosso nella vista';
+  try {
+    const { c, p, errs, insert } = await asmSetup();
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    await insert('p1'); await insert('p2');
+    // materiali e perno nel foro, con le faccette girate rispetto a quelle del foro
+    await p.evaluate(() => {
+      App.project.parts[0].doc.material = 's235'; App.project.parts[1].doc.material = 'al6082';
+      App.change(() => { const i = App.project.assembly.insts[1]; i.pose = { p: [40, 0, -25], q: Assembly.qexp([0, 0.0713, 0]) }; });
+      window.__red = () => { const v = App.r.canvas; App.renderNow(); const t = document.createElement('canvas'); t.width = v.width; t.height = v.height; const x = t.getContext('2d'); x.drawImage(v, 0, 0); const d = x.getImageData(0, 0, t.width, t.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 110 && d[i + 1] < 50 && d[i + 2] < 50) n++; return n; };
+    });
+    await p.waitForTimeout(150);
+    const num = s => parseFloat(s.replace(/\./g, '').replace(',', '.'));
+    await p.click('[data-cmd="asmMass"]'); await p.waitForTimeout(150);
+    const mass = await p.evaluate(() => ({ kv: [...document.querySelectorAll('#asmMassKv dd')].map(d => d.textContent), rows: [...document.querySelectorAll('#asmMassComps tbody tr')].map(r => [...r.cells].map(x => x.textContent)), t: document.querySelector('#modalTitle').textContent }));
+    await p.screenshot({ path: path.join(OUT, 'assieme-massa.png') });
+    await p.click('#modalActions .btn-primary');
+    const Va = 80 * 50 * 10 - Math.PI * 100 * 10, Vb = Math.PI * 100 * 30, ma = Va * 7.85 / 1000, mb = Vb * 2.7 / 1000;
+    const okMass = Math.abs(num(mass.kv[0]) - (ma + mb)) < 0.006 && Math.abs(num(mass.kv[1]) - (Va + Vb)) < 0.006 && Math.abs(num(mass.kv[4]) - (ma * 5 + mb * 15) / (ma + mb)) < 0.0006 && mass.rows.length === 2 && mass.rows[0][0] === 'Piastra<1>' && /S235/.test(mass.rows[0][1]) && /6082/.test(mass.rows[1][1]);
+    // copia del perno lontano: la distinta base lo conta
+    await p.evaluate(() => { App.change(() => { const a = App.project.assembly, i = Assembly.addInst(a, 'p2', { pose: { p: [300, 0, 0], q: [1, 0, 0, 0] } }); void i; }); });
+    await p.click('[data-cmd="bom"]'); await p.waitForTimeout(150);
+    const bom = await p.evaluate(() => [...document.querySelectorAll('#asmBom tbody tr, #asmBom tfoot tr')].map(r => [...r.cells].map(x => x.textContent)));
+    await p.screenshot({ path: path.join(OUT, 'assieme-distinta.png') });
+    await p.click('#modalActions .btn-primary');
+    const okBom = bom.length === 3 && bom[0][1] === 'Piastra' && bom[0][3] === '1' && bom[1][1] === 'Perno' && bom[1][3] === '2' && Math.abs(num(bom[1][5]) - 2 * mb) < 0.006 && bom[2][3] === '3' && Math.abs(num(bom[2][5]) - (ma + 2 * mb)) < 0.006;
+    // perno uguale al foro: nessuna interferenza
+    const calc = async () => { await p.click('#asmIntRun'); await p.waitForFunction(() => document.querySelector('#asmIntSum'), null, { timeout: 30000 }); await p.waitForTimeout(100); return p.evaluate(() => ({ sum: document.querySelector('#asmIntSum').textContent, rows: [...document.querySelectorAll('#pm .asm-int')].map(b => b.textContent), pressed: [...document.querySelectorAll('#pm .asm-int')].map(b => b.getAttribute('aria-pressed')) })); };
+    await p.click('[data-cmd="interf"]'); await p.waitForTimeout(150);
+    const r0 = await calc(), red0 = await p.evaluate(() => __red());
+    await p.evaluate(() => App.closePM(false));
+    // perno R 10,5: la corona π(10,5² − 10²)·10 = 322,013 mm³
+    await p.evaluate(() => { App.change(() => { const c = App.project.parts[1].doc.features[0].sk.ents.find(e => e.t === 'ci'); c.r = 10.5; }); });
+    await p.waitForTimeout(150);
+    await p.click('[data-cmd="interf"]'); await p.waitForTimeout(150);
+    const r1 = await calc(), red1 = await p.evaluate(() => __red());
+    await p.screenshot({ path: path.join(OUT, 'assieme-interferenza.png') });
+    const clip = await p.evaluate(() => App.pm ? 1 : 0);
+    await p.keyboard.press('Escape'); await p.waitForTimeout(100);
+    const after = await p.evaluate(() => ({ pm: !!App.pm, red: __red() }));
+    // i comandi sull'assieme vuoto e con un componente solo non aprono niente di rotto
+    await p.evaluate(() => { App.change(() => { const a = App.project.assembly; a.insts = a.insts.slice(0, 1); a.mates = []; }); });
+    await p.click('[data-cmd="interf"]'); await p.waitForTimeout(100);
+    const alone = await p.evaluate(() => !App.pm);
+    const okInt = /Nessuna interferenza su 3 coppie/.test(r0.sum) && !r0.rows.length && red0 < 60 && /1 interferenza su 3 coppie/.test(r1.sum) && r1.rows.length === 1 && /Piastra<1> e Perno<1>: 322,013 mm³$/.test(r1.rows[0]) && r1.pressed[0] === 'true' && red1 > red0 + 2000 && clip === 1 && !after.pm && after.red < 60 && alone;
+    await c.close();
+    rec(ASMC1, okMass && okBom && okInt && !errs.length, `massa ${mass.kv.slice(0, 2).join(' / ')}, y ${mass.kv[4]} (attesi ${(ma + mb).toFixed(2)} g, ${(Va + Vb).toFixed(2)} mm³, ${((ma * 5 + mb * 15) / (ma + mb)).toFixed(3)}); distinta ${JSON.stringify(bom)}; prima «${r0.sum}» rossi ${red0}; poi «${r1.sum}» ${r1.rows.join()} rossi ${red1}; dopo Esc ${JSON.stringify(after)}; errori ${errs.join(' | ')}`);
+  } catch (e) { rec(ASMC1, false, e.message.split('\n')[0]); }
+
   await browser.close();
   const f = results.filter(r => !r.ok).length;
   console.log(`\n${results.length - f}/${results.length} superati`);
