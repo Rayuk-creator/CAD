@@ -1668,6 +1668,35 @@ ASM.push(['Vertici con le stesse due facce (i punti di un cerchio): raggio da 10
   };
   return eqs([...run([10, 30, 0], 15), ...run([0, 30, 10], 15)], [2, 15, 30, 0, 1, 2, 0, 30, 15, 1], 1e-6);
 }]);
+// riconoscimento delle superfici dai vertici: griglia di triangoli su una superficie data, con uno scarto messo apposta (dev)
+const asmGrid = (fn, nu = 24, nv = 8) => {
+  const P = []; for (let i = 0; i <= nu; i++) { P.push([]); for (let j = 0; j <= nv; j++) P[i].push(fn(i / nu, j / nv)); }
+  const tri = (a, b, c) => { const u = [0, 1, 2].map(k => b[k] - a[k]), v = [0, 1, 2].map(k => c[k] - a[k]), n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], l = Math.hypot(...n); return l > 1e-12 ? { v: [a, b, c], p: { n: n.map(x => x / l) } } : null; };
+  const out = []; for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) { out.push(tri(P[i][j], P[i + 1][j], P[i + 1][j + 1]), tri(P[i][j], P[i + 1][j + 1], P[i][j + 1])); }
+  return out.filter(Boolean);
+};
+const asmCal = (dev) => asmGrid((u, v) => { const a = 2 * Math.PI * u, b = 0.2 + 1.2 * v; return [10 * Math.cos(a) * Math.sin(b), 10 * Math.sin(a) * Math.sin(b), 10 * Math.cos(b) * (1 + dev)]; });
+const asmCon = (dev) => asmGrid((u, v) => { const a = 2 * Math.PI * u, h = 20 * v, r = 5 + 0.5 * h + dev * h * h; return [r * Math.cos(a), r * Math.sin(a), h]; });
+const asmFlat = (dev) => asmGrid((u, v) => { const x = 100 * u, y = 100 * v; return [x, y, dev * Math.sin(Math.PI * u) * 100]; });
+ASM.push(['Superfici riconosciute con precisione: sfera, cono e piano esatti o quasi (scarto 10⁻⁶) sì; con uno scarto di 10⁻³ no: un\'altra superficie non si scambia per quella giusta', () => {
+  const yes = f => (f ? 1 : 0);
+  const S0 = Assembly.fitSphere(asmCal(0)), C0 = Assembly.fitCone(asmCon(0));
+  return eqs([yes(S0), S0.R, ...S0.p, yes(C0), C0.tan, ...C0.apex, yes(Assembly.fitPlane(asmFlat(0))),
+    yes(Assembly.fitSphere(asmCal(1e-6))), yes(Assembly.fitSphere(asmCal(1e-3))),
+    yes(Assembly.fitCone(asmCon(1e-7))), yes(Assembly.fitCone(asmCon(1e-3))),
+    yes(Assembly.fitPlane(asmFlat(1e-6))), yes(Assembly.fitPlane(asmFlat(1e-3)))],
+    [1, 10, 0, 0, 0, 1, 0.5, 0, 0, -10, 1, 1, 0, 1, 0, 1, 0], 1e-9);
+}]);
+ASM.push(['Vertice: tra i vertici con quelle facce vince chi ha proprio quelle: sul bordo di una D il punto dell\'arco, non l\'estremo più vicino dove arriva anche il lato dritto', () => {
+  const d = D0('D'); const b = SB(); const c = b.pt(0, 0), a1 = b.pt(10, 0), a2 = b.pt(-10, 0); b.arc(c, a1, a2); b.line(a2, a1);
+  const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 5 });
+  const info = Assembly.partInfo(d), st = info.st;
+  const arcTag = [...new Set(st.body.map(p => p.t))].map(t => st.tags.get(t)).find(t => t.kind === 'rev');
+  const capTag = [...new Set(st.body.map(p => p.t))].map(t => st.tags.get(t)).find(t => t.kind === 'plane' && Math.abs(t.n[1] - 1) < 1e-9);
+  const E = Assembly.entityOf({ k: 'vertex', p: [10, 5, 0], faces: [arcTag.name, capTag.name] }, info);
+  const onArc = Math.abs(Math.hypot(E.p[0], E.p[2]) - 10) < 1e-6, notEnd = Math.hypot(E.p[0] - 10, E.p[2]) > 1e-3;
+  return eqs([E.err ? 1 : 0, onArc ? 1 : 0, notEnd ? 1 : 0, E.p[1], E.faces.length], [0, 1, 1, 5, 2]);
+}]);
 ASM.push(['Accoppiamenti possibili: Concentrico solo tra elementi tondi; Angolo e Parallelo non tra vertici', () => {
   const T = (a, b) => Assembly.allowedTypes(a, b);
   const P = { t: 'plane' }, R = { t: 'axis', round: true }, Lx = { t: 'axis', round: false }, V = { t: 'point' }, S = { t: 'point', sphere: true };

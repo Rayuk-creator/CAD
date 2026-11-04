@@ -301,9 +301,12 @@ const CASES = [
       vec(m, 'normale in alto', up.E.n, AX, 1e-6); vec(m, 'normale in basso', dn.E.n, AX.map(v => -v), 1e-6);
       eqn(m, 'piano in alto: distanza da O', dot3(AX, up.E.c.map((v, k) => v - O3[k])), 20); eqn(m, 'piano in basso: distanza da O', dot3(AX, dn.E.c.map((v, k) => v - O3[k])), 0);
     });
-    test('Assieme: cono con poco sformo (0,5°, alto 5, R 10): è un cono con la tangente giusta, non un cilindro', m => {
+    test('Assieme: cono con poco sformo (0,5° e 0,2°, alto 5, R 10): è un cono con la tangente giusta, non un cilindro', m => {
       const t = Math.tan(0.5 * PI / 180), { es } = ents(asmDoc(stepCone(10, 10 + 5 * t, 5)).doc), c = es.filter(e => e.E.t === 'axis');
       eqn(m, 'elementi con asse', c.length, 1); eqn(m, 'è un cono', c[0].E.cone ? 1 : 0, 1); eqn(m, 'tangente', c[0].E.tan, t, 1e-6); vec(m, 'asse', c[0].E.d, [0, 0, 1], 1e-6);
+      // ancora meno sformo, 0,2°: a occhio sarebbe un cilindro (i raggi differiscono di 0,017 su 10)
+      const t2 = Math.tan(0.2 * PI / 180), low = ents(asmDoc(stepCone(10, 10 + 5 * t2, 5)).doc).es.filter(e => e.E.t === 'axis');
+      eqn(m, '0,2°: è un cono', low[0] && low[0].E.cone ? 1 : 0, 1); if (low[0]) eqn(m, '0,2°: tangente', low[0].E.tan, t2, 1e-5);
     });
     test('Assieme: cono piccolo e cono grande lontani dall\'origine: la precisione non dipende dalle misure', m => {
       const P = [100, 200, -50];
