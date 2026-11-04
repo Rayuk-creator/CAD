@@ -2294,6 +2294,17 @@ ASM.push(['Selezione automatica: ponte x 10..20 = A e B; taglio x 5..25 = A e B;
   const ask = (x0, x1, type) => { const { d, a, c } = twoU(); const id = barF(d, x0, x1, { scope: [], scopeAuto: true }, 0, 10, 10, type); const ids = Model.autoScope(d, d.features.find(f => f.id === id)); return [ids.includes(a) ? 1 : 0, ids.includes(c) ? 1 : 0, ids.length]; };
   return eqs([...ask(10, 20, 'extrude'), ...ask(5, 25, 'cut'), ...ask(5, 9, 'cut'), ...ask(10, 20, 'cut'), ...ask(40, 50, 'extrude')], [1, 1, 2, 1, 1, 2, 1, 0, 1, 0, 0, 0, 0, 0, 0]);
 }]);
+ASM.push(['Selezione automatica su ogni tipo di funzione: foro solo in A = A; rivoluzione, taglio di rivoluzione, sweep, taglio con percorso e nervatura che li toccano tutti e due = 2 corpi', () => {
+  const auto = (d, f) => Model.autoScope(d, f).length;
+  const h = twoU(), hb = SB(); hb.pt(5, 5, { hole: true }); const hs = sketch(h.d, face(h.d, nearW([0, 1, 0], 10)), hb); const hf = d => d.features[d.features.length - 1];
+  feat(h.d, { type: 'hole', sketch: hs, kind: 'simple', dia: 4, end: 'through' }); const hi = Model.autoScope(h.d, hf(h.d));
+  const rev = (type, y0, y1) => { const d = D0('c'); blk(d, -10, -5, 0, 5, 10); blk(d, 0, -5, 10, 5, 10, false); const b = SB(); b.center(0, -100, 0, 100); b.rect(0, y0, 3, y1); feat(d, { type, sketch: sketch(d, STD('front'), b), angle: 360 }); return auto(d, hf(d)); };
+  const pre = () => { const d = D0('sw'); blk(d, -10, -20, 10, -10, 10); blk(d, -10, -40, 10, -30, 10, false); return d; };
+  const sw = type => { const d = sweepDoc(p => p.line(p.pt(0, 0), p.pt(0, -50)), undefined, type, pre); return auto(d, hf(d)); };
+  const r = Lbracket(), rb = SB(); rb.poly([[0, 0], [60, 0], [60, 8], [8, 8], [8, 40], [0, 40]]); feat(r, { type: 'extrude', sketch: sketch(r, STD('front'), rb), end: 'mid', depth: 30, merge: false });
+  const rr = SB(); rr.line(rr.pt(8, 30), rr.pt(30, 8)); feat(r, { type: 'rib', sketch: sketch(r, STD('front'), rr), thick: 6 });
+  return eqs([hi.length, hi[0] === h.a ? 1 : 0, rev('revolve', 10, 20), rev('revcut', 2, 8), sw('sweep'), sw('sweepcut'), auto(r, hf(r))], [1, 1, 2, 2, 2, 2, 2]);
+}]);
 ASM.push(['Selezione automatica senza corpi: chi aggiunge fa un corpo nuovo senza avviso, chi toglie dà errore; l\'elenco salvato resta quello', () => {
   const x = twoU(); barF(x.d, 40, 50, { scope: [], scopeAuto: true }); const sx = Model.regen(x.d);
   const y = twoU(); barF(y.d, 10, 20, { scope: [], scopeAuto: true }, 0, 10, 10, 'cut'); const ey = [...Model.regen(y.d).errors.values()].join();
