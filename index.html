@@ -19450,6 +19450,20 @@ ASM.push(['I fori seguono il corpo: M8 filettato; Sposta corpo +100 in x: filett
   const r = mk(); feat(r.d, { type: 'mirror', feats: [], bodies: [r.a], plane: STD('right') });
   return eqs([x0, ...xs(m.d), ...xs(c.d), ...xs(l.d), ...xs(r.d)], [20, 120, 20, 120, 220, 20, 70, 120, -20, 20]);
 }]);
+ASM.push(['Fori di un corpo: specchio sul piano superiore: direzione del filetto rovesciata; serie di un altro corpo: il foro non si copia; Sposta corpo: un foro solo nell\'elenco', () => {
+  const mk = () => { const d = D0('f'); const b = SB(); b.rect(0, 0, 40, 40); const s = sketch(d, STD('top'), b); const a = feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 20 }); const top = face(d, nearW([0, 1, 0], 20)); const h = SB(); const pp = h.pt(20, 20); h.s.ents.find(e => e.id === pp).hole = true; const q = feat(d, { type: 'sketch', plane: { kind: 'face', name: top.name, n: top.n, w: top.w }, sk: h.s, holeSketch: true }); feat(d, { type: 'hole', kind: 'tap', size: 'M8', end: 'blind', depth: 15, threadDepth: 12, sketch: q }); return { d, a }; };
+  const r = mk(); feat(r.d, { type: 'mirror', feats: [], bodies: [r.a], plane: STD('top') });
+  const dirs = Model.threadsOf(r.d, Model.regen(r.d)).map(t => t.dir[1]).sort((u, v) => u - v);
+  const o = mk(); const other = barF(o.d, 100, 110, { merge: false }); feat(o.d, { type: 'lpattern', feats: [], bodies: [other], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 50 });
+  const m = mk(); feat(m.d, { type: 'movebody', bodies: [m.a], dx: 100, dy: 0, dz: 0, axis: 'y', angle: 0, copy: false, copies: 1 });
+  return eqs([...dirs, Model.regen(o.d).holes.length, Model.regen(m.d).holes.length], [-1, 1, 1, 1]);
+}]);
+ASM.push(['Una copia di un corpo STEP è segnata come altra faccia: originale F, copia con il segno della serie', () => {
+  const d = D0('s'); const a = cadImp(d, [occtMesh(boxFaces(0, 0, 0, 20, 20, 20))]); const p = feat(d, { type: 'lpattern', feats: [], bodies: [a], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 40 });
+  const st = Model.regen(d), out = new Set();
+  for (const q of st.body) { const tg = st.tags.get(q.t); if (tg.kind === 'plane' && Math.abs(tg.n[1] - 1) < 1e-9 && Math.abs(tg.w - 20) < 1e-9) out.add(tg.feature); }
+  return eqs([st.bodies.length, out.size, out.has(a) ? 1 : 0, out.has(a + '^' + p + ':1') ? 1 : 0], [2, 2, 1, 1]);
+}]);
 
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
