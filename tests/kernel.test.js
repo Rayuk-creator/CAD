@@ -2244,6 +2244,112 @@ ASM.push(['Distinta base in CSV: intestazione, punto e virgola, virgola decimale
   const L = Assembly.bomCSV(rows).split('\r\n');
   return eqs([L[0] === 'N.;Parte;Materiale;Quantità;Massa cad. (g);Massa tot. (g)' ? 1 : 0, L[1] === '1;"Vite; M6";Acciaio;4;12,500;50,000' ? 1 : 0, L[2] === '2;Vuota;Senza solido;1;;' ? 1 : 0, L[3] === ';Totale;;5;;50,000' ? 1 : 0, L.length], [1, 1, 1, 1, 5]);
 }]);
+/* ---------- corpi solidi: Ambito funzione di chi aggiunge, Selezione automatica, serie e specchio di corpi (valori a mano) ---------- */
+// rettangolo x0..x1, z −y1..−y0, alto h da y = 0; extra = campi della funzione
+const barF = (d, x0, x1, extra = {}, y0 = 0, y1 = 10, h = 10, type = 'extrude') => { const b = SB(); b.rect(x0, y0, x1, y1); return feat(d, { type, sketch: sketch(d, STD('top'), b), end: type === 'cut' ? 'through' : 'blind', both: type === 'cut' ? true : undefined, depth: h, ...extra }); };
+const volPolys = polys => { let s = 0; for (const p of polys) for (let i = 2; i < p.v.length; i++) { const [a, b, c] = [p.v[0], p.v[i - 1], p.v[i]]; s += a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0]); } return s / 6; };
+const bodyVols = d => { const st = Model.regen(d); if (st.errors.size) throw new Error([...st.errors.values()].join('; ')); return st.bodies.map(b => volPolys(b.polys)); };
+const twoU = () => { const d = D0('c'); const a = blk(d, 0, 0, 10, 10, 10), c = blk(d, 20, 0, 30, 10, 10, false); return { d, a, c }; };
+ASM.push(['Ambito di un\'estrusione: il ponte x 10..20 tocca A e B; senza ambito un corpo da 3000; solo A: 2000 + 1000; solo B: 1000 + 2000; tutti e due: 3000', () => {
+  const run = sc => { const { d, a, c } = twoU(); barF(d, 10, 20, sc ? { scope: sc(a, c) } : {}); return bodyVols(d); };
+  return eqs([...run(null), ...run(a => [a]), ...run((a, c) => [c]), ...run((a, c) => [a, c])], [3000, 2000, 1000, 1000, 2000, 3000]);
+}]);
+ASM.push(['Ambito di un\'estrusione: x 5..25 entra in B ma non lo tocca: A 0..25 = 2500, B resta 1000; area 1200 + 600', () => {
+  const { d, a } = twoU(); barF(d, 5, 25, { scope: [a] }); const st = Model.regen(d), m = Model.massProperties(st, d);
+  return eqs([...bodyVols(d), m.area], [2500, 1000, 1800]);
+}]);
+ASM.push(['Ambito: estrusione lontana dal corpo scelto: corpo nuovo con avviso; Unisci risultato tolta: l\'ambito non conta, nessun avviso', () => {
+  const x = twoU(); barF(x.d, 40, 50, { scope: [x.a] }); const st = Model.regen(x.d), w = [...st.warn.values()].join();
+  const y = twoU(); barF(y.d, 10, 20, { scope: [y.a], merge: false }); const sy = Model.regen(y.d);
+  return eqs([st.bodies.length, /corpo nuovo/.test(w) ? 1 : 0, sy.bodies.length, sy.warn.size], [3, 1, 3, 0]);
+}]);
+ASM.push(['Ambito: nessun corpo scelto o corpo sparito su un\'estrusione: errore chiaro', () => {
+  const x = twoU(); barF(x.d, 10, 20, { scope: [] }); const e1 = [...Model.regen(x.d).errors.values()].join();
+  const y = twoU(); feat(y.d, { type: 'delbody', bodies: [y.a] }); barF(y.d, 10, 20, { scope: [y.a] }); const e2 = [...Model.regen(y.d).errors.values()].join();
+  return eqs([/almeno un corpo/.test(e1) ? 1 : 0, /non esistono più/.test(e2) ? 1 : 0], [1, 1]);
+}]);
+ASM.push(['Ambito di una rivoluzione: cilindro R3 alto 10 sopra due blocchi affiancati: solo su A, B resta 1000; senza ambito un corpo solo', () => {
+  const run = sc => { const d = D0('c'); const a = blk(d, -10, -5, 0, 5, 10), c = blk(d, 0, -5, 10, 5, 10, false); const b = SB(); b.center(0, -100, 0, 100); b.rect(0, 10, 3, 20); const s = sketch(d, STD('front'), b); feat(d, { type: 'revolve', sketch: s, angle: 360, ...(sc ? { scope: sc(a, c) } : {}) }); return bodyVols(d); };
+  const on = run(a => [a]), all = run(null), Vc = Math.PI * 9 * 10;
+  return eqs([on.length, on[1], on[0], all.length, all[0]], [2, 1000, 1000 + Vc, 1, 2000 + Vc], 3);   // 3 mm³: il cilindro è a faccette
+}]);
+ASM.push(['Ambito di una nervatura: due squadrette uguali, la nervatura 6 solo sulla seconda: 22080 e 22080 + 242 × 6 = 23532', () => {
+  const d = Lbracket(); const b0 = d.features[d.features.length - 1];
+  const b = SB(); b.poly([[0, 0], [60, 0], [60, 8], [8, 8], [8, 40], [0, 40]]); const s2 = sketch(d, STD('front'), b); const c = feat(d, { type: 'extrude', sketch: s2, end: 'mid', depth: 30, merge: false });
+  const r = SB(); r.line(r.pt(8, 30), r.pt(30, 8)); const s = sketch(d, STD('front'), r); feat(d, { type: 'rib', sketch: s, thick: 6, scope: [c] });
+  return eqs([...bodyVols(d), b0.id !== c ? 1 : 0], [22080, 23532, 1]);
+}]);
+ASM.push(['Ambito di uno sweep: tubo R5 lungo 50 attraverso due blocchi: solo sul primo, il secondo resta 2000; senza ambito un corpo solo', () => {
+  const pre = () => { const d = D0('sw'); blk(d, -10, -20, 10, -10, 10); blk(d, -10, -40, 10, -30, 10, false); return d; };
+  const mk = sc => { const d = sweepDoc(p => p.line(p.pt(0, 0), p.pt(0, -50)), undefined, 'sweep', pre); if (sc) { const st0 = Model.regen(d, { stopAt: d.features.length - 1 }); d.features[d.features.length - 1].scope = [st0.bodies[0].id]; } return bodyVols(d); };
+  const on = mk(true), all = mk(false), Vt = 25 * Math.PI * 50, half = 25 * Math.PI / 2 * 10;
+  return eqs([on.length, on[1], on[0], all.length], [2, 2000, 2000 + Vt - half, 1], 60);   // il primo: tubo a faccette, 1 %
+}]);
+ASM.push(['Ambito: la serie di un\'estrusione sugli stessi corpi: rialzi 2 × 5 × 10 dietro A e B, 1100 + 1100; solo su A la copia è un corpo nuovo, con l\'avviso sulla serie', () => {
+  const run = sc => { const { d, a, c } = twoU(); const f = barF(d, 2, 4, { scope: sc(a, c) }, 10, 15); const p = feat(d, { type: 'lpattern', feats: [f], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 20 }); const st = Model.regen(d); return { v: bodyVols(d), w: st.warn.get(p) || '' }; };
+  const both = run((a, c) => [a, c]), one = run(a => [a]);
+  return eqs([...both.v, ...one.v, /corpo nuovo/.test(one.w) ? 1 : 0], [1100, 1100, 1100, 1000, 100, 1]);
+}]);
+ASM.push(['Selezione automatica: ponte x 10..20 = A e B; taglio x 5..25 = A e B; x 5..9 = A; x 10..20 (tocca solo le facce, non toglie niente) = nessuno; aggiunta lontana = nessuno', () => {
+  const ask = (x0, x1, type) => { const { d, a, c } = twoU(); const id = barF(d, x0, x1, { scope: [], scopeAuto: true }, 0, 10, 10, type); const ids = Model.autoScope(d, d.features.find(f => f.id === id)); return [ids.includes(a) ? 1 : 0, ids.includes(c) ? 1 : 0, ids.length]; };
+  return eqs([...ask(10, 20, 'extrude'), ...ask(5, 25, 'cut'), ...ask(5, 9, 'cut'), ...ask(10, 20, 'cut'), ...ask(40, 50, 'extrude')], [1, 1, 2, 1, 1, 2, 1, 0, 1, 0, 0, 0, 0, 0, 0]);
+}]);
+ASM.push(['Selezione automatica senza corpi: chi aggiunge fa un corpo nuovo senza avviso, chi toglie dà errore; l\'elenco salvato resta quello', () => {
+  const x = twoU(); barF(x.d, 40, 50, { scope: [], scopeAuto: true }); const sx = Model.regen(x.d);
+  const y = twoU(); barF(y.d, 10, 20, { scope: [], scopeAuto: true }, 0, 10, 10, 'cut'); const ey = [...Model.regen(y.d).errors.values()].join();
+  const z = twoU(); barF(z.d, 5, 25, { scope: [z.a], scopeAuto: true }, 0, 10, 10, 'cut');
+  return eqs([sx.bodies.length, sx.warn.size, sx.errors.size, /non tocca nessun corpo/.test(ey) ? 1 : 0, ...bodyVols(z.d)], [3, 0, 0, 1, 500, 1000]);
+}]);
+ASM.push(['Selezione automatica con un corpo solo: aggiunta lontana = corpo nuovo; la sua serie resta senza errori: 3 corpi', () => {
+  const d = D0('c'); blk(d, 0, 0, 10, 10, 10); const f = barF(d, 40, 50, { scope: [], scopeAuto: true }); const n1 = bodyVols(d).length;
+  feat(d, { type: 'lpattern', feats: [f], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 20 }); const st = Model.regen(d);
+  return eqs([n1, st.bodies.length, st.errors.size, st.warn.size], [2, 3, 0, 0]);
+}]);
+ASM.push(['Serie lineare di un corpo: A ogni 40 per 3: x fino a 90, 4 corpi, 4000; A non cambia, B non si ripete; due direzioni 2 × 2: 3 copie', () => {
+  const { d, a } = twoU(); feat(d, { type: 'lpattern', feats: [], bodies: [a], dir: { kind: 'axis', id: 'x' }, n: 3, spacing: 40 });
+  const st = Model.regen(d), m = Model.massProperties(st, d), ids = new Set(st.bodies.map(b => b.id));
+  const q = twoU(); feat(q.d, { type: 'lpattern', feats: [], bodies: [q.a], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 40, dir2: { kind: 'axis', id: 'z' }, n2: 2, spacing2: 40 });
+  return eqs([st.bodies.length, ids.size, m.volume, m.area, m.bbox.mx[0], bodyVols(q.d).length], [4, 4, 4000, 2400, 90, 5]);
+}]);
+ASM.push(['Serie circolare di un corpo: 4 attorno a Y: ingombro x e z −10..10, V 4000, tutti con volume positivo', () => {
+  const d = D0('c'); const a = blk(d, 0, 0, 10, 10, 10); feat(d, { type: 'cpattern', feats: [], bodies: [a], axis: { kind: 'axis', id: 'y' }, n: 4, angle: 360, equal: true });
+  const st = Model.regen(d), m = Model.massProperties(st, d);
+  return eqs([...bodyVols(d), m.bbox.mn[0], m.bbox.mx[0], m.bbox.mn[2], m.bbox.mx[2]], [1000, 1000, 1000, 1000, -10, 10, -10, 10]);
+}]);
+ASM.push(['Specchio di un corpo: copia a sé (2 corpi, area 1200, 12 facce, STEP chiuso); con Unisci i solidi un corpo solo (V 2000, area 1000, 6 facce, niente cucitura); staccato dal piano: 2 corpi e avviso', () => {
+  const run = (x0, x1, extra) => { const d = D0('c'); const a = blk(d, x0, 0, x1, 10, 10); feat(d, { type: 'mirror', feats: [], bodies: [a], plane: STD('right'), ...extra }); const st = Model.regen(d), m = Model.massProperties(st, d), r = Export.toSTEP(st.body, Geom.topology(st.body, st.tags), { name: 'c', tags: st.tags, bodies: Model.stepBodies(st), date: new Date(2026, 10, 3) }); return { n: st.bodies.length, V: m.volume, A: m.area, f: r.stats.faces, bad: r.stats.badEdges + r.stats.openLoops, w: [...st.warn.values()].join(), mn: m.bbox.mn[0] }; };
+  const s = run(0, 10, {}), u = run(0, 10, { mergeBodies: true }), far = run(5, 15, { mergeBodies: true });
+  return eqs([s.n, s.V, s.A, s.f, s.bad, s.mn, u.n, u.V, u.A, u.f, u.bad, far.n, far.V, /non tocca il piano/.test(far.w) ? 1 : 0], [2, 2000, 1200, 12, 0, -10, 1, 2000, 1000, 6, 0, 2, 2000, 1]);
+}]);
+ASM.push(['Specchio di un corpo con foro Ø4 passante: due corpi, 2 × (1000 − π·4·10), STEP chiuso, 14 facce, due cilindri veri', () => {
+  const d = D0('c'); const a = blk(d, 1, 0, 11, 10, 10); const b = SB(); b.circle(6, 5, 2); feat(d, { type: 'cut', sketch: sketch(d, STD('top'), b), end: 'through', both: true });
+  feat(d, { type: 'mirror', feats: [], bodies: [a], plane: STD('right') });
+  const st = Model.regen(d), m = Model.massProperties(st, d), r = Export.toSTEP(st.body, Geom.topology(st.body, st.tags), { name: 'c', tags: st.tags, bodies: Model.stepBodies(st), date: new Date(2026, 10, 3) });
+  return eqs([st.bodies.length, m.volume, r.stats.faces, r.stats.badEdges + r.stats.openLoops, Object.keys(r.stats.surfaces).filter(k => /cyl/i.test(k)).reduce((s, k) => s + r.stats.surfaces[k], 0), r.stats.fallback], [2, 2 * (1000 - Math.PI * 40), 14, 0, 2, 0], 1e-3);
+}]);
+ASM.push(['Serie di corpi: un taglio dopo, con Ambito, lavora sulla copia; funzioni e corpi insieme; corpo sparito o niente scelto: errore chiaro', () => {
+  const { d, a } = twoU(); const p = feat(d, { type: 'lpattern', feats: [], bodies: [a], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 40 });
+  const idCopy = Model.regen(d).bodies[2].id; barF(d, 40, 45, { scope: [idCopy] }, 0, 10, 10, 'cut'); const v1 = bodyVols(d);
+  const m = twoU(); const cu = barF(m.d, 0, 5, { scope: [m.a] }, 0, 10, 10, 'cut'); feat(m.d, { type: 'lpattern', feats: [cu], bodies: [m.c], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 5 });
+  const v2 = bodyVols(m.d);   // A perde x 0..5 e x 5..10: non resta niente; restano B e la sua copia
+  const g = twoU(); feat(g.d, { type: 'delbody', bodies: [g.a] }); feat(g.d, { type: 'mirror', feats: [], bodies: [g.a], plane: STD('right') }); const e1 = [...Model.regen(g.d).errors.values()].join();
+  const n = twoU(); feat(n.d, { type: 'mirror', feats: [], bodies: [], plane: STD('right') }); const e2 = [...Model.regen(n.d).errors.values()].join();
+  return eqs([...v1, ...v2, /non esiste più/.test(e1) ? 1 : 0, /o i corpi/.test(e2) ? 1 : 0, p ? 1 : 0], [1000, 1000, 500, 1000, 1000, 1, 1, 1]);
+}]);
+ASM.push(['Serie e specchio di un corpo importato da STL (cubo 20): 8000 + 8000, 2 corpi, chiusi', () => {
+  const run = make => { const d = D0('i'); const a = imp(d, enc(stlA(boxTris(0, 0, 0, 20, 20, 20)))); make(d, a); return bodyVols(d); };
+  return eqs([...run((d, a) => feat(d, { type: 'lpattern', feats: [], bodies: [a], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 40 })), ...run((d, a) => feat(d, { type: 'mirror', feats: [], bodies: [a], plane: STD('right') }))], [8000, 8000, 8000, 8000]);
+}]);
+ASM.push(['I fori seguono il corpo: M8 filettato; Sposta corpo +100 in x: filetto a x + 100; Copia 2: 3 filetti; serie di 3 ogni 50 e specchio: filetti e direzioni giuste', () => {
+  const mk = () => { const d = D0('f'); const b = SB(); b.rect(0, 0, 40, 40); const s = sketch(d, STD('top'), b); const a = feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 20 }); const top = face(d, nearW([0, 1, 0], 20)); const h = SB(); const pp = h.pt(20, 20); h.s.ents.find(e => e.id === pp).hole = true; const q = feat(d, { type: 'sketch', plane: { kind: 'face', name: top.name, n: top.n, w: top.w }, sk: h.s, holeSketch: true }); feat(d, { type: 'hole', kind: 'tap', size: 'M8', end: 'blind', depth: 15, threadDepth: 12, sketch: q }); return { d, a }; };
+  const xs = d => Model.threadsOf(d, Model.regen(d)).map(t => t.o[0]).sort((u, v) => u - v);
+  const z = mk(), x0 = xs(z.d)[0];
+  const m = mk(); feat(m.d, { type: 'movebody', bodies: [m.a], dx: 100, dy: 0, dz: 0, axis: 'y', angle: 0, copy: false, copies: 1 });
+  const c = mk(); feat(c.d, { type: 'movebody', bodies: [c.a], dx: 100, dy: 0, dz: 0, axis: 'y', angle: 0, copy: true, copies: 2 });
+  const l = mk(); feat(l.d, { type: 'lpattern', feats: [], bodies: [l.a], dir: { kind: 'axis', id: 'x' }, n: 3, spacing: 50 });
+  const r = mk(); feat(r.d, { type: 'mirror', feats: [], bodies: [r.a], plane: STD('right') });
+  return eqs([x0, ...xs(m.d), ...xs(c.d), ...xs(l.d), ...xs(r.d)], [20, 120, 20, 120, 220, 20, 70, 120, -20, 20]);
+}]);
 
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);

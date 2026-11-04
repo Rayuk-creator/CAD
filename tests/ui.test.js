@@ -1493,6 +1493,97 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const v2 = await vol();
     rec('Ambito funzione con il mouse: Tutti i corpi di partenza, casella nel pannello (taglio solo sul primo corpo), Annulla, clic nella vista, salvato nella funzione', seen && Math.abs(v1 - (32000 - 20 * 20 * 10)) < 1 && saved.length === 1 && saved[0] === ids[0] && Math.abs(v0 - 32000) < 1 && box2 && Math.abs(v2 - (32000 - 20 * 20 * 10)) < 1, `V ${v1} (attesi 28000), dopo Annulla ${v0}, clic: ${JSON.stringify(picked)} (atteso ${ids[1]}), V ${v2}`);
   } catch (e) { rec('Ambito funzione con il mouse', false, e.message.split('\n')[0]); await page.evaluate(() => { try { App.closeModal(); if (App.pm) App.cancelPM && App.cancelPM(); } catch (x) {} }); }
+
+  // Limiti dei corpi solidi con il mouse: Ambito su un'estrusione, Selezione automatica, albero sopra la vista, serie e specchio di corpi
+  try {
+    await fresh();
+    await page.evaluate(() => {
+      const box = (x0, y0, x1, y1) => { const s = Sketch.newSketch(); const pt = (x, y) => { const id = 'p' + (s.next++); s.ents.push({ id, t: 'pt', x, y }); return id; }; const P = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => pt(x, y)); P.forEach((a, i) => s.ents.push({ id: 'l' + (s.next++), t: 'ln', a, b: P[(i + 1) % 4] })); return s; };
+      App.change(() => { const d = App.doc; const add = f => { f.id = Model.uid(d, 'F'); f.name = Model.defaultName(d, f.type); d.features.push(f); return f.id; };
+        add({ type: 'extrude', sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(0, 0, 40, 40) }), end: 'blind', depth: 10 });
+        add({ type: 'extrude', merge: false, sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(60, 0, 100, 40) }), end: 'blind', depth: 10 });
+        window.__s4 = add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(40, 10, 60, 30) }); App.sel = []; });
+      App.r.fit(App.st.body);
+    });
+    await page.waitForTimeout(250);
+    const ok = async () => { await page.click('.pm-ok'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(200); };
+    const openExt = async () => { await page.evaluate(() => App.select({ kind: 'feature', id: window.__s4, sketch: true, label: 'Schizzo' })); await page.click('#cmdBar [data-cmd="extrude"]'); await page.waitForTimeout(300); };
+    const bodies = () => page.evaluate(() => { const st = App.st; return st.bodies.map(b => { let s = 0; for (const p of b.polys) for (let i = 2; i < p.v.length; i++) { const [a, u, c] = [p.v[0], p.v[i - 1], p.v[i]]; s += a[0] * (u[1] * c[2] - u[2] * c[1]) - a[1] * (u[0] * c[2] - u[2] * c[0]) + a[2] * (u[0] * c[1] - u[1] * c[0]); } return Math.round(s / 6 * 1000) / 1000; }); });
+    const last = () => page.evaluate(() => JSON.parse(JSON.stringify(App.doc.features[App.doc.features.length - 1])));
+    const undo = async () => { await page.evaluate(() => App.undo()); await page.waitForTimeout(250); };
+    const ids = await page.evaluate(() => App.st.bodies.map(b => b.id));
+    // estrusione con Corpi selezionati: scelta dall'albero sopra la vista
+    await openExt();
+    const allFirst = await page.locator('#pmScopeAll').isChecked();
+    await page.locator('#pmScopeSel').check(); await page.waitForTimeout(250);
+    const nFly = await page.locator('#partFly [data-fly-body]').count();
+    await page.click(`#partFly [data-fly-body="${ids[0]}"]`); await page.waitForTimeout(250);
+    const flyOn = await page.locator(`#partFly [data-fly-body="${ids[0]}"].on`).count();
+    await page.screenshot({ path: path.join(OUT, 'corpi-ambito.png') });
+    await ok();
+    const b1 = await bodies(), f1 = await last(), flyGone = await page.locator('#partFly').count();
+    const r1 = allFirst && nFly === 2 && flyOn === 1 && f1.scope.length === 1 && f1.scope[0] === ids[0] && b1.length === 2 && b1[0] === 20000 && b1[1] === 16000 && flyGone === 0;
+    rec('Ambito di un\'estrusione con il mouse: albero sopra la vista, un corpo scelto per nome (20000 + 16000), albero tolto alla fine', r1, JSON.stringify({ allFirst, nFly, flyOn, scope: f1.scope, b1, flyGone }));
+    await undo();
+    // Selezione automatica: il ponte tocca i due corpi
+    await openExt();
+    await page.locator('#pmScopeSel').check(); await page.waitForTimeout(200);
+    await page.locator('#pmScopeAuto').check(); await page.waitForTimeout(600);
+    const au = await page.evaluate(() => ({ n: App.doc.features[App.doc.features.length - 1].scope.length, dis: [...document.querySelectorAll('#pm [data-scope]')].every(i => i.disabled && i.checked), fly: document.querySelectorAll('#partFly [data-fly-body]').length }));
+    await ok();
+    const b2 = await bodies(), f2 = await last();
+    rec('Selezione automatica con il mouse: spunta i due corpi, caselle bloccate, un corpo da 36000, salvata', au.n === 2 && au.dis && au.fly === 0 && b2.length === 1 && b2[0] === 36000 && f2.scopeAuto === true && f2.scope.length === 2, JSON.stringify({ au, b2 }));
+    await undo();
+    // Unisci risultato tolta: niente ambito
+    await openExt();
+    const had = await page.locator('#pmScopeAll').count();
+    await page.locator('#pmMerge').uncheck(); await page.waitForTimeout(250);
+    const hid = await page.locator('#pmScopeAll').count();
+    await page.click('.pm-no'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(150);
+    rec('Unisci risultato tolta: Ambito funzione nascosto', had === 1 && hid === 0, had + ' ' + hid);
+    // serie di un corpo: casella del pannello e clic nella vista
+    await page.evaluate(() => App.select(null));
+    await page.click('#cmdBar [data-cmd="lpattern"]'); await page.waitForTimeout(300);
+    await page.locator('#pm .selbox', { hasText: 'su un corpo nella vista' }).click(); await page.waitForTimeout(200);
+    const dot = await page.evaluate(() => { const r = document.querySelector('.view canvas').getBoundingClientRect(), p = App.r.project([90, 10, -20]); return { x: p[0] + r.left, y: p[1] + r.top }; });
+    await page.mouse.move(dot.x, dot.y); await page.waitForTimeout(100); await page.mouse.click(dot.x, dot.y); await page.waitForTimeout(300);
+    const chip = await page.locator('#pm .grp', { hasText: 'Corpi da ripetere' }).locator('.chip').count();
+    const nameFly = await page.locator('#partFly [data-fly-feat]').count();
+    await page.fill('#pm_n', '2'); await page.fill('#pm_spacing', '120'); await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(OUT, 'corpi-serie.png') });
+    await ok();
+    const b3 = await bodies(), bb = await page.evaluate(() => Model.massProperties(App.st, App.doc).bbox.mx[0]), f3 = await last();
+    rec('Serie di un corpo con il mouse: clic nella vista, copia a x 180..220, tre corpi', chip === 1 && nameFly === 2 && b3.length === 3 && b3.every(v => v === 16000) && bb === 220 && f3.bodies.length === 1 && f3.bodies[0] === ids[1], JSON.stringify({ chip, nameFly, b3, bb }));
+    await undo();
+    // funzione scelta per nome nell'albero sopra la vista: la serie del secondo blocco, stessa cosa con la funzione e Unisci risultato tolta
+    await page.click('#cmdBar [data-cmd="lpattern"]'); await page.waitForTimeout(300);
+    const featId = await page.evaluate(() => App.doc.features.filter(f => f.type === 'extrude')[1].id);
+    await page.click(`#partFly [data-fly-feat="${featId}"]`); await page.waitForTimeout(250);
+    const featChip = await page.locator('#pm .grp', { hasText: 'Funzioni da ripetere' }).locator('.chip').count();
+    await page.click('.pm-no'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(150);
+    // specchio: corpo scelto prima nell'albero, Unisci i solidi; il piano si sceglie per nome
+    await page.evaluate(id => App.select({ kind: 'body', id, label: 'Corpo1' }), ids[0]); await page.waitForTimeout(100);
+    await page.click('#cmdBar [data-cmd="mirror"]'); await page.waitForTimeout(300);
+    const chipM = await page.locator('#pm .grp', { hasText: 'Corpi da specchiare' }).locator('.chip').count();
+    const pick = await page.evaluate(() => App.pm.getPick());
+    await page.locator('#pm label.chk', { hasText: 'Unisci i solidi' }).locator('input').check(); await page.waitForTimeout(300);
+    await ok();
+    const b4 = await bodies(), f4 = await last();
+    rec('Specchio di un corpo con il mouse: scelto prima dell\'apertura, Unisci i solidi: 32000 + 16000; funzione scelta per nome nell\'albero', featChip === 1 && chipM === 1 && pick === 'mirrorPlane' && f4.mergeBodies === true && b4.length === 2 && b4[0] === 32000 && b4[1] === 16000, JSON.stringify({ featChip, chipM, pick, b4 }));
+    await undo();
+    // l'albero si chiude e i piani si scelgono per nome
+    await page.evaluate(() => App.select(null));
+    await page.click('#cmdBar [data-cmd="mirror"]'); await page.waitForTimeout(300);
+    await page.evaluate(() => App.pm.setPick('mirrorPlane')); await page.waitForTimeout(200);
+    await page.click('#partFly [data-fly-plane="front"]'); await page.waitForTimeout(200);
+    const pl = await page.evaluate(() => App.doc.features[App.doc.features.length - 1].plane.id);
+    await page.click('#partFlyToggle'); await page.waitForTimeout(150);
+    const closed = await page.locator('#partFly [data-fly-feat]').count();
+    await page.click('#partFlyToggle'); await page.waitForTimeout(150);
+    const reopened = await page.locator('#partFly [data-fly-feat]').count();
+    await page.click('.pm-no'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(150);
+    rec('Albero sopra la vista: piano scelto per nome, si chiude e si riapre', pl === 'front' && closed === 0 && reopened > 0, JSON.stringify({ pl, closed, reopened }));
+  } catch (e) { rec('Limiti dei corpi solidi con il mouse', false, e.message.split('\n')[0]); await page.evaluate(() => { try { App.closeModal(); if (App.pm) App.closePM(false); } catch (x) {} }); }
   // sfondo: tratteggio, tolleranza, richiamo e tabella dal disegno vero, finestra e schizzo
   try {
     await fresh();
@@ -2233,7 +2324,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     rec(ASMC3, ok && !errs.length, `${JSON.stringify(i1)} ${JSON.stringify(i3)}; ${JSON.stringify(proj)}; distinta ${JSON.stringify(bom)}; ${inter.rows.join()}; ${JSON.stringify(docInfo)}; righe ${JSON.stringify(fl)} (distanza attesa ${((6 - 1.22687) * 2).toFixed(3)}, lunghezza 40); archi basso ${JSON.stringify(dr.arcsBottom)}, r ${arcR}; alto ${dr.arcsTop.length}; errori ${errs.join(' | ')}`);
   } catch (e) { rec(ASMC3, false, e.message.split('\n')[0]); }
 
-  const ASMC5 = 'Assieme, lavori del 4 novembre sera: flessibile con il mouse, interferenze dentro, albero sopra la vista, CSV, direzione da una faccia, numeri trascinati, vite nel foro, filetti in sezione';
+  const ASMC5 = 'Assieme, lavori del 4 novembre pomeriggio: flessibile con il mouse, interferenze dentro, albero sopra la vista, CSV, direzione da una faccia, numeri trascinati, vite nel foro, filetti in sezione';
   try {
     const { c, p, errs, insert } = await asmSetup();
     const dls = [];

@@ -112,7 +112,7 @@ Linea, rettangolo e rettangolo centrale, cerchio, archi (centro-estremi, 3 punti
 - **Creazione guidata fori** secondo le norme: passanti per vite (ISO 273), lamati (DIN 974-1), svasati (ISO 15065), filettati (foro di preparazione), da M3 a M20.
 - **Raccordo** e **Smusso** degli spigoli, lavorati **tutti insieme** come in SolidWorks: dove due raccordi si incontrano si raccordano tra loro, dove se ne incontrano tre ad angolo retto l'angolo diventa una porzione di sfera. Si raccordano anche gli archi (asole) e il bordo di un'ellisse o di una spline importata, che con un clic si sceglie tutto. Con la **propagazione tangente** (come in SolidWorks) un clic su uno spigolo lavora anche quelli che lo continuano senza angolo, per esempio tutto il bordo di un'asola.
 - **Serie lineare** (anche a griglia), **Serie circolare**, **Specchio**, **Piano di riferimento**.
-- **Corpi solidi**: casella **Unisci risultato**, cartella nell'albero, **Combina** (Aggiungi, Sottrai, Comune), **Sposta/Copia corpo**, **Elimina/Mantieni corpo**, **Ambito funzione** per scegliere i corpi di un taglio o di un foro; massa per ogni corpo, un solido per corpo nello STEP.
+- **Corpi solidi**: casella **Unisci risultato**, cartella nell'albero, **Combina** (Aggiungi, Sottrai, Comune), **Sposta/Copia corpo**, **Elimina/Mantieni corpo**, **Ambito funzione** con **Selezione automatica** per scegliere i corpi di un taglio, un foro, un'estrusione, una rivoluzione, uno sweep o una nervatura; **serie e specchio di corpi interi**; massa per ogni corpo, un solido per corpo nello STEP.
 - Albero di progettazione con modifica, soppressione, barra di ripristino, annulla e ripeti.
 
 ### Assieme

@@ -114,7 +114,7 @@ Line, corner and centre rectangle, circle, arcs (centre-ends, 3-point, tangent),
 - **Hole wizard** to standards: clearance (ISO 273), counterbore (DIN 974-1), countersink (ISO 15065), tapped (tap drill), M3 to M20.
 - **Fillet** and **Chamfer** on edges, all processed **together** as in SolidWorks: where two fillets meet they blend, where three meet at a right angle the corner becomes a spherical patch. Arcs (slots) and the edge of an imported ellipse or spline can be filleted too; one click picks the whole curved edge. With **tangent propagation** (as in SolidWorks) one click on an edge also processes the edges that continue it without a corner, for example the whole edge of a slot.
 - **Linear pattern** (also as a grid), **Circular pattern**, **Mirror**, **Reference plane**.
-- **Solid bodies**: **Unisci risultato** (Merge result) box, folder in the tree, **Combina** (Combine: Add, Subtract, Common), **Sposta/Copia corpo** (Move/Copy body), **Elimina/Mantieni corpo** (Delete/Keep body), **Ambito funzione** (Feature scope) to choose the bodies of a cut or hole; mass for each body, one solid per body in STEP.
+- **Solid bodies**: **Unisci risultato** (Merge result) box, folder in the tree, **Combina** (Combine: Add, Subtract, Common), **Sposta/Copia corpo** (Move/Copy body), **Elimina/Mantieni corpo** (Delete/Keep body), **Ambito funzione** (Feature scope) with **Selezione automatica** (Auto-select) to choose the bodies of a cut, hole, extrusion, revolve, sweep or rib; **patterns and mirrors of whole bodies**; mass for each body, one solid per body in STEP.
 - Feature tree with edit, suppress, rollback bar, undo and redo.
 
 ### Assembly
