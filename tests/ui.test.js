@@ -2230,6 +2230,62 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     rec(ASMC3, ok && !errs.length, `${JSON.stringify(i1)} ${JSON.stringify(i3)}; ${JSON.stringify(proj)}; distinta ${JSON.stringify(bom)}; ${inter.rows.join()}; ${JSON.stringify(docInfo)}; righe ${JSON.stringify(fl)} (distanza attesa ${((6 - 1.22687) * 2).toFixed(3)}, lunghezza 40); archi basso ${JSON.stringify(dr.arcsBottom)}, r ${arcR}; alto ${dr.arcsTop.length}; errori ${errs.join(' | ')}`);
   } catch (e) { rec(ASMC3, false, e.message.split('\n')[0]); }
 
+  const ASMC4 = 'Più assiemi e sottoassiemi con il mouse; piani e origine scelti nella vista; salvato e riletto; eliminazione';
+  try {
+    const { c, p, errs, insert } = await asmSetup();
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    await insert('p1'); await insert('p2');
+    const first = await p.evaluate(() => App.project.assembly.name);
+    // piani e origine nella vista: casella, clic sull'origine del secondo componente e su un bordo di piano del primo
+    await p.click('[data-cmd="mate"]'); await p.waitForTimeout(200);
+    await p.check('#asmDatumShow'); await p.waitForTimeout(100);
+    const scr = await p.evaluate(() => { const a = App.project.assembly, r = document.querySelector('#view').getBoundingClientRect(), I = a.insts[1], q = App.r.project(Assembly.toWorld(I.pose, [0, 0, 0])); return [q[0] + r.left, q[1] + r.top]; });
+    await p.mouse.move(scr[0], scr[1]); await p.waitForTimeout(80); await p.mouse.down(); await p.mouse.up(); await p.waitForTimeout(150);
+    const picked = await p.evaluate(() => [...document.querySelectorAll('#pm .selbox .chip')].map(x => x.textContent));
+    await p.evaluate(() => App.closePM(false));
+    // nuovo assieme, con un componente; ritorno; il primo lo usa come sottoassieme
+    await p.click('[data-cmd="newAsm"]'); await p.waitForTimeout(200);
+    const second = await p.evaluate(() => ({ name: App.project.assembly.name, n: App.project.assembly.insts.length, others: App.project.others.length, sel: document.querySelector('#partSel').value, list: [...document.querySelectorAll('#partSel option')].map(o => o.textContent) }));
+    await insert('p2');
+    const id2 = await p.evaluate(() => App.project.assembly.id);
+    const id1 = await p.evaluate(() => App.project.others[0].id);
+    await p.selectOption('#partSel', 'asm:' + id1); await p.waitForTimeout(200);
+    const back1 = await p.evaluate(() => ({ name: App.project.assembly.name, n: App.project.assembly.insts.length, undo: App.undoStack.length }));
+    await p.click('[data-cmd="insertPart"]'); await p.waitForTimeout(100);
+    const listed = await p.evaluate(() => [...document.querySelectorAll('#asmParts [data-part]')].map(b => b.textContent));
+    await p.click(`#asmParts [data-part="${id2}"]`); await p.waitForTimeout(250);
+    const withSub = await p.evaluate(() => ({ tree: [...document.querySelectorAll('.tinst')].map(x => x.textContent), n: App.st.bodies.length }));
+    await p.click('[data-cmd="bom"]'); await p.waitForTimeout(120);
+    const bom = await p.evaluate(() => [...document.querySelectorAll('#asmBom tbody tr')].map(r => [...r.cells].map(x => x.textContent)));
+    await p.click('#modalActions .btn-primary');
+    // da dentro il secondo, il primo non si può inserire: lo conterrebbe
+    await p.selectOption('#partSel', 'asm:' + id2); await p.waitForTimeout(200);
+    await p.click('[data-cmd="insertPart"]'); await p.waitForTimeout(100);
+    const noCycle = await p.evaluate(() => [...document.querySelectorAll('#asmParts [data-part]')].map(b => b.textContent));
+    await p.click('#modalActions button'); await p.waitForTimeout(80);
+    // tavola con il sottoassieme, salvataggio e rilettura
+    await p.selectOption('#partSel', 'asm:' + id1); await p.waitForTimeout(200);
+    await p.click('[data-ct="drawing"]'); await p.waitForTimeout(400);
+    const sheet = await p.evaluate(() => { const s = document.querySelector('#sheetHolder svg'); return { balloons: [...s.querySelectorAll('[data-balloons] text')].map(t => t.textContent).sort(), bom: [...s.querySelector('[data-bom]').querySelectorAll('text')].map(t => t.textContent).join('|') }; });
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(200);
+    await p.evaluate(() => { App.save(); App.saveNow && App.saveNow(); });
+    await p.waitForTimeout(600);
+    await p.reload(); await p.waitForFunction(() => window.App && App.r, null, { timeout: 15000 }); await p.waitForTimeout(500);
+    const reread = await p.evaluate(() => ({ mode: App.mode, name: App.project.assembly && App.project.assembly.name, others: (App.project.others || []).map(a => a.name), insts: App.project.assembly ? App.project.assembly.insts.length : -1, sel: document.querySelector('#partSel').value, err: App.st ? App.st.errors.size : -1, n: App.st ? App.st.bodies.length : -1 }));
+    // eliminare il sottoassieme lo toglie anche da lì
+    await p.evaluate(() => App.asm.switchTo(App.project.others[0].id)); await p.waitForTimeout(200);
+    await p.evaluate(() => App.asm.deleteAssembly()); await p.waitForTimeout(120);
+    await p.click('#modalActions .btn-primary'); await p.waitForTimeout(300);
+    const del = await p.evaluate(() => ({ name: App.project.assembly.name, others: App.project.others.length, insts: App.project.assembly.insts.length, opt: [...document.querySelectorAll('#partSel option')].map(o => o.textContent) }));
+    await c.close();
+    const ok = picked.length === 1 && /Origine di Perno<1>/.test(picked[0]) && second.name === 'Assieme2' && second.n === 0 && second.others === 1 && second.sel === 'asm' && second.list.filter(t => /\(assieme\)/.test(t)).length === 2
+      && back1.name === first && back1.n === 2 && listed.some(t => /Assieme2 \(sottoassieme\)/.test(t)) && withSub.n === 3 && withSub.tree.some(t => /Assieme2<1>/.test(t))
+      && bom.length === 2 && bom[1][1] === 'Perno' && bom[1][3] === '2' && !noCycle.some(t => /sottoassieme/.test(t)) && sheet.balloons.join() === '1,2' && /Perno/.test(sheet.bom)
+      && reread.mode === 'assembly' && reread.name === first && reread.others.join() === 'Assieme2' && reread.insts === 3 && reread.n === 3 && reread.err === 0
+      && del.name === first && del.others === 0 && del.insts === 2 && del.opt.filter(t => /\(assieme\)/.test(t)).length === 1;
+    rec(ASMC4, ok && !errs.length, `scelto ${JSON.stringify(picked)}; secondo ${JSON.stringify(second)}; ritorno ${JSON.stringify(back1)}; elenco ${listed.join()}; con sotto ${JSON.stringify(withSub)}; distinta ${JSON.stringify(bom)}; niente ciclo ${noCycle.join()}; tavola ${JSON.stringify(sheet)}; riletto ${JSON.stringify(reread)}; dopo eliminazione ${JSON.stringify(del)}; errori ${errs.join(' | ')}`);
+  } catch (e) { rec(ASMC4, false, e.message.split('\n')[0]); }
+
   await browser.close();
   const f = results.filter(r => !r.ok).length;
   console.log(`\n${results.length - f}/${results.length} superati`);

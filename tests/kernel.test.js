@@ -1687,6 +1687,15 @@ ASM.push(['Superfici riconosciute con precisione: sfera, cono e piano esatti o q
     yes(Assembly.fitPlane(asmFlat(1e-6))), yes(Assembly.fitPlane(asmFlat(1e-3)))],
     [1, 10, 0, 0, 0, 1, 0.5, 0, 0, -10, 1, 1, 0, 1, 0, 1, 0], 1e-9);
 }]);
+ASM.push(['Toro riconosciuto dai triangoli: intero, un pezzo e di traverso, R, r, centro e asse a mano; con uno scarto di 10⁻³ o su un paraboloide no', () => {
+  const yes = f => (f ? 1 : 0), U = 1 / Math.sqrt(3), AX = [U, U, U], E1 = [1 / Math.sqrt(2), -1 / Math.sqrt(2), 0], E2 = [AX[1] * E1[2] - AX[2] * E1[1], AX[2] * E1[0] - AX[0] * E1[2], AX[0] * E1[1] - AX[1] * E1[0]], O = [3, -7, 11];
+  const tor = (R, r, a0, a1, b0, b1, dev = 0, nu = 36, nv = 16) => asmGrid((u, v) => { const a = a0 + (a1 - a0) * u, b = b0 + (b1 - b0) * v, rho = R + r * Math.cos(b) * (1 + dev), h = r * Math.sin(b); return [0, 1, 2].map(k => O[k] + rho * Math.cos(a) * E1[k] + rho * Math.sin(a) * E2[k] + h * AX[k]); }, nu, nv);
+  const A = Assembly.fitTorus(tor(20, 5, 0, 2 * PI, 0, 2 * PI)), B = Assembly.fitTorus(tor(30, 6, 0.3, 2.5, 0, PI / 2)), C = Assembly.fitTorus(tor(14, 6, 0, 2 * PI, 0, PI / 2));
+  const dp = a => Math.abs(a.d[0] * AX[0] + a.d[1] * AX[1] + a.d[2] * AX[2]);
+  const par = asmGrid((u, v) => { const a = 2 * PI * u, r = 2 + 10 * v; return [r * Math.cos(a), r * Math.sin(a), 0.05 * r * r]; }, 36, 16);
+  return eqs([yes(A), A.R, A.r, dp(A), ...A.o, yes(A.round), yes(B), B.R, B.r, dp(B), ...B.o, yes(C), C.R, C.r, yes(Assembly.fitTorus(tor(20, 5, 0, 2 * PI, 0, 2 * PI, 1e-3))), yes(Assembly.fitTorus(par))],
+    [1, 20, 5, 1, ...O, 1, 1, 30, 6, 1, ...O, 1, 14, 6, 0, 0], 1e-6);
+}]);
 ASM.push(['Vertice: tra i vertici con quelle facce vince chi ha proprio quelle: sul bordo di una D il punto dell\'arco, non l\'estremo più vicino dove arriva anche il lato dritto', () => {
   const d = D0('D'); const b = SB(); const c = b.pt(0, 0), a1 = b.pt(10, 0), a2 = b.pt(-10, 0); b.arc(c, a1, a2); b.line(a2, a1);
   const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 5 });
@@ -1933,6 +1942,61 @@ ASM.push(['Filetti nell\'assieme: seguono posizione e rotazione del componente',
   asm.explode = { on: true, steps: [{ id: 'X1', insts: [asm.insts[0].id], dir: [0, 0, 1], dist: 40 }] };
   const e = Assembly.threadsWorld(asm, infos, { exploded: true })[0], f = Assembly.threadsWorld(asm, infos)[0];
   return eqs([...t.o, ...t.dir, t.inst === asm.insts[0].id ? 1 : 0, e.o[2], f.o[2]], [27, 2, 3, -1, 0, 0, 1, 43, 3]);
+}]);
+
+/* ---------- sottoassiemi ---------- */
+const subSet = () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }; docs.a.material = 's235'; docs.b.material = 'al6082';
+  const infos = asmSet(docs);
+  // gruppo: piastra + perno nel foro (y 0..30), asse in (40, y, -25)
+  const G = Assembly.newAssembly('Gruppo'); G.id = 'A1';
+  const P1 = Assembly.addInst(G, 'a'), P2 = Assembly.addInst(G, 'b', { pose: asmPose([150, 0, 60]) });
+  asmMate(G, infos, 'concentric', P1, asmRev(docs.a), P2, asmRev(docs.b));
+  asmMate(G, infos, 'coincident', P1, asmFace(docs.a, DN, 0), P2, asmFace(docs.b, DN, 0));
+  infos.set('A1', Assembly.subInfo(G, infos));
+  return { docs, infos, G, P1, P2 };
+};
+ASM.push(['Sottoassieme: posizioni interne dal suo risolutore; massa, baricentro pesato e distinta aperta nelle parti vere; quantità moltiplicate; numeri giusti con due copie ruotate', () => {
+  const { docs, infos, G, P2 } = subSet();
+  const top = Assembly.newAssembly('Macchina'); top.id = 'A2';
+  Assembly.addInst(top, 'A1'); Assembly.addInst(top, 'A1', { pose: asmPose([200, 0, 0], Assembly.qexp([0, PI, 0])) }); Assembly.addInst(top, 'b', { pose: asmPose([0, 100, 0]) });
+  const m = Assembly.massOf(top, infos), r = Assembly.bom(top, infos);
+  const Va = 80 * 50 * 10 - PI * 1000, Vb = PI * 100 * 30, ma = Va * 7.85 / 1000, mb = Vb * 2.7 / 1000;
+  // baricentro del gruppo: x 40, z -25, y pesato tra 5 e 15. Copia 2: girata di 180° attorno a Y: x → -40 + 200 = 160, z → 25.
+  const yG = (ma * 5 + mb * 15) / (ma + mb), Mg = ma + mb, Mt = 2 * Mg + mb;
+  const cx = (Mg * 40 + Mg * 160 + mb * 0) / Mt, cy = (2 * Mg * yG + mb * 115) / Mt, cz = (Mg * -25 + Mg * 25 + mb * 0) / Mt;
+  return eqs([P2.pose.p[0], P2.pose.p[1], P2.pose.p[2], m.mass, m.volume, m.centroid[0], m.centroid[1], m.centroid[2], r.length, r[0].name === 'piastra' ? 1 : 0, r[0].qty, r[1].name === 'perno' ? 1 : 0, r[1].qty, r[1].mass, r.reduce((s, x) => s + x.mass, 0) - m.mass, r[1].prefix === top.insts[0].id + '/' + P2.id + '/' ? 1 : 0, G.id === 'A1' ? 1 : 0],
+    [40, 0, -25, Mt, 2 * (Va + Vb) + Vb, cx, cy, cz, 2, 1, 2, 1, 3, 3 * mb, 0, 1, 1], 1e-5);
+}]);
+ASM.push(['Sottoassieme: si accoppia con le facce dei suoi pezzi (concentrico su un perno interno, coincidente); interferenze come un blocco; filetti interni portati fuori; non può contenere se stesso', () => {
+  const { docs, infos, G, P1, P2 } = subSet();
+  const H = plateHole(100, 100, 5, 50, 50, 10); const hi = Assembly.partInfo(H); infos.set('h', hi); docs.h = H;
+  const top = Assembly.newAssembly('Macchina'); top.id = 'A2';
+  const base = Assembly.addInst(top, 'h'), S = Assembly.addInst(top, 'A1', { pose: asmPose([300, 40, 100]) });
+  // il cilindro del perno dentro il gruppo: nome nella scena del gruppo; la faccia bassa della piastra del gruppo
+  const si = infos.get('A1'), cyl = [...new Set(si.st.body.map(p => p.t))].map(t => si.st.tags.get(t)).find(t => t.kind === 'rev' && t.inst === P2.id && t.R !== 0);
+  const low = [...new Set(si.st.body.map(p => p.t))].map(t => si.st.tags.get(t)).find(t => t.kind === 'plane' && t.inst === P1.id && Math.abs(t.n[1] + 1) < 1e-9);
+  asmMate(top, infos, 'concentric', base, asmRev(H), S, { k: 'face', name: cyl.name });
+  asmMate(top, infos, 'coincident', base, asmFace(H, UP, 5), S, { k: 'face', name: low.name }, { s: -1 });
+  const sol = Assembly.solve(top, infos);
+  // asse del foro base in (50, y, -50), perno del gruppo in (40, y, -25): spostamento (10, ·, -25); y: la faccia bassa (0 nel gruppo) sulla faccia alta della base (5)
+  const it = Assembly.interferences(top, infos);
+  // gruppo abbassato di 5: la sua piastra entra per 5 nella base; il perno è nel foro della base. In comune (80×50 − π·10²)·5
+  const py = S.pose.p[1]; S.pose.p[1] = 0; const it2 = Assembly.interferences(top, infos); S.pose.p[1] = py;
+  const hasThread = Assembly.threadsWorld(top, infos).length;
+  const A2 = Assembly.newAssembly('X'); A2.id = 'A3'; Assembly.addInst(A2, 'A1');
+  const all = [G, top, A2];
+  return eqs([sol.ok ? 1 : 0, S.pose.p[0], S.pose.p[1], S.pose.p[2], sol.dof.total, it.pairs, it.list.length, it2.list.length, it2.list[0].volume, hasThread, Assembly.containsAsm(A2, 'A1', all) ? 1 : 0, Assembly.containsAsm(G, 'A3', all) ? 1 : 0, Assembly.containsAsm(G, 'A1', all) ? 1 : 0],
+    [1, 10, 5, -25, 1, 1, 0, 1, (4000 - PI * 100) * 5, 0, 1, 0, 1], 1e-6);
+}]);
+ASM.push(['Sottoassieme: filetti di una vite dentro seguono le due trasformazioni; componente senza solido non si conta', () => {
+  const docs = { s: Model.fastenerDoc({ type: 'iso4762', size: 'M6', length: 20 }), e: D0('v'), n: block(5, 5, 5) }, infos = asmSet(docs);
+  const G = Assembly.newAssembly('G'); G.id = 'A1'; Assembly.addInst(G, 's', { pose: asmPose([10, 0, 0]) }); Assembly.addInst(G, 'e'); Assembly.addInst(G, 'n', { pose: asmPose([100, 0, 0]) });
+  infos.set('A1', Assembly.subInfo(G, infos));
+  const top = Assembly.newAssembly('T'); top.id = 'A2'; Assembly.addInst(top, 'A1', { pose: asmPose([0, 0, 100], Assembly.qexp([0, 0, PI / 2])) });
+  // base del filetto (0,-26,0) + (10,0,0) = (10,-26,0); ruotata attorno a Z: (26, 10, 0); poi (26, 10, 100)
+  const t = Assembly.threadsWorld(top, infos)[0], m = Assembly.massOf(top, infos), b = Assembly.bom(top, infos);
+  return eqs([...t.o, b.length, b[0].qty, b[1].solid ? 1 : 0, m.noSolid.length, m.comps.length, m.noMaterial.length, m.noMaterial[0] === 'n' ? 1 : 0], [26, 10, 100, 3, 1, 0, 0, 1, 1, 1]);
 }]);
 
 function run(tol = TOL) {

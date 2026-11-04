@@ -40,10 +40,11 @@ Chiesto dall'utente il 28 ottobre 2026. **La base è fatta il 4 novembre 2026** 
 
 **Ancora da fare, in una chat nuova:**
 
-- Più assiemi per progetto e sottoassiemi.
-- Tori e superfici libere nelle facce curve degli STEP; scegliere piani e origine anche nella vista.
+- Sottoassieme flessibile; Verifica interferenze dentro i sottoassiemi.
+- Superfici libere nelle facce curve degli STEP (non hanno un asse); scegliere piani e origine anche nell'albero.
+- Numeri di posizione trascinabili; direzione dell'esplosione presa da una faccia; distinta base in CSV.
 
-**Fatti il 4 novembre:** calcoli sull'assieme (massa, distinta base, interferenze); vista esplosa e tavola dell'assieme; accoppiamenti con i piani e l'origine delle parti; coni e sfere nelle facce curve degli STEP; vertici che si ritrovano quando cambia la parte.
+**Fatti il 4 novembre:** calcoli sull'assieme (massa, distinta base, interferenze); vista esplosa e tavola dell'assieme; più assiemi e sottoassiemi; tori degli STEP; piani e origine nella vista; accoppiamenti con i piani e l'origine delle parti; coni e sfere nelle facce curve degli STEP; vertici che si ritrovano quando cambia la parte.
 - Se servirà: parti collegate a file separati (scartate per ora: funzionerebbero solo in Chrome ed Edge).
 
 ## Viti, bulloni e filettature
@@ -69,4 +70,4 @@ Il marchio ora costa troppo. **Fatti:** condizioni aggiuntive GPL 3 sezione 7 (`
 
 - Sfondo del disegno: **fatti** il 3 novembre testi e quote, il 4 novembre tratteggi, tolleranze geometriche, MULTILEADER e tabelle (limite: le tabelle dei DWG dal 2010 in poi, che LibreDWG non scrive).
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
-- Le pagine pubblicate su claude.ai: «Banco CAD» (versione 21 del 4 novembre) e «Convertitore DWG → DXF» (3 novembre notte) sono condivise con chiunque abbia il link. **Il Banco CAD su claude.ai non è aggiornato**: mancano sfondo completo, Ambito funzione, condizioni aggiuntive e assiemi; si ripubblica se l'utente lo chiede. La versione di riferimento resta `index.html` in questo repository.
+- Le pagine pubblicate su claude.ai: «Banco CAD» (versione 21 del 4 novembre) e «Convertitore DWG → DXF» (3 novembre notte) sono condivise con chiunque abbia il link. **Il Banco CAD su claude.ai non è aggiornato**: mancano sfondo completo, Ambito funzione, condizioni aggiuntive, assiemi e viti; si ripubblica se l'utente lo chiede. La versione di riferimento resta `index.html` in questo repository.

@@ -7068,6 +7068,76 @@ self.postMessage({ hello: true });`;
     if (k < 0) { dd = mul(dd, -1); k = -k; }
     return { t: 'axis', o, d: dd, round: true, cone: true, tan: k, apex };
   }
+  // autovettore del valore più piccolo di una matrice simmetrica (Jacobi)
+  function minEig(M) {
+    const n = M.length, A = M.map(r => r.slice()), V = M.map((_, i) => M.map((__, j) => i === j ? 1 : 0));
+    for (let sweep = 0; sweep < 60; sweep++) {
+      let off = 0;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += A[i][j] * A[i][j];
+      if (off < 1e-30) break;
+      for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
+        if (Math.abs(A[p][q]) < 1e-300) continue;
+        const th = (A[q][q] - A[p][p]) / (2 * A[p][q]), t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(t * t + 1), sn = t * c;
+        for (let k = 0; k < n; k++) { const a = A[k][p], b = A[k][q]; A[k][p] = c * a - sn * b; A[k][q] = sn * a + c * b; }
+        for (let k = 0; k < n; k++) { const a = A[p][k], b = A[q][k]; A[p][k] = c * a - sn * b; A[q][k] = sn * a + c * b; }
+        for (let k = 0; k < n; k++) { const a = V[k][p], b = V[k][q]; V[k][p] = c * a - sn * b; V[k][q] = sn * a + c * b; }
+      }
+    }
+    let m = 0; for (let i = 1; i < n; i++) if (A[i][i] < A[m][m]) m = i;
+    return V.map(r => r[m]);
+  }
+  // toro: l'asse dalle normali (ogni normale di una superficie di rivoluzione incontra l'asse: Pottmann, spazio delle rette), la sezione da un cerchio nel piano raggio-quota, poi Gauss-Newton sui vertici
+  function fitTorus(polys) {
+    const keys = new Map();
+    for (const p of polys) for (const v of p.v) keys.set(v.map(x => x.toFixed(7)).join(), v);
+    const pts = [...keys.values()];
+    if (pts.length < 12) return null;
+    const box = pts.reduce((b, q) => { for (let k = 0; k < 3; k++) { b.mn[k] = Math.min(b.mn[k], q[k]); b.mx[k] = Math.max(b.mx[k], q[k]); } return b; }, { mn: [Infinity, Infinity, Infinity], mx: [-Infinity, -Infinity, -Infinity] });
+    const g = mul(add(box.mn, box.mx), 0.5), size = len(sub(box.mx, box.mn)) || 1;
+    const Q = pts.map(q => mul(sub(q, g), 1 / size));
+    const M = [0, 1, 2, 3, 4, 5].map(() => [0, 0, 0, 0, 0, 0]);
+    for (const p of polys) for (let i = 1; i < p.v.length - 1; i++) {
+      const a = p.v[0], b = p.v[i], c = p.v[i + 1], cr = cross(sub(b, a), sub(c, a)), w = len(cr);
+      if (w < 1e-14) continue;
+      const n = mul(cr, 1 / w), pc = mul(sub(mul(add(add(a, b), c), 1 / 3), g), 1 / size), m = cross(pc, n), row = [...n, ...m];
+      for (let r = 0; r < 6; r++) for (let t = 0; t < 6; t++) M[r][t] += w * row[r] * row[t];
+    }
+    const e = minEig(M), cv = [e[3], e[4], e[5]], cl = len(cv);
+    if (!(cl > 1e-9)) return null;
+    const d0 = mul(cv, 1 / cl), a0 = mul(cross(cv, [e[0], e[1], e[2]]), 1 / (cl * cl));
+    const u0 = norm(cross(d0, Math.abs(d0[0]) < 0.8 ? [1, 0, 0] : [0, 1, 0])), v0 = cross(d0, u0);
+    // cerchio (Kåsa) nel piano raggio-quota
+    const A3 = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], b3 = [0, 0, 0];
+    for (const q of Q) {
+      const w = sub(q, a0), h = dot(w, d0), rho = len(sub(w, mul(d0, h))), row = [2 * rho, 2 * h, 1], rhs = rho * rho + h * h;
+      for (let i = 0; i < 3; i++) { b3[i] += row[i] * rhs; for (let j = 0; j < 3; j++) A3[i][j] += row[i] * row[j]; }
+    }
+    const c3 = solveLinear(A3, b3);
+    if (!c3) return null;
+    const x = [dot(a0, u0), dot(a0, v0), 0, 0, c3[0], c3[1], Math.sqrt(Math.max(1e-12, c3[2] + c3[0] * c3[0] + c3[1] * c3[1]))];
+    const dirOf7 = y => norm(add(d0, add(mul(u0, y[2]), mul(v0, y[3]))));
+    const residual = y => {
+      const dd = dirOf7(y), o = add(add(mul(u0, y[0]), mul(v0, y[1])), mul(d0, dot(a0, d0)));
+      return Q.map(q => { const w = sub(q, o), h = dot(w, dd), rho = len(sub(w, mul(dd, h))); return Math.hypot(rho - y[4], h - y[5]) - y[6]; });
+    };
+    const sum = r => r.reduce((a, v) => a + v * v, 0);
+    let r0 = residual(x), e0 = sum(r0);
+    for (let it = 0; it < 30 && e0 > 1e-26 * Q.length; it++) {
+      const J = x.map((_, k) => { const xp = x.slice(), xm = x.slice(); xp[k] += 1e-6; xm[k] -= 1e-6; const rp = residual(xp), rm = residual(xm); return rp.map((v, i) => (v - rm[i]) / 2e-6); });
+      const st = solveLinear(J.map(a => J.map(b => { let c = 0; for (let i = 0; i < a.length; i++) c += a[i] * b[i]; return c; })), J.map(a => { let c = 0; for (let i = 0; i < a.length; i++) c -= a[i] * r0[i]; return c; }));
+      if (!st) return null;
+      let done = false;
+      for (let al = 1, t = 0; t < 12; al *= 0.5, t++) {
+        const y = x.map((v, i) => v + al * st[i]), ry = residual(y), ey = sum(ry);
+        if (ey < e0) { for (let i = 0; i < 7; i++) x[i] = y[i]; r0 = ry; e0 = ey; done = true; break; }
+      }
+      if (!done) break;
+    }
+    if (!(x[6] > 1e-6) || !(x[4] > 1e-6)) return null;
+    for (const v of r0) if (Math.abs(v) > FIT_TOL * (x[4] + x[6])) return null;
+    const dd = dirOf7(x), oL = add(add(mul(u0, x[0]), mul(v0, x[1])), mul(d0, dot(a0, d0)));
+    return { t: 'axis', o: add(g, mul(add(oL, mul(dd, x[5])), size)), d: dd, round: true, torus: true, R: x[4] * size, r: x[6] * size };
+  }
   function distPtSeg(p, a, b) {
     const ab = sub(b, a), L2 = dot(ab, ab);
     const t = L2 > 0 ? Math.max(0, Math.min(1, dot(sub(p, a), ab) / L2)) : 0;
@@ -7159,7 +7229,7 @@ self.postMessage({ hello: true });`;
       const polys = st.body.filter(p => { const t = st.tags.get(p.t); return t.bf === tg.bf && t.feature === tg.feature; });
       const n0 = polys[0].p.n;
       if (polys.some(p => len(cross(p.p.n, n0)) > 1e-6)) {
-        return fitPlane(polys) || fitCylinder(polys) || fitCone(polys) || fitSphere(polys) || { err: 'Questa faccia curva non è un cilindro, un cono o una sfera: per l\'accoppiamento usa un altro elemento della parte.' };
+        return fitPlane(polys) || fitCylinder(polys) || fitCone(polys) || fitSphere(polys) || fitTorus(polys) || { err: 'Questa faccia curva non è un cilindro, un cono, una sfera o un toro: per l\'accoppiamento usa un altro elemento della parte.' };
       }
     }
     return { t: 'plane', c: mul(tg.n, tg.w), n: tg.n.slice() };
@@ -7684,24 +7754,46 @@ self.postMessage({ hello: true });`;
       comps.push({ id: inst.id, part: inst.part, volume: m.volume, area: m.area, mass: m.mass, centroid, material: m.material });
       volume += m.volume; area += m.area; mass += m.mass;
       c = add(c, mul(centroid, m.mass));
-      if (info.doc.material === 'none' && !noMaterial.includes(inst.part)) noMaterial.push(inst.part);
+      for (const pid of info.sub ? info.noMaterial : info.doc.material === 'none' ? [inst.part] : []) if (!noMaterial.includes(pid)) noMaterial.push(pid);
       for (const p of info.st.body) for (const v of p.v) { const w = toWorld(inst.pose, v); for (let k = 0; k < 3; k++) { if (w[k] < mn[k]) mn[k] = w[k]; if (w[k] > mx[k]) mx[k] = w[k]; } }
     }
     return { comps, noSolid, noMaterial, volume, area, mass, centroid: mass > 0 ? mul(c, 1 / mass) : [0, 0, 0], bbox: comps.length ? { mn, mx } : null };
   }
-  // distinta base: una riga per parte, nell'ordine in cui le parti entrano nell'assieme
+  // distinta base: una riga per parte, nell'ordine in cui le parti entrano nell'assieme; i sottoassiemi si aprono, così si contano le parti vere. prefix = il nome delle facce di quel pezzo nella scena
   function bom(asm, infos) {
     const rows = new Map();
-    for (const inst of asm.insts) {
-      let r = rows.get(inst.part);
+    const count = (part, n, info, prefix) => {
+      let r = rows.get(part);
       if (!r) {
-        const info = infos.get(inst.part), m = partMass(info);
-        r = { item: rows.size + 1, part: inst.part, name: info && info.doc ? info.doc.name : 'Parte', qty: 0, material: m ? m.material : null, unitMass: m ? m.mass : 0, mass: 0, solid: !!m };
-        rows.set(inst.part, r);
+        const m = partMass(info);
+        r = { item: rows.size + 1, part, name: info && info.doc ? info.doc.name : 'Parte', qty: 0, material: m ? m.material : null, unitMass: m ? m.mass : 0, mass: 0, solid: !!m, prefix };
+        rows.set(part, r);
       }
-      r.qty++; r.mass += r.unitMass;
-    }
+      r.qty += n; r.mass += n * r.unitMass;
+    };
+    const walk = (a, pre, inf) => {
+      for (const inst of a.insts) {
+        const info = inf.get(inst.part);
+        if (info && info.sub) walk(info.asm, pre + inst.id + '/', info.infos);
+        else count(inst.part, 1, info, pre + inst.id + '/');
+      }
+    };
+    walk(asm, '', infos);
     return [...rows.values()];
+  }
+  // un assieme dentro un altro: per chi lo usa è come una parte rigida; le sue posizioni interne vengono dal suo risolutore
+  function subInfo(A, infos) {
+    solve(A, infos);
+    const st = scene(A, infos), m = massOf(A, infos);
+    const empty = !st.body.length, bbox = empty ? { mn: [0, 0, 0], mx: [0, 0, 0] } : CSG.bbox(st.body);
+    st.holes = []; st.planes = new Map();
+    return { sub: A.id, asm: A, infos, doc: { name: A.name, features: [], material: 'none' }, st, planes: [], bbox, c: mul(add(bbox.mn, bbox.mx), 0.5), r: len(sub(bbox.mx, bbox.mn)) / 2, empty, ents: new Map(), used: new Set(st.body.map(p => p.t)),
+      mp: empty ? null : { volume: m.volume, area: m.area, mass: m.mass, centroid: m.centroid, material: { id: 'mixed', name: 'Vari' }, bbox }, noMaterial: m.noMaterial, threads: threadsWorld(A, infos) };
+  }
+  // vero se l'assieme a contiene target, anche più in basso: non si può mettere un assieme dentro se stesso
+  function containsAsm(a, target, all) {
+    if (a.id === target) return true;
+    return a.insts.some(i => { const b = all.find(x => x.id === i.part); return b && containsAsm(b, target, all); });
   }
   // sotto questa frazione del componente più piccolo due parti si toccano soltanto (resti di calcolo sulle superfici esatte)
   const INT_TOL = 1e-8;
@@ -7751,7 +7843,7 @@ self.postMessage({ hello: true });`;
       const info = infos.get(inst.part);
       if (!info || info.empty) continue;
       const pose = opts.exploded ? explodedPose(asm, inst) : inst.pose;
-      for (const t of Model.threadsOf(info.doc, info.st)) out.push({ ...t, inst: inst.id, o: toWorld(pose, t.o), dir: dirWorld(pose, t.dir) });
+      for (const t of info.sub ? info.threads : Model.threadsOf(info.doc, info.st)) out.push({ ...t, inst: inst.id, o: toWorld(pose, t.o), dir: dirWorld(pose, t.dir) });
     }
     return out;
   }
@@ -7774,7 +7866,7 @@ self.postMessage({ hello: true });`;
     return { list: sortInterferences(list), pairs: setup.pairs.length, failed };
   }
 
-  const api = { threadsWorld, isExploded, explodeOffset, explodedPose, explodeLines, autoExplode, massOf, bom, interferences, interferenceSetup, interferencePair, sortInterferences, newAssembly, addInst, uid, instLabel, partInfo, datumsOf, identity, toWorld, toLocal, dirWorld, entityOf, worldEnt, MATE_TYPES, MATE_LABEL, allowedTypes, suggest, mateDefaults, mateRows, solve, solveStatus, drag, scene, qexp, qmul, qnorm, qrot, moved, fitPlane, fitCylinder, fitCone, fitSphere };
+  const api = { subInfo, containsAsm, fitTorus, threadsWorld, isExploded, explodeOffset, explodedPose, explodeLines, autoExplode, massOf, bom, interferences, interferenceSetup, interferencePair, sortInterferences, newAssembly, addInst, uid, instLabel, partInfo, datumsOf, identity, toWorld, toLocal, dirWorld, entityOf, worldEnt, MATE_TYPES, MATE_LABEL, allowedTypes, suggest, mateDefaults, mateRows, solve, solveStatus, drag, scene, qexp, qmul, qnorm, qrot, moved, fitPlane, fitCylinder, fitCone, fitSphere };
   if (isNode) module.exports = api; else root.Assembly = api;
 })(this);
 
@@ -8440,6 +8532,7 @@ self.postMessage({ hello: true });`;
     export: I('<path d="M12 3v12M7 10l5 5 5-5M4 19h16"/>'),
     print: I('<path d="M6 9V3h12v6M6 17H4v-7h16v7h-2M7 14h10v7H7z"/>'),
     verify: I('<path d="M4 12l5 5L20 6"/>'),
+    newAsm: I('<path d="M4 10l6-3 6 3v7l-6 3-6-3z"/><path d="M4 10l6 3 6-3M10 13v7"/><path d="M19 3v6M16 6h6"/>'),
     fastener: I('<path d="M6 3h12v5H6zM9 8v13l3 1 3-1V8M9 12l6-1M9 16l6-1"/>'),
     bom: I('<path d="M4 5h16v14H4zM4 10h16M4 15h16M9 5v14"/>'),
     explode: I('<path d="M5 15l6 3 6-3-6-3zM5 7l6 3 6-3-6-3z"/><path d="M19 4v5M19 15v5M17 6l2-2 2 2M17 18l2 2 2-2"/>'),
@@ -9281,6 +9374,7 @@ self.postMessage({ hello: true });`;
     assembly: [
       ['insertPart', 'Inserisci parte', 'Aggiunge una parte del progetto o un file (STEP, IGES, STL, OBJ, progetto) come componente dell\'assieme'],
       ['addPart', 'Nuova parte', 'Crea una parte vuota in questo progetto e la apre', { icon: 'sketch' }],
+      ['newAsm', 'Nuovo assieme', 'Crea un altro assieme in questo progetto; può diventare un sottoassieme di un altro'],
       ['fastener', 'Viti e bulloni', 'Inserisce una vite, un dado o una rondella di norma, con il filetto indicato'],
       '-',
       ['mate', 'Accoppiamento', 'Lega due elementi di due componenti: coincidente, concentrico, parallelo, perpendicolare, distanza, angolo'],
@@ -9342,6 +9436,7 @@ self.postMessage({ hello: true });`;
         Features.create(id); return;
       case 'insertPart': return App.asm.insertDialog();
       case 'fastener': return App.asm.fastenerDialog();
+      case 'newAsm': return App.asm.newAssembly();
       case 'addPart': return addNewPart();
       case 'mate': return App.asm.openMate();
       case 'movepart': return App.asm.openMove();
@@ -10335,7 +10430,7 @@ self.postMessage({ hello: true });`;
     }
     const restored = load();
     $('#docName').value = App.doc.name || 'Parte1';
-    $('#partSel').addEventListener('change', e => { if (e.target.value === 'asm') App.setCmdTab('assembly'); else openPart(e.target.value); });
+    $('#partSel').addEventListener('change', e => { const v = e.target.value; if (v === 'asm') App.setCmdTab('assembly'); else if (v.startsWith('asm:')) App.asm.switchTo(v.slice(4)); else openPart(v); });
     $('#docName').addEventListener('change', e => {
       if (App.mode === 'assembly') { const v = e.target.value.trim() || 'Assieme1'; App.change(() => { App.project.assembly.name = v; }, { noRegen: true }); App.asm.refreshPartSel(); App.renderTree(); return; }
       const v = e.target.value.trim() || 'Parte1'; App.change(() => { App.doc.name = v; }, { noRegen: true }); App.asm.refreshPartSel(); App.renderTree(); });
@@ -10422,7 +10517,7 @@ self.postMessage({ hello: true });`;
   App.docTitle = () => App.mode === 'assembly' && P().assembly ? P().assembly.name : App.doc.name;
   // Annulla: ogni parte e l'assieme hanno i loro passi
   const undoCtx = new Map();
-  const ctxKey = () => App.mode === 'assembly' ? 'asm' : P().active;
+  const ctxKey = () => App.mode === 'assembly' ? 'asm:' + (P().assembly.id || '') : P().active;
   function ctxStore() { undoCtx.set(ctxKey(), { undo: App.undoStack, redo: App.redoStack }); }
   function ctxLoad() { const c = undoCtx.get(ctxKey()); App.undoStack = c ? c.undo : []; App.redoStack = c ? c.redo : []; updateUndo(); }
   // dati da salvare: con una parte sola e senza assieme il file resta identico a prima
@@ -10430,7 +10525,7 @@ self.postMessage({ hello: true });`;
     const pr = P(), data = { doc, drawing: App.drawingState || null };
     if (isMulti()) {
       data.project = {
-        active: pr.active, next: pr.next, assembly: pr.assembly, open: App.mode === 'assembly' ? 'assembly' : 'part',
+        active: pr.active, next: pr.next, assembly: pr.assembly, others: pr.others && pr.others.length ? pr.others : undefined, open: App.mode === 'assembly' ? 'assembly' : 'part',
         parts: pr.parts.map(p => p.id === pr.active ? { id: p.id } : { id: p.id, doc: p.doc, drawing: p.drawing || null }),
       };
     }
@@ -10443,13 +10538,14 @@ self.postMessage({ hello: true });`;
     undoCtx.clear();
     if (s && Array.isArray(s.parts) && s.parts.some(p => p.id === s.active)) {
       App.project = { parts: s.parts.filter(p => p.id === s.active || (p.doc && Array.isArray(p.doc.features))).map(p => p.id === s.active ? { id: p.id, doc: d.doc, drawing: d.drawing || null } : p), active: s.active, assembly: s.assembly || null, next: s.next || s.parts.length + 1 };
+      App.project.others = Array.isArray(s.others) ? s.others : [];
       return s.open === 'assembly' && s.assembly ? 'assembly' : 'part';
     }
     App.project = { parts: [{ id: 'p1', doc: d.doc, drawing: d.drawing || null }], active: 'p1', assembly: null, next: 2 };
     return 'part';
   }
   App.setProject = setProject;
-  function isMulti() { const a = P().assembly; return P().parts.length > 1 || !!(a && (a.insts.length || a.mates.length)); }
+  function isMulti() { const a = P().assembly; return P().parts.length > 1 || !!(P().others && P().others.length) || !!(a && (a.insts.length || a.mates.length)); }
   App.isMultiProject = isMulti;
   function uniquePartName(base) {
     syncActive();
@@ -10490,16 +10586,23 @@ self.postMessage({ hello: true });`;
     openPart(addPartDoc(doc));
     toast('Parte nuova: «' + doc.name + '». Per tornare all\'assieme usa la scheda Assieme.');
   }
+  // togli da tutti gli assiemi i componenti di quella parte o di quell'assieme, con i loro accoppiamenti (quegli Annulla non valgono più)
+  function dropFromAssemblies(id) {
+    for (const a of [P().assembly, ...(P().others || [])]) {
+      if (!a) continue;
+      const gone = new Set(a.insts.filter(i => i.part === id).map(i => i.id));
+      a.insts = a.insts.filter(i => !gone.has(i.id));
+      a.mates = a.mates.filter(m => !gone.has(m.a.inst) && !gone.has(m.b.inst));
+      if (a.explode) for (const st of a.explode.steps) st.insts = st.insts.filter(x => !gone.has(x));
+    }
+    for (const [k, c] of undoCtx) if (k.startsWith('asm:')) { c.undo.length = 0; c.redo.length = 0; }
+  }
+  App.dropFromAssemblies = dropFromAssemblies;
   function deletePartDialog() {
     if (P().parts.length < 2) { toast('Il progetto ha una parte sola: per ricominciare usa Nuovo progetto.'); return; }
     const a = P().assembly, part = activePart(), used = a ? a.insts.filter(i => i.part === part.id).length : 0;
     confirmModal('Eliminare «' + (App.doc.name || 'la parte') + '» dal progetto?', (used ? 'Spariscono anche i suoi ' + used + ' componenti nell\'assieme, con i loro accoppiamenti. ' : '') + 'Questa operazione non si può annullare.', 'Elimina la parte', () => {
-      if (a) {
-        const gone = new Set(a.insts.filter(i => i.part === part.id).map(i => i.id));
-        a.insts = a.insts.filter(i => !gone.has(i.id));
-        a.mates = a.mates.filter(m => !gone.has(m.a.inst) && !gone.has(m.b.inst));
-        const c = undoCtx.get('asm'); if (c) { c.undo.length = 0; c.redo.length = 0; }
-      }
+      dropFromAssemblies(part.id);
       const other = P().parts.find(p => p.id !== part.id);
       undoCtx.delete(part.id);
       openPart(other.id);
@@ -10515,7 +10618,12 @@ self.postMessage({ hello: true });`;
     let shown = null, last = null, verts = null, D = null, dragRaf = 0;
     const asm = () => P().assembly;
     const partOf = id => P().parts.find(p => p.id === id);
-    const partName = id => { const p = partOf(id); return p && p.doc ? p.doc.name : 'Parte'; };
+    const others = () => P().others || (P().others = []);
+    const allAsm = () => [P().assembly, ...others()].filter(Boolean);
+    const asmById = id => allAsm().find(a => a.id === id);
+    const partName = id => { const p = partOf(id); if (p && p.doc) return p.doc.name; const a = asmById(id); return a ? a.name : 'Parte'; };
+    // ogni assieme ha il suo identificatore, a partire dalla prima volta che serve
+    function ensureIds() { for (const a of allAsm()) if (!a.id) a.id = 'A' + (P().next++); }
     const instById = id => asm().insts.find(i => i.id === id);
     const label = inst => Assembly.instLabel(inst, partName(inst.part));
     // parti ricostruite: si rifà solo quella cambiata
@@ -10528,6 +10636,17 @@ self.postMessage({ hello: true });`;
         if (!c || c.j !== j) { c = { j, info: Assembly.partInfo(p.doc) }; cache.set(p.id, c); }
         out.set(p.id, c.info);
       }
+      // i sottoassiemi, dal basso: anche quelli che si stanno per inserire
+      ensureIds();
+      const doing = new Set();
+      const build = a => {
+        if (out.has(a.id) || doing.has(a.id)) return;
+        doing.add(a.id);
+        for (const i of a.insts) { const b = asmById(i.part); if (b) build(b); }
+        doing.delete(a.id);
+        out.set(a.id, Assembly.subInfo(a, out));
+      };
+      for (const a of others()) build(a);
       infos = out;
       return infos;
     }
@@ -10567,6 +10686,7 @@ self.postMessage({ hello: true });`;
       s.innerHTML = '';
       for (const p of P().parts) s.append(el('option', { value: p.id }, p.doc.name || 'Parte'));
       s.append(el('option', { value: 'asm' }, (asm() ? asm().name : 'Assieme') + ' (assieme)'));
+      for (const a of others()) s.append(el('option', { value: 'asm:' + a.id }, a.name + ' (assieme)'));
       s.value = App.mode === 'assembly' ? 'asm' : P().active;
     }
     function enter() {
@@ -10576,6 +10696,7 @@ self.postMessage({ hello: true });`;
       syncActive();
       ctxStore();
       if (!asm()) P().assembly = Assembly.newAssembly();
+      ensureIds();
       App.mode = 'assembly'; $('#app').dataset.mode = 'assembly';
       ctxLoad();
       App.sel = []; App.hover = null;
@@ -10616,10 +10737,47 @@ self.postMessage({ hello: true });`;
       refreshPartSel();
       return inst;
     }
+    /* ---------- più assiemi e sottoassiemi ---------- */
+    function switchTo(id) {
+      if (App.mode !== 'assembly') App.setCmdTab('assembly');
+      if (App.pm) App.closePM(false);
+      const target = asmById(id);
+      if (!target || target === asm()) { refreshPartSel(); return; }
+      ctxStore();
+      P().others = others().filter(a => a !== target).concat([asm()]);
+      P().assembly = target;
+      ctxLoad();
+      App.sel = []; App.hover = null;
+      $('#docName').value = target.name;
+      regen(); App.r.fit(); refreshPartSel(); App.save();
+    }
+    function newAssembly() {
+      ensureIds();
+      const names = new Set(allAsm().map(a => a.name));
+      let k = 1; while (names.has('Assieme' + k)) k++;
+      const a = Assembly.newAssembly('Assieme' + k); a.id = 'A' + (P().next++);
+      others().push(a);
+      switchTo(a.id);
+    }
+    function deleteAssembly() {
+      if (!others().length) { toast('Il progetto ha un assieme solo.'); return; }
+      const a = asm();
+      confirmModal('Eliminare «' + a.name + '» dal progetto?', 'Se è usato come sottoassieme in altri assiemi, sparisce anche da lì. Le parti restano. Non si può annullare.', 'Elimina', () => {
+        const next = others()[0];
+        switchTo(next.id);
+        P().others = others().filter(x => x !== a);
+        App.dropFromAssemblies(a.id);
+        regen(); refreshPartSel(); App.save();
+      });
+    }
+    // apre una parte o, se il componente è un sottoassieme, quell'assieme
+    function openComponent(id) { if (asmById(id)) switchTo(id); else openPart(id); }
     function insertDialog() {
       if (App.pm) App.closePM(false);
       syncActive();
-      const rows = P().parts.map(p => `<button type="button" class="relbtn" data-part="${esc(p.id)}">${esc(p.doc.name || 'Parte')}</button>`).join(' ');
+      ensureIds();
+      const subs = others().filter(a => a.insts.length && !Assembly.containsAsm(a, asm().id, allAsm()));
+      const rows = P().parts.map(p => `<button type="button" class="relbtn" data-part="${esc(p.id)}">${esc(p.doc.name || 'Parte')}</button>`).concat(subs.map(a => `<button type="button" class="relbtn" data-part="${esc(a.id)}">${esc(a.name)} (sottoassieme)</button>`)).join(' ');
       modal('Inserisci parte', `<p class="note">Scegli una parte del progetto. Si può inserire più volte: le copie cambiano tutte insieme quando modifichi la parte.</p>
         <div class="btnrow" id="asmParts">${rows}</div>
         <p class="note">Oppure scegli un file: diventa una parte nuova di questo progetto (una copia: il file resta dov'è). Un file STEP con più corpi dà una parte per ogni corpo, nelle posizioni del file.</p>
@@ -10707,7 +10865,7 @@ self.postMessage({ hello: true });`;
     function deleteMate(m) { App.change(() => { asm().mates = asm().mates.filter(x => x !== m); App.sel = []; }); }
     function instMenu(e, inst) {
       showCtx(e.clientX, e.clientY, [
-        ['Apri la parte', () => openPart(inst.part)],
+        [asmById(inst.part) ? 'Apri l\'assieme' : 'Apri la parte', () => openComponent(inst.part)],
         ['Copia il componente', () => copyInst(inst)],
         [inst.fixed ? 'Libera' : 'Fissa', () => setFixed(inst, !inst.fixed)],
         '-',
@@ -10739,7 +10897,7 @@ self.postMessage({ hello: true });`;
       if (inst) { instMenu({ clientX: cx, clientY: cy }, inst); return; }
       showCtx(cx, cy, [['Inserisci parte', () => insertDialog()], ['Adatta alla finestra', () => App.r.fit()]]);
     }
-    function dblclick(x, y) { const inst = instOfItem(pickAt(x, y, ['face'])); if (inst) openPart(inst.part); }
+    function dblclick(x, y) { const inst = instOfItem(pickAt(x, y, ['face'])); if (inst) openComponent(inst.part); }
     function key(e) {
       if ((e.key !== 'Delete' && e.key !== 'Backspace') || App.pm) return;
       const s = App.sel[0]; if (!s) return;
@@ -10756,7 +10914,7 @@ self.postMessage({ hello: true });`;
         if (o.ctx) n.addEventListener('contextmenu', e => { e.preventDefault(); o.ctx(e); });
         return n;
       };
-      t.append(node('assembly', a.name, { title: 'L\'assieme' }));
+      t.append(node('assembly', a.name, { title: 'L\'assieme', ctx: e => showCtx(e.clientX, e.clientY, [['Nuovo assieme', () => newAssembly()], ...(others().length ? [['Elimina questo assieme', () => deleteAssembly()]] : [])]) }));
       t.append(node('insertPart', 'Componenti (' + a.insts.length + ')', { title: 'Le parti montate, ognuna con la sua posizione' }));
       if (!a.insts.length) t.append(el('p', { class: 'note' }, 'L\'assieme è vuoto: premi Inserisci parte.'));
       for (const inst of a.insts) {
@@ -10837,6 +10995,37 @@ self.postMessage({ hello: true });`;
       const world = r => { const e = ent(r, real); return Assembly.worldEnt(e.L, e.i.pose); };
       const setDefaults = () => { const d = Assembly.mateDefaults(S.type, world(S.a), world(S.b)); S.s = d.s; S.side = d.side; S.value = Math.round(d.value * 1e6) / 1e6; };
       // un elemento scelto, nella vista (it) o tra i piani e l'origine del pannello
+      // disegno e scelta di piani e origini nella vista
+      function datumShape(r) {
+        const a = shown || real, i = a.insts.find(x => x.id === r.inst), info = i && infos.get(i.part), L = info && Assembly.entityOf(r, info);
+        if (!L || L.err) return null;
+        if (r.k === 'origin') return { point: Assembly.toWorld(i.pose, [0, 0, 0]) };
+        const h = Math.max(info.r * 1.15, 10), off = sub(sub(info.c, mul(L.n, dot(L.n, sub(info.c, L.c)))), L.c);
+        return { quad: [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => App.r.project(Assembly.toWorld(i.pose, add(L.c, add(off, add(mul(L.x, u * h), mul(L.y, v * h))))))) };
+      }
+      function allDatums() {
+        const out = [], taken = (S.a || S.b || {}).inst;
+        for (const i of (shown || real).insts) {
+          const info = infos.get(i.part);
+          if (!info || info.empty || i.id === taken) continue;
+          for (const d of Assembly.datumsOf(info)) out.push(d.k === 'origin' ? { inst: i.id, k: 'origin' } : { inst: i.id, k: 'plane', id: d.id });
+        }
+        return out;
+      }
+      function datumAt(x, y) {
+        let best = null, bd = Infinity;
+        for (const r of allDatums()) {
+          const sh = datumShape(r);
+          if (!sh) continue;
+          if (sh.point) { const q = App.r.project(sh.point), dd = Math.hypot(q[0] - x, q[1] - y); if (dd < 9 && dd - 3 < bd) { bd = dd - 3; best = r; } continue; }
+          sh.quad.forEach((A, i) => {
+            const B = sh.quad[(i + 1) % 4], ux = B[0] - A[0], uy = B[1] - A[1], t = Math.max(0, Math.min(1, ((x - A[0]) * ux + (y - A[1]) * uy) / (ux * ux + uy * uy || 1)));
+            const dd = Math.hypot(A[0] + t * ux - x, A[1] + t * uy - y);
+            if (dd < 6 && dd < bd) { bd = dd; best = r; }
+          });
+        }
+        return best;
+      }
       function addRef(ref, it) {
         const inst = real.insts.find(i => i.id === ref.inst);
         const E = Assembly.entityOf(ref, infos.get(inst.part));
@@ -10897,7 +11086,10 @@ self.postMessage({ hello: true });`;
               bt.addEventListener('mouseleave', () => { S.hov = null; App.redraw(); });
               dr.append(bt);
             }
-            b.append(el('div', { class: 'grp', id: 'asmDatums' }, el('h3', {}, 'Piani e origine'), sel, dr));
+            const showD = el('input', { type: 'checkbox', id: 'asmDatumShow' });
+            showD.checked = !!S.showD;
+            showD.addEventListener('change', () => { S.showD = showD.checked; S.hov = null; App.redraw(); });
+            b.append(el('div', { class: 'grp', id: 'asmDatums' }, el('h3', {}, 'Piani e origine'), sel, dr, el('label', { class: 'chk' }, showD, 'Mostrali nella vista: un clic sul bordo di un piano o su un\'origine')));
           }
           const both = S.a && S.b, A = both && ent(S.a, real).L, B = both && ent(S.b, real).L;
           const allowed = both && !A.err && !B.err ? Assembly.allowedTypes(A, B) : [];
@@ -10932,6 +11124,10 @@ self.postMessage({ hello: true });`;
           const inst = instOfItem(it); if (!inst) return;
           addRef(refOf(it, shown || real), it);
         },
+        // con «Mostrali nella vista»: il bordo di un piano o un'origine vicino al mouse, prima delle facce
+        down(x, y) { if (!S.showD) return false; const r = datumAt(x, y); if (!r) return false; S.hov = null; addRef(r, null); return true; },
+        move(x, y, e, dragging) { if (dragging || !S.showD) return false; const r = datumAt(x, y); if (JSON.stringify(r) !== JSON.stringify(S.hov)) { S.hov = r; App.redraw(); } return !!r; },
+        up() {},
         highlight() { return [S.ia, S.ib, ...(edit ? faceItems({ a: S.a || { k: 'x' }, b: S.b || { k: 'x' } }) : [])].filter(x => x && x.kind !== 'vertex'); },
         overlay(c) {
           const dot2 = (p, col) => { if (!p) return; const q = App.r.project(p); c.beginPath(); c.arc(q[0], q[1], 5, 0, Math.PI * 2); c.fillStyle = col; c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke(); };
@@ -10940,14 +11136,14 @@ self.postMessage({ hello: true });`;
           for (const r of [S.a, S.b]) if (r && (r.k === 'vertex' || r.k === 'edge')) { const i = a.insts.find(x => x.id === r.inst); if (i) dot2(Assembly.toWorld(i.pose, r.p), '#2e78e0'); }
           // piani e origine: si disegnano quando sono scelti e quando il mouse è sul loro pulsante
           const drawDatum = (r, col) => {
-            const i = a.insts.find(x => x.id === r.inst), info = i && infos.get(i.part), L = info && Assembly.entityOf(r, info);
-            if (!L || L.err) return;
-            if (r.k === 'origin') { dot2(Assembly.toWorld(i.pose, [0, 0, 0]), col); return; }
-            const h = Math.max(info.r * 1.15, 10), off = sub(sub(info.c, mul(L.n, dot(L.n, sub(info.c, L.c)))), L.c);
-            const q = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => App.r.project(Assembly.toWorld(i.pose, add(L.c, add(off, add(mul(L.x, u * h), mul(L.y, v * h)))))));
+            const sh = datumShape(r);
+            if (!sh) return;
+            if (sh.point) { dot2(sh.point, col); return; }
+            const q = sh.quad;
             c.beginPath(); q.forEach((w, k) => (k ? c.lineTo(w[0], w[1]) : c.moveTo(w[0], w[1]))); c.closePath();
             c.save(); c.globalAlpha = 0.16; c.fillStyle = col; c.fill(); c.globalAlpha = 1; c.strokeStyle = col; c.lineWidth = 1.5; c.stroke(); c.restore();
           };
+          if (S.showD) for (const r of allDatums()) drawDatum(r, '#8a97a8');
           for (const r of [S.a, S.b, S.hov]) if (r && (r.k === 'plane' || r.k === 'origin')) drawDatum(r, r === S.hov ? '#f39c12' : '#2e78e0');
         },
         ok() {
@@ -11256,7 +11452,7 @@ self.postMessage({ hello: true });`;
       refreshPartSel();
       return insertPart(part.id);
     }
-    return { fastenerDialog, insertFastener, threadsNow, drawingContext, explodeExtra, openExplode, toggleExplode, collapse, massDialog, bomDialog, openInterf, regen, show, refreshPartSel, enter, leave, insertPart, insertDialog, insertFile, copyInst, setFixed, deleteInst, deleteMate, openMate, openMove, click, contextMenu, dblclick, key, renderTree, vertexAt, dragStart, dragMove, dragEnd, instOfItem, get last() { return last; }, get infos() { return infos; } };
+    return { switchTo, newAssembly, deleteAssembly, fastenerDialog, insertFastener, threadsNow, drawingContext, explodeExtra, openExplode, toggleExplode, collapse, massDialog, bomDialog, openInterf, regen, show, refreshPartSel, enter, leave, insertPart, insertDialog, insertFile, copyInst, setFixed, deleteInst, deleteMate, openMate, openMove, click, contextMenu, dblclick, key, renderTree, vertexAt, dragStart, dragMove, dragEnd, instOfItem, get last() { return last; }, get infos() { return infos; } };
   })();
   App.init = init;
   document.addEventListener('DOMContentLoaded', () => { /* avvio in fondo al file */ });
@@ -14814,11 +15010,12 @@ self.postMessage({ hello: true });`;
     const V = VIEWS.iso, list = [];
     for (const r of ctx.bom) {
       if (!r.solid) continue;
-      const inst = ctx.asm.insts.find(i => i.part === r.part);
-      const body = inst && st.bodies.find(b => b.id === inst.id);
+      const top = r.prefix.split('/')[0], body = st.bodies.find(b => b.id === top);
       if (!body) continue;
-      const q = visiblePoint(body, st.body, V);
-      list.push({ item: r.item, inst: inst.id, tip: [iso.ox + dot(q, V.r) * iso.s, iso.oy - dot(q, V.u) * iso.s] });
+      // dentro un sottoassieme il pezzo vero: le sue facce hanno quel prefisso nel nome
+      const polys = body.polys.filter(p => { const t = st.tags.get(p.t); return t && t.name.startsWith(r.prefix); });
+      const q = visiblePoint({ polys: polys.length ? polys : body.polys }, st.body, V);
+      list.push({ item: r.item, inst: top, tip: [iso.ox + dot(q, V.r) * iso.s, iso.oy - dot(q, V.u) * iso.s] });
     }
     const xl = iso.ox + iso.bbox.mn[0] * iso.s - BALLOON_PAD / 2, xr = iso.ox + iso.bbox.mx[0] * iso.s + BALLOON_PAD / 2;
     // metà a sinistra e metà a destra, secondo dove sta il pezzo
@@ -16097,6 +16294,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Assieme', 'Tavola dell\'assieme', ['messa in tavola dell\'assieme', 'disegno d\'assieme', 'complessivo'], 'Il disegno di tutto l\'assieme: viste, assonometria (anche esplosa), numeri di posizione e distinta base sopra il cartiglio. Si apre con la scheda Messa in tavola quando si è nell\'assieme.'],
     ['Assieme', 'Viti e bulloni', ['viteria', 'vite', 'bullone', 'dado', 'rondella', 'toolbox', 'ISO 4762', 'ISO 10642', 'ISO 4014', 'ISO 4017', 'ISO 4032', 'ISO 7089'], 'Parti di norma pronte da inserire nell\'assieme, da M3 a M20. Testa cilindrica ISO 4762 (TCEI), testa svasata ISO 10642, testa esagonale ISO 4014 (filetto parziale) e ISO 4017 (filetto totale), dado ISO 4032, rondella ISO 7089. Le misure sono quelle nominali o massime della norma, senza gli smussi. Una vite è una parte normale: si può aprire e modificare.'],
     ['Assieme', 'Filetto indicato', ['filetto cosmetico', 'cosmetic thread', 'ISO 6410', 'nocciolo'], 'Il filetto non è un\'elica vera: nel pezzo c\'è il cilindro al diametro nominale (vite) o il foro di preparazione (foro filettato, dado), e il filetto si disegna con righe sottili. In tavola, come vuole la ISO 6410: riga sottile sul diametro di nocciolo della vite, d₃ = d − 1,22687 P, o sul diametro nominale del foro; visto di testa, 3/4 di cerchio sottile. Così il modello resta leggero. La massa della vite è un po\' più alta di quella vera.'],
+    ['Assieme', 'Nuovo assieme', ['più assiemi', 'altro assieme'], 'Un altro assieme nello stesso progetto, con i suoi componenti e accoppiamenti. Si passa dall\'uno all\'altro con l\'elenco accanto al nome; con il tasto destro sul nome nell\'albero si elimina.'],
+    ['Assieme', 'Sottoassieme', ['subassembly', 'gruppo'], 'Un assieme usato come componente di un altro: si muove tutto insieme, come una parte rigida, e i suoi pezzi non si muovono tra loro. La distinta base conta le parti vere che contiene. Per modificarlo, doppio clic: si apre il suo assieme.'],
     ['Assieme', 'Parte fissa', ['fissa', 'libera', '(f)', 'componente fisso'], 'Un componente che non si muove: gli altri si sistemano rispetto a lui. Nell\'albero ha (f) davanti al nome. La prima parte inserita è fissa; con il tasto destro si sceglie Fissa o Libera.'],
     ['Assieme', 'Accoppiamento', ['accoppiamenti', 'mate', 'mates'], 'Un legame tra due elementi di due componenti (facce, spigoli o vertici). Ogni accoppiamento toglie gradi di libertà: il risolutore sposta i componenti liberi il meno possibile per rispettarli tutti.'],
     ['Assieme', 'Tipo di accoppiamento', ['elementi da accoppiare'], 'Il modo in cui si legano i due elementi scelti: coincidente, concentrico, parallelo, perpendicolare, distanza o angolo. Sono attivi solo i tipi possibili con quegli elementi.'],
@@ -17991,6 +18190,15 @@ ASM.push(['Superfici riconosciute con precisione: sfera, cono e piano esatti o q
     yes(Assembly.fitPlane(asmFlat(1e-6))), yes(Assembly.fitPlane(asmFlat(1e-3)))],
     [1, 10, 0, 0, 0, 1, 0.5, 0, 0, -10, 1, 1, 0, 1, 0, 1, 0], 1e-9);
 }]);
+ASM.push(['Toro riconosciuto dai triangoli: intero, un pezzo e di traverso, R, r, centro e asse a mano; con uno scarto di 10⁻³ o su un paraboloide no', () => {
+  const yes = f => (f ? 1 : 0), U = 1 / Math.sqrt(3), AX = [U, U, U], E1 = [1 / Math.sqrt(2), -1 / Math.sqrt(2), 0], E2 = [AX[1] * E1[2] - AX[2] * E1[1], AX[2] * E1[0] - AX[0] * E1[2], AX[0] * E1[1] - AX[1] * E1[0]], O = [3, -7, 11];
+  const tor = (R, r, a0, a1, b0, b1, dev = 0, nu = 36, nv = 16) => asmGrid((u, v) => { const a = a0 + (a1 - a0) * u, b = b0 + (b1 - b0) * v, rho = R + r * Math.cos(b) * (1 + dev), h = r * Math.sin(b); return [0, 1, 2].map(k => O[k] + rho * Math.cos(a) * E1[k] + rho * Math.sin(a) * E2[k] + h * AX[k]); }, nu, nv);
+  const A = Assembly.fitTorus(tor(20, 5, 0, 2 * PI, 0, 2 * PI)), B = Assembly.fitTorus(tor(30, 6, 0.3, 2.5, 0, PI / 2)), C = Assembly.fitTorus(tor(14, 6, 0, 2 * PI, 0, PI / 2));
+  const dp = a => Math.abs(a.d[0] * AX[0] + a.d[1] * AX[1] + a.d[2] * AX[2]);
+  const par = asmGrid((u, v) => { const a = 2 * PI * u, r = 2 + 10 * v; return [r * Math.cos(a), r * Math.sin(a), 0.05 * r * r]; }, 36, 16);
+  return eqs([yes(A), A.R, A.r, dp(A), ...A.o, yes(A.round), yes(B), B.R, B.r, dp(B), ...B.o, yes(C), C.R, C.r, yes(Assembly.fitTorus(tor(20, 5, 0, 2 * PI, 0, 2 * PI, 1e-3))), yes(Assembly.fitTorus(par))],
+    [1, 20, 5, 1, ...O, 1, 1, 30, 6, 1, ...O, 1, 14, 6, 0, 0], 1e-6);
+}]);
 ASM.push(['Vertice: tra i vertici con quelle facce vince chi ha proprio quelle: sul bordo di una D il punto dell\'arco, non l\'estremo più vicino dove arriva anche il lato dritto', () => {
   const d = D0('D'); const b = SB(); const c = b.pt(0, 0), a1 = b.pt(10, 0), a2 = b.pt(-10, 0); b.arc(c, a1, a2); b.line(a2, a1);
   const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 5 });
@@ -18237,6 +18445,61 @@ ASM.push(['Filetti nell\'assieme: seguono posizione e rotazione del componente',
   asm.explode = { on: true, steps: [{ id: 'X1', insts: [asm.insts[0].id], dir: [0, 0, 1], dist: 40 }] };
   const e = Assembly.threadsWorld(asm, infos, { exploded: true })[0], f = Assembly.threadsWorld(asm, infos)[0];
   return eqs([...t.o, ...t.dir, t.inst === asm.insts[0].id ? 1 : 0, e.o[2], f.o[2]], [27, 2, 3, -1, 0, 0, 1, 43, 3]);
+}]);
+
+/* ---------- sottoassiemi ---------- */
+const subSet = () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }; docs.a.material = 's235'; docs.b.material = 'al6082';
+  const infos = asmSet(docs);
+  // gruppo: piastra + perno nel foro (y 0..30), asse in (40, y, -25)
+  const G = Assembly.newAssembly('Gruppo'); G.id = 'A1';
+  const P1 = Assembly.addInst(G, 'a'), P2 = Assembly.addInst(G, 'b', { pose: asmPose([150, 0, 60]) });
+  asmMate(G, infos, 'concentric', P1, asmRev(docs.a), P2, asmRev(docs.b));
+  asmMate(G, infos, 'coincident', P1, asmFace(docs.a, DN, 0), P2, asmFace(docs.b, DN, 0));
+  infos.set('A1', Assembly.subInfo(G, infos));
+  return { docs, infos, G, P1, P2 };
+};
+ASM.push(['Sottoassieme: posizioni interne dal suo risolutore; massa, baricentro pesato e distinta aperta nelle parti vere; quantità moltiplicate; numeri giusti con due copie ruotate', () => {
+  const { docs, infos, G, P2 } = subSet();
+  const top = Assembly.newAssembly('Macchina'); top.id = 'A2';
+  Assembly.addInst(top, 'A1'); Assembly.addInst(top, 'A1', { pose: asmPose([200, 0, 0], Assembly.qexp([0, PI, 0])) }); Assembly.addInst(top, 'b', { pose: asmPose([0, 100, 0]) });
+  const m = Assembly.massOf(top, infos), r = Assembly.bom(top, infos);
+  const Va = 80 * 50 * 10 - PI * 1000, Vb = PI * 100 * 30, ma = Va * 7.85 / 1000, mb = Vb * 2.7 / 1000;
+  // baricentro del gruppo: x 40, z -25, y pesato tra 5 e 15. Copia 2: girata di 180° attorno a Y: x → -40 + 200 = 160, z → 25.
+  const yG = (ma * 5 + mb * 15) / (ma + mb), Mg = ma + mb, Mt = 2 * Mg + mb;
+  const cx = (Mg * 40 + Mg * 160 + mb * 0) / Mt, cy = (2 * Mg * yG + mb * 115) / Mt, cz = (Mg * -25 + Mg * 25 + mb * 0) / Mt;
+  return eqs([P2.pose.p[0], P2.pose.p[1], P2.pose.p[2], m.mass, m.volume, m.centroid[0], m.centroid[1], m.centroid[2], r.length, r[0].name === 'piastra' ? 1 : 0, r[0].qty, r[1].name === 'perno' ? 1 : 0, r[1].qty, r[1].mass, r.reduce((s, x) => s + x.mass, 0) - m.mass, r[1].prefix === top.insts[0].id + '/' + P2.id + '/' ? 1 : 0, G.id === 'A1' ? 1 : 0],
+    [40, 0, -25, Mt, 2 * (Va + Vb) + Vb, cx, cy, cz, 2, 1, 2, 1, 3, 3 * mb, 0, 1, 1], 1e-5);
+}]);
+ASM.push(['Sottoassieme: si accoppia con le facce dei suoi pezzi (concentrico su un perno interno, coincidente); interferenze come un blocco; filetti interni portati fuori; non può contenere se stesso', () => {
+  const { docs, infos, G, P1, P2 } = subSet();
+  const H = plateHole(100, 100, 5, 50, 50, 10); const hi = Assembly.partInfo(H); infos.set('h', hi); docs.h = H;
+  const top = Assembly.newAssembly('Macchina'); top.id = 'A2';
+  const base = Assembly.addInst(top, 'h'), S = Assembly.addInst(top, 'A1', { pose: asmPose([300, 40, 100]) });
+  // il cilindro del perno dentro il gruppo: nome nella scena del gruppo; la faccia bassa della piastra del gruppo
+  const si = infos.get('A1'), cyl = [...new Set(si.st.body.map(p => p.t))].map(t => si.st.tags.get(t)).find(t => t.kind === 'rev' && t.inst === P2.id && t.R !== 0);
+  const low = [...new Set(si.st.body.map(p => p.t))].map(t => si.st.tags.get(t)).find(t => t.kind === 'plane' && t.inst === P1.id && Math.abs(t.n[1] + 1) < 1e-9);
+  asmMate(top, infos, 'concentric', base, asmRev(H), S, { k: 'face', name: cyl.name });
+  asmMate(top, infos, 'coincident', base, asmFace(H, UP, 5), S, { k: 'face', name: low.name }, { s: -1 });
+  const sol = Assembly.solve(top, infos);
+  // asse del foro base in (50, y, -50), perno del gruppo in (40, y, -25): spostamento (10, ·, -25); y: la faccia bassa (0 nel gruppo) sulla faccia alta della base (5)
+  const it = Assembly.interferences(top, infos);
+  // gruppo abbassato di 5: la sua piastra entra per 5 nella base; il perno è nel foro della base. In comune (80×50 − π·10²)·5
+  const py = S.pose.p[1]; S.pose.p[1] = 0; const it2 = Assembly.interferences(top, infos); S.pose.p[1] = py;
+  const hasThread = Assembly.threadsWorld(top, infos).length;
+  const A2 = Assembly.newAssembly('X'); A2.id = 'A3'; Assembly.addInst(A2, 'A1');
+  const all = [G, top, A2];
+  return eqs([sol.ok ? 1 : 0, S.pose.p[0], S.pose.p[1], S.pose.p[2], sol.dof.total, it.pairs, it.list.length, it2.list.length, it2.list[0].volume, hasThread, Assembly.containsAsm(A2, 'A1', all) ? 1 : 0, Assembly.containsAsm(G, 'A3', all) ? 1 : 0, Assembly.containsAsm(G, 'A1', all) ? 1 : 0],
+    [1, 10, 5, -25, 1, 1, 0, 1, (4000 - PI * 100) * 5, 0, 1, 0, 1], 1e-6);
+}]);
+ASM.push(['Sottoassieme: filetti di una vite dentro seguono le due trasformazioni; componente senza solido non si conta', () => {
+  const docs = { s: Model.fastenerDoc({ type: 'iso4762', size: 'M6', length: 20 }), e: D0('v'), n: block(5, 5, 5) }, infos = asmSet(docs);
+  const G = Assembly.newAssembly('G'); G.id = 'A1'; Assembly.addInst(G, 's', { pose: asmPose([10, 0, 0]) }); Assembly.addInst(G, 'e'); Assembly.addInst(G, 'n', { pose: asmPose([100, 0, 0]) });
+  infos.set('A1', Assembly.subInfo(G, infos));
+  const top = Assembly.newAssembly('T'); top.id = 'A2'; Assembly.addInst(top, 'A1', { pose: asmPose([0, 0, 100], Assembly.qexp([0, 0, PI / 2])) });
+  // base del filetto (0,-26,0) + (10,0,0) = (10,-26,0); ruotata attorno a Z: (26, 10, 0); poi (26, 10, 100)
+  const t = Assembly.threadsWorld(top, infos)[0], m = Assembly.massOf(top, infos), b = Assembly.bom(top, infos);
+  return eqs([...t.o, b.length, b[0].qty, b[1].solid ? 1 : 0, m.noSolid.length, m.comps.length, m.noMaterial.length, m.noMaterial[0] === 'n' ? 1 : 0], [26, 10, 100, 3, 1, 0, 0, 1, 1, 1]);
 }]);
 
 function run(tol = TOL) {
@@ -18789,6 +19052,13 @@ if (isNode) {
     steps: ['Premi **Nuova parte** nella scheda Assieme, oppure **Progetto › Aggiungi una parte**. La parte nuova si apre vuota: disegnala come al solito.', 'Per passare da una parte all\'altra usa l\'elenco accanto al nome, in alto.', 'Nell\'assieme, un doppio clic su un componente apre la sua parte. Quando torni nella scheda **Assieme**, i componenti si aggiornano e gli accoppiamenti si ricalcolano.'],
     tips: ['Annulla lavora separatamente per ogni parte e per l\'assieme.', '**Progetto › Elimina questa parte** toglie anche i suoi componenti e non si può annullare.', '**Progetto › Nuovo progetto** ricomincia da zero: esporta prima se ti serve il lavoro fatto.', '**Progetto › Esporta il progetto** salva in un solo file tutte le parti e l\'assieme.'],
     terms: ['Assieme', 'Nuova parte'],
+  });
+  add('Assieme', 'sottoassiemi', 'Più assiemi e sottoassiemi', {
+    why: 'Dividere una macchina in gruppi: si monta il gruppo una volta, e lo si riusa intero.',
+    cmd: { tab: 'assembly', id: 'newAsm' },
+    steps: ['Premi **Nuovo assieme** e monta il gruppo, come al solito.', 'Torna all\'altro assieme con l\'elenco accanto al nome.', 'Premi **Inserisci parte**: nell\'elenco c\'è anche il gruppo, con la scritta «sottoassieme». Accoppialo come una parte: scegli le facce dei suoi pezzi.'],
+    tips: ['Un sottoassieme è rigido: i suoi pezzi non si muovono tra loro dentro l\'altro assieme.', 'La distinta base apre i sottoassiemi e conta le parti vere.', 'Verifica interferenze controlla il sottoassieme come un blocco: per controllare i pezzi al suo interno, apri il suo assieme.', 'Un assieme non può contenere se stesso: nell\'elenco non compare.', 'Con il tasto destro sul nome dell\'assieme nell\'albero lo elimini.'],
+    terms: ['Nuovo assieme', 'Sottoassieme'],
   });
   add('Assieme', 'viti', 'Mettere una vite in un foro', {
     why: 'Montare i pezzi con viteria di norma, senza disegnarla, e averla nella distinta base.',

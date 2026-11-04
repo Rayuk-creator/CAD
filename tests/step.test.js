@@ -358,11 +358,17 @@ const CASES = [
       const s = ents(reread(revArc(90))).es.filter(e => e.E.sphere); eqn(m, 'sfere', s.length, 1);
       if (s[0]) { vec(m, 'centro', s[0].E.p, [0, 0, 0]); eqn(m, 'raggio', s[0].E.R, 10, 1e-5); }
     });
-    test('Assieme: un toro riletto non è né cilindro, né cono, né sfera: messaggio chiaro', m => {
-      const d = D0('toro'); const b = SB(); b.center(0, -100, 0, 100); b.circle(20, 0, 5); feat(d, { type: 'revolve', sketch: skf(d, 'front', b), angle: 360 });
-      const { es } = ents(reread(d));
-      eqn(m, 'facce rifiutate', es.filter(e => e.E.err).length, es.length); if (!es.length) m.push('nessuna faccia');
-      if (!es.every(e => /non è un cilindro, un cono o una sfera/.test(e.E.err || ''))) m.push('messaggio sbagliato');
+    test('Assieme: toro riletto: faccia tonda, asse, centro, R e r a mano; anche mezzo toro', m => {
+      const mk = (ang, R, r) => { const d = D0('toro'); const b = SB(); b.center(0, -100, 0, 100); b.circle(R, 0, r); feat(d, { type: 'revolve', sketch: skf(d, 'front', b), angle: ang }); return d; };
+      for (const [ang, R, r] of [[360, 20, 5], [180, 30, 4]]) {
+        const { es } = ents(reread(mk(ang, R, r)));
+        const tor = es.filter(e => e.E.torus);
+        if (!tor.length) { m.push('toro non riconosciuto ' + ang + ': ' + (es[0] && es[0].E.err)); continue; }
+        for (const e of tor) {
+          eqn(m, 'R', e.E.R, R, 1e-4); eqn(m, 'r', e.E.r, r, 1e-4); eqn(m, 'asse', Math.abs(e.E.d[1]), 1, 1e-6); eqn(m, 'x', e.E.o[0], 0, 1e-4); eqn(m, 'y', e.E.o[1], 0, 1e-4); eqn(m, 'z', e.E.o[2], 0, 1e-4);
+          if (!e.E.round) m.push('non è tondo');
+        }
+      }
     });
     test('Assieme: cono nel foro: cono di traverso nel foro della piastra (concentrico) con la base piccola sulla faccia in alto: punto (3,-7,11) del cono in (30, 20, 10)', m => {
       const docs = { a: asmDoc(stepPlateHole(60, 40, 10, 15)).doc, b: asmDoc(stepCone(5, 15, 20, { o: O3, z: AX, x: XP })).doc };
