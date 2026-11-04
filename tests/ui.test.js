@@ -42,7 +42,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
       if (window.Lessons) out.push('modulo Lessons');
       if (document.querySelector('[data-ct="lessons"]')) out.push('scheda');
       const tabs = [...document.querySelectorAll('.cmd-tabs [data-ct]')].map(b => b.dataset.ct).join();
-      if (tabs !== 'features,sketch,evaluate,drawing') out.push('schede: ' + tabs);
+      if (tabs !== 'features,sketch,evaluate,drawing,assembly') out.push('schede: ' + tabs);
       if (/esercitazion/i.test(document.querySelector('#right').getAttribute('aria-label') + document.querySelector('#rightTitle').textContent)) out.push('pannello');
       for (const t of Guide.topics) if (/esercitazion|esercizi/i.test(JSON.stringify(t))) out.push('guida: ' + t.t);
       for (const e of Glossary.entries) if (/esercitazion/i.test(JSON.stringify(e))) out.push('glossario: ' + JSON.stringify(e).slice(0, 40));
@@ -840,7 +840,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const miss = await page.evaluate(async () => {
       const out = new Set();
       const wait = ms => new Promise(r => setTimeout(r, ms));
-      for (const tab of ['features', 'evaluate', 'sketch', 'drawing']) {
+      for (const tab of ['features', 'evaluate', 'sketch', 'drawing', 'assembly']) {
         App.setCmdTab(tab); await wait(150);
         document.querySelectorAll('#cmdBar .tool span').forEach(s => { if (!Glossary.find(s.textContent)) out.add('comando: ' + s.textContent); });
       }
@@ -870,7 +870,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
       const T = Guide.topics;
       const text = T.map(t => (t.t + ' ' + t.steps.join(' ') + ' ' + (t.tips || []).join(' ')).toLowerCase()).join(' ');
       const cmdIds = new Set(T.filter(t => t.cmd).map(t => t.cmd.id));
-      for (const tab of ['features', 'sketch', 'evaluate', 'drawing']) {
+      for (const tab of ['features', 'sketch', 'evaluate', 'drawing', 'assembly']) {
         App.setCmdTab(tab); await wait(120);
         document.querySelectorAll('#cmdBar .tool').forEach(b => { const lab = b.textContent.trim(); if (!cmdIds.has(b.dataset.cmd) && !text.includes(lab.toLowerCase())) out.push('comando senza guida: ' + lab); });
       }
@@ -1587,6 +1587,361 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const ok = res.every(r => !r.google && ['IBM Plex Sans 400', 'IBM Plex Sans 600', 'IBM Plex Sans Condensed 500', 'IBM Plex Mono 400'].every(n => r.loaded.includes(n)));
     rec('Privacy: nessuna richiesta ad altri siti; caratteri IBM Plex dentro le due pagine', !reqs.length && ok, `richieste: ${reqs.join(', ') || 'nessuna'}; caratteri caricati: ${res.map(r => r.loaded.length).join(' e ')}`);
   } catch (e) { rec('Privacy: nessuna richiesta ad altri siti; caratteri IBM Plex dentro le due pagine', false, e.message.split('\n')[0]); }
+
+  /* ---------- assiemi: tutto con il mouse, valori calcolati a mano ---------- */
+  const asmSetup = async (vp) => {
+    const c = await browser.newContext({ viewport: vp || { width: 1300, height: 800 } });
+    const p = await c.newPage();
+    const errs = []; p.on('pageerror', e => errs.push(e.message));
+    await p.goto('file://' + page_);
+    await p.waitForFunction(() => window.App && App.r, null, { timeout: 15000 });
+    await p.evaluate(() => {
+      const mk = (name, fill, depth) => { const d = Model.newDoc(); d.name = name; const s = Sketch.newSketch(); const pt = (x, y) => { const id = 'p' + s.next++; s.ents.push({ id, t: 'pt', x, y }); return id; }; fill(s, pt); const sid = Model.uid(d, 'F'); d.features.push({ id: sid, type: 'sketch', name: 'Schizzo1', plane: { kind: 'std', id: 'top' }, sk: s }); d.features.push({ id: Model.uid(d, 'F'), name: 'Estrusione1', type: 'extrude', sketch: sid, end: 'blind', depth }); return d; };
+      const circ = (s, pt, x, y, r) => { const c = pt(x, y); s.ents.push({ id: 'c' + s.next++, t: 'ci', c, r }); };
+      const rect = (s, pt) => { const P = [[0, 0], [80, 0], [80, 50], [0, 50]].map(([x, y]) => pt(x, y)); for (let i = 0; i < 4; i++) s.ents.push({ id: 'l' + s.next++, t: 'ln', a: P[i], b: P[(i + 1) % 4] }); };
+      const a = mk('Piastra', (s, pt) => { rect(s, pt); circ(s, pt, 40, 25, 10); }, 10);
+      const b = mk('Perno', (s, pt) => circ(s, pt, 0, 0, 10), 30);
+      App.setProject({ doc: a, drawing: null, project: { active: 'p1', next: 3, assembly: null, parts: [{ id: 'p1' }, { id: 'p2', doc: b, drawing: null }] } });
+      App.regen(); App.asm.refreshPartSel(); App.r.setView(GLView.Renderer.viewQ('iso'));
+      window.__asm = {
+        state: () => { const a = App.project.assembly; return { insts: a.insts.map(i => ({ id: i.id, p: i.pose.p, q: i.pose.q, fixed: i.fixed })), mates: a.mates.map(m => ({ id: m.id, name: m.name, type: m.type, s: m.s, side: m.side, value: m.value, sup: !!m.suppressed })), dof: App.asm.last.dof.total, ok: App.asm.last.ok, tree: [...document.querySelectorAll('#tree .tnode .tl')].map(x => x.textContent) }; },
+        box: id => { const b = App.st.bodies.find(x => x.id === id); const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9]; for (const p of b.polys) for (const v of p.v) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], v[k]); mx[k] = Math.max(mx[k], v[k]); } return [...mn, ...mx]; },
+        px: p => { const q = App.r.project(p), b = document.querySelector('#view').getBoundingClientRect(); return [q[0] + b.left, q[1] + b.top]; },
+      };
+    });
+    const clickW = async wp => { await p.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))); const v = await p.evaluate(w => __asm.px(w), wp); await p.mouse.move(v[0], v[1]); await p.waitForTimeout(60); await p.mouse.click(v[0], v[1]); await p.waitForTimeout(120); };
+    const insert = async id => { await p.click('[data-cmd="insertPart"]'); await p.click(`#asmParts [data-part="${id}"]`); await p.waitForTimeout(150); await p.evaluate(() => { App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false); }); await p.waitForTimeout(700); };
+    const st = () => p.evaluate(() => __asm.state());
+    return { c, p, errs, clickW, insert, st };
+  };
+  const near = (a, b, tol = 1e-6) => a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) <= tol);
+  const fmtv = a => a.map(x => +x.toFixed(6)).join(', ');
+  const ASMNAME = 'Assieme: inserisci, concentrico e distanza con il mouse; albero, gradi di libertà, Annulla e Ripeti';
+  try {
+    const { c, p, errs, clickW, insert, st } = await asmSetup();
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(200);
+    const empty = await p.evaluate(() => ({ note: /vuoto/.test(document.querySelector('#tree').textContent), mode: App.mode, modal: !document.querySelector('#modal').hidden }));
+    await insert('p1'); await insert('p2');
+    const s0 = await st(), pin = s0.insts[1], x0 = pin.p[0];
+    // prima parte fissa nell'origine; la seconda accanto all'ingombro: 80 + 0,25 × 20 + 10 (il suo minimo in x è -10)
+    const place = s0.insts[0].fixed && !pin.fixed && near(s0.insts[0].p, [0, 0, 0]) && near(pin.p, [95, 0, 0]);
+    const tree0 = s0.tree.join('|');
+    await p.click('[data-cmd="mate"]'); await p.waitForTimeout(100);
+    await clickW([x0 + 7.0711, 15, 7.0711]);       // faccia cilindrica del perno, lato verso la vista
+    await clickW([40 - 7.0711, 5, -25 - 7.0711]);  // parete del foro, lato visibile dall'alto
+    const panel = await p.evaluate(() => ({ text: document.querySelector('#pm').innerText, pressed: document.querySelector('[data-mate="concentric"]').getAttribute('aria-pressed'), dis: ['coincident', 'concentric', 'parallel', 'perpendicular', 'distance', 'angle'].map(t => document.querySelector(`[data-mate="${t}"]`).disabled) }));
+    await p.click('.pm-ok'); await p.waitForTimeout(150);
+    const s1 = await st(), b1 = await p.evaluate(id => __asm.box(id), pin.id);
+    const cx = (b1[0] + b1[3]) / 2, cz = (b1[2] + b1[5]) / 2;
+    const conc = near([cx, cz, b1[1], b1[4], s1.dof], [40, -25, 0, 30, 2]) && /Perno<1>/.test(s1.tree.join('|'));
+    // distanza 30 tra la faccia superiore della piastra e la cima del perno: la base va a y = 10
+    await p.click('[data-cmd="mate"]'); await p.waitForTimeout(100);
+    await clickW([70, 10, -5]);
+    await clickW([40, 30, -25]);
+    await p.click('[data-mate="distance"]'); await p.waitForTimeout(100);
+    await p.fill('#asmValue', '30'); await p.press('#asmValue', 'Tab'); await p.waitForTimeout(150);
+    const msg = await p.evaluate(() => document.querySelector('#asmMsg').textContent);
+    await p.click('.pm-ok'); await p.waitForTimeout(150);
+    const s2 = await st(), b2 = await p.evaluate(id => __asm.box(id), pin.id);
+    const dist = near([b2[1], b2[4], (b2[0] + b2[3]) / 2, (b2[2] + b2[5]) / 2, s2.dof], [10, 40, 40, -25, 1]) && s2.mates[1].type === 'distance' && s2.mates[1].value === 30;
+    // Annulla: torna alla base a y = 0 e un accoppiamento solo; Ripeti lo rimette
+    await p.click('#btnUndo'); await p.waitForTimeout(150);
+    const su = await st(), bu = await p.evaluate(id => __asm.box(id), pin.id);
+    await p.click('#btnRedo'); await p.waitForTimeout(150);
+    const sr = await st(), br = await p.evaluate(id => __asm.box(id), pin.id);
+    const undo = su.mates.length === 1 && near([bu[1], bu[4]], [0, 30]) && sr.mates.length === 2 && near([br[1], br[4]], [10, 40]);
+    // misura nell'assieme: la distanza tra le due facce parallele è letta dalla vista
+    await p.click('[data-cmd="measure"]'); await p.waitForTimeout(100);
+    await clickW([70, 10, -5]); await clickW([40, 40, -25]);
+    const meas = await p.evaluate(() => document.querySelector('#pm').innerText); await p.keyboard.press('Escape'); await p.waitForTimeout(80);
+    await p.screenshot({ path: path.join(OUT, 'assieme-perno.png') });
+    await c.close();
+    const ok = !empty.modal && empty.note && empty.mode === 'assembly' && place && /\(f\) Piastra<1>/.test(tree0) && /\(-\) Perno<1>/.test(tree0) && panel.pressed === 'true' && near(panel.dis.map(Number), [0, 0, 0, 0, 0, 0]) && conc && /Gradi di libertà rimasti: 1/.test(msg) && dist && undo && /30,00/.test(meas) && !errs.length;
+    rec(ASMNAME, ok, `posizione ${fmtv(pin.p)}; concentrico ${fmtv([cx, cz, b1[1], b1[4], s1.dof])}; distanza ${fmtv([b2[1], b2[4], s2.dof])}; annulla ${fmtv([bu[1], bu[4]])}; misura: ${meas.replace(/\s+/g, ' ').slice(0, 90)}; errori ${errs.join(' / ')}`);
+  } catch (e) { rec(ASMNAME, false, e.message.split('\n')[0]); }
+
+  const ASM2 = 'Assieme: trascinare con il mouse: il perno segue il puntatore lungo l\'asse; parte fissa ferma (gira la vista); Annulla; Ruota';
+  try {
+    const { c, p, errs, insert, st } = await asmSetup();
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    await insert('p1'); await insert('p2');
+    // concentrico scritto direttamente: qui si prova il trascinamento
+    await p.evaluate(() => { App.change(() => { const a = App.project.assembly; a.mates.push({ id: 'M90', name: 'Concentrico1', type: 'concentric', a: { inst: a.insts[0].id, k: 'face', name: App.asm.infos.get('p1').st.tags.list.find(t => t.kind === 'rev').name }, b: { inst: a.insts[1].id, k: 'face', name: App.asm.infos.get('p2').st.tags.list.find(t => t.kind === 'rev').name }, s: 1, side: 1, value: 0 }); }); App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false); });
+    await p.waitForTimeout(700);
+    const q = await p.evaluate(() => { const b = App.r.basis(); return { px: App.r.pxSize(), up: b.up, cam: App.r.cam.q.slice() }; });
+    const s0 = await st(), pinId = s0.insts[1].id;
+    const w = await p.evaluate(() => __asm.px([40 + 7.0711, 20, -25 + 7.0711]));
+    await p.mouse.move(w[0], w[1]); await p.mouse.down(); await p.mouse.move(w[0], w[1] - 20, { steps: 4 }); await p.mouse.move(w[0], w[1] - 40, { steps: 4 }); await p.waitForTimeout(60); await p.mouse.up(); await p.waitForTimeout(120);
+    const s1 = await st(), b1 = await p.evaluate(id => __asm.box(id), pinId);
+    // 40 pixel in su: il punto preso sale di 40·px lungo la vista; sull'asse Y vale 40·px / up[1]
+    const expY = 40 * q.px / q.up[1];
+    const slide = near([b1[1], (b1[0] + b1[3]) / 2, (b1[2] + b1[5]) / 2], [expY, 40, -25], 1e-5) && near(s1.insts[0].p, [0, 0, 0]);
+    await p.click('#btnUndo'); await p.waitForTimeout(120);
+    const bu = await p.evaluate(id => __asm.box(id), pinId);
+    // parte fissa: stesso gesto sulla piastra, gira la vista e la piastra non si muove
+    const wf = await p.evaluate(() => __asm.px([75, 10, -5]));
+    await p.mouse.move(wf[0], wf[1]); await p.mouse.down(); await p.mouse.move(wf[0] + 40, wf[1], { steps: 4 }); await p.mouse.up(); await p.waitForTimeout(120);
+    const af = await p.evaluate(() => ({ cam: App.r.cam.q.slice(), p: App.project.assembly.insts[0].p, pose: App.project.assembly.insts[0].pose.p }));
+    const fixedOk = !near(af.cam, q.cam, 1e-3) && near(af.pose, [0, 0, 0]);
+    // Sposta parte › Ruota: 50 pixel in orizzontale = 0,5 rad attorno all'asse, che è l'unica rotazione rimasta; asse fermo
+    await p.evaluate(() => { App.r.setView(GLView.Renderer.viewQ('top')); App.r.fit(false); }); await p.waitForTimeout(700);
+    await p.click('[data-cmd="movepart"]'); await p.waitForTimeout(80);
+    await p.click('#asmMoveR'); await p.waitForTimeout(60);
+    await p.waitForTimeout(100);
+    const q0 = (await st()).insts[1].q;
+    // cima del perno, 8 mm dall'asse verso +Z: il puntatore si sposta di traverso e il punto va il più vicino possibile sul cerchio
+    const pv = await p.evaluate(() => ({ b: App.r.basis(), px: App.r.pxSize() }));
+    const wr = await p.evaluate(() => __asm.px([40, 30, -25 + 8]));
+    await p.mouse.move(wr[0], wr[1]); await p.mouse.down(); await p.mouse.move(wr[0] + 25, wr[1], { steps: 3 }); await p.mouse.move(wr[0] + 54, wr[1], { steps: 3 }); await p.waitForTimeout(60); await p.mouse.up(); await p.waitForTimeout(120);
+    const q1 = (await st()).insts[1].q;
+    await p.keyboard.press('Escape');
+    const dq = Math.abs(q0[0] * q1[0] + q0[1] * q1[1] + q0[2] * q1[2] + q0[3] * q1[3]), ang = 2 * Math.acos(Math.min(1, dq));
+    // il punto più vicino sul cerchio di raggio 8 è nella direzione del puntatore: angolo = atan(spostamento / 8)
+    const expAng = Math.atan2(54 * pv.px, 8);
+    const b3 = await p.evaluate(id => __asm.box(id), pinId);
+    const rot = Math.abs(ang - expAng) < 1e-4 && near([(b3[0] + b3[3]) / 2, (b3[2] + b3[5]) / 2], [40, -25], 1e-3);
+    await c.close();
+    rec(ASM2, slide && near([bu[1]], [0]) && fixedOk && rot && !errs.length, `y ${b1[1].toFixed(6)} (attesi ${expY.toFixed(6)}); annulla ${bu[1]}; vista ${!near(af.cam, q.cam, 1e-3)}, piastra ${af.pose}; rotazione ${ang.toFixed(6)} rad (attesi ${expAng.toFixed(6)}); ${errs.join(' / ')}`);
+  } catch (e) { rec(ASM2, false, e.message.split('\n')[0]); }
+
+  const ASM3 = 'Assieme: Inverti allineamento e accoppiamento impossibile (✓ non conferma); modifica e soppressione dall\'albero; Copia, Fissa, Libera, Elimina';
+  try {
+    const { c, p, errs, clickW, insert, st } = await asmSetup();
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    await insert('p1'); await insert('p1');
+    const s0 = await st(), B = s0.insts[1], x0 = B.p[0];
+    // faccia superiore di A con faccia superiore di B: coincidono già, nello stesso verso; invertendo B si capovolge sopra A: y 10..20
+    await p.click('[data-cmd="mate"]'); await p.waitForTimeout(100);
+    await clickW([5, 10, -5]); await clickW([x0 + 5, 10, -5]);
+    const b0 = await p.evaluate(id => __asm.box(id), B.id);
+    await p.click('#asmFlip'); await p.waitForTimeout(150);
+    await p.click('.pm-ok'); await p.waitForTimeout(150);
+    const s1 = await st(), b1 = await p.evaluate(id => __asm.box(id), B.id);
+    const flip = near([b0[1], b0[4]], [0, 10]) && near([b1[1], b1[4], s1.dof], [10, 20, 3]) && s1.mates[0].s === -1;
+    // accoppiamento impossibile: Distanza 5 tra le due facce già a contatto
+    await p.evaluate(() => { App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false); }); await p.waitForTimeout(700);
+    await p.evaluate(() => { const a = App.project.assembly; const before = JSON.stringify(a); window.__mates = a.mates.length; App.asm.openMate(); });
+    const name = await p.evaluate(() => { const a = App.project.assembly, m = a.mates[0]; return { ...m }; });
+    const pickRef = await p.evaluate(m => { const pm = App.pm; const st = App.st; const it = r => { const tg = st.tags.byName.get(r.inst + '/' + r.name); return { kind: 'face', tag: tg, key: st.topo.faceKeys[tg.id], point: [0, 0, 0] }; }; pm.pick(it(m.a)); pm.pick(it(m.b)); document.querySelector('[data-mate="distance"]').click(); return true; }, name);
+    await p.waitForTimeout(100);
+    await p.fill('#asmValue', '5'); await p.press('#asmValue', 'Tab'); await p.waitForTimeout(250);
+    const errMsg = await p.evaluate(() => { const e = document.querySelector('#asmMsg'); return e ? { t: e.textContent, red: e.classList.contains('asm-err') } : null; });
+    await p.click('.pm-ok'); await p.waitForTimeout(100);
+    const still = await p.evaluate(() => ({ open: !!App.pm, n: App.project.assembly.mates.length }));
+    await p.click('.pm-no'); await p.waitForTimeout(150);
+    const b2 = await p.evaluate(id => __asm.box(id), B.id);
+    const conflict = errMsg && errMsg.red && /non si può soddisfare/.test(errMsg.t) && still.open && still.n === 1 && near([b2[1], b2[4]], [10, 20]);
+    // modifica dall'albero: doppio clic, tipo Distanza 7: B va a y 17..27
+    await p.dblclick('.tmate'); await p.waitForTimeout(150);
+    await p.click('[data-mate="distance"]'); await p.waitForTimeout(100);
+    await p.fill('#asmValue', '7'); await p.press('#asmValue', 'Tab'); await p.waitForTimeout(150);
+    const sides = await p.evaluate(() => !!document.querySelector('#asmSide'));
+    await p.click('.pm-ok'); await p.waitForTimeout(150);
+    const s3 = await st(), b3 = await p.evaluate(id => __asm.box(id), B.id);
+    const lo = Math.min(b3[1], b3[4]);
+    const edit = s3.mates.length === 1 && s3.mates[0].type === 'distance' && near([lo, Math.max(b3[1], b3[4])], [17, 27]) && sides;
+    // Sopprimi dal menu: 6 gradi di libertà e posizione ferma; Copia: 3 componenti; Fissa: 0 gradi per quel componente; Elimina con conferma
+    await p.click('.tmate', { button: 'right' }); await p.waitForTimeout(60);
+    await p.click('.ctx >> text=Sopprimi'); await p.waitForTimeout(150);
+    const s4 = await st();
+    await p.click('.tinst >> nth=1', { button: 'right' }); await p.waitForTimeout(60);
+    await p.click('.ctx >> text=Copia il componente'); await p.waitForTimeout(150);
+    const s5 = await st();
+    const lbl = s5.tree.filter(t => /Piastra</.test(t)).join('|');
+    await p.click('.tinst >> nth=1', { button: 'right' }); await p.waitForTimeout(60);
+    await p.click('.ctx >> text=Fissa'); await p.waitForTimeout(150);
+    const s6 = await st();
+    await p.click('.tinst >> nth=1', { button: 'right' }); await p.waitForTimeout(60);
+    await p.click('.ctx >> text=Elimina'); await p.waitForTimeout(100);
+    await p.click('#modal .btn-primary, #modal button.primary').catch(() => {});
+    await p.waitForTimeout(150);
+    const s7 = await st();
+    await c.close();
+    const menu = s4.dof === 6 && s4.mates[0].sup && s5.insts.length === 3 && /Piastra<1>.*Piastra<2>.*Piastra<3>/.test(lbl) && s6.insts[1].fixed && s6.dof === 6 && s7.insts.length === 2 && s7.mates.length === 0;
+    rec(ASM3, flip && conflict && edit && menu && !errs.length, `inverti ${fmtv([b1[1], b1[4], s1.dof])}; conflitto ${errMsg && errMsg.t}, aperto ${still.open}; modifica ${fmtv([b3[1], b3[4]])}; menu gradi ${s4.dof}/${s6.dof}, componenti ${s5.insts.length}→${s7.insts.length}, accoppiamenti ${s7.mates.length}; ${errs.join(' / ')}`);
+  } catch (e) { rec(ASM3, false, e.message.split('\n')[0]); }
+
+  const ASM4 = 'Assieme: più parti: salvataggio e riapertura, esporta e importa, parte modificata che sposta i componenti, elemento perso, Annulla separato, doppio clic';
+  try {
+    const { c, p, errs, insert, st } = await asmSetup();
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    await insert('p1'); await insert('p2');
+    await p.evaluate(() => { const a = App.project.assembly, t = id => App.asm.infos.get(id).st; App.change(() => { a.mates.push({ id: 'M90', name: 'Concentrico1', type: 'concentric', a: { inst: a.insts[0].id, k: 'face', name: t('p1').tags.list.find(x => x.kind === 'rev').name }, b: { inst: a.insts[1].id, k: 'face', name: t('p2').tags.list.find(x => x.kind === 'rev').name }, s: 1, side: 1, value: 0 }); a.mates.push({ id: 'M91', name: 'Coincidente1', type: 'coincident', a: { inst: a.insts[0].id, k: 'face', name: t('p1').tags.list.find(x => x.kind === 'plane' && x.n[1] > 0.9).name }, b: { inst: a.insts[1].id, k: 'face', name: t('p2').tags.list.find(x => x.kind === 'plane' && x.n[1] < -0.9).name }, s: -1, side: 1, value: 0 }); }); });
+    await p.waitForTimeout(700);
+    const s0 = await st(), pin = s0.insts[1];
+    const saved = await p.evaluate(() => { const d = JSON.parse(localStorage.getItem('banco-cad-v1')); return { has: !!d.project, parts: d.project && d.project.parts.length, active: d.project && d.project.parts.find(x => x.id === d.project.active).doc === undefined, open: d.project && d.project.open, nm: d.doc.name }; });
+    await p.reload(); await p.waitForFunction(() => window.App && App.st, null, { timeout: 15000 }); await p.waitForTimeout(400);
+    await p.evaluate(() => { window.__asm = { state: () => { const a = App.project.assembly; return { insts: a.insts.map(i => ({ id: i.id, p: i.pose.p })), mates: a.mates.length, dof: App.asm.last.dof.total, tree: [...document.querySelectorAll('#tree .tnode .tl')].map(x => x.textContent) }; }, box: id => { const b = App.st.bodies.find(x => x.id === id); const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9]; for (const p of b.polys) for (const v of p.v) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], v[k]); mx[k] = Math.max(mx[k], v[k]); } return [...mn, ...mx]; } }; });
+    const rl = await p.evaluate(() => ({ mode: App.mode, s: __asm.state(), tab: document.querySelector('[data-ct="assembly"]').getAttribute('aria-selected'), sel: document.querySelector('#partSel').value, name: document.querySelector('#docName').value }));
+    const reopen = rl.mode === 'assembly' && rl.tab === 'true' && rl.sel === 'asm' && rl.s.mates === 2 && rl.s.dof === 1 && near(rl.s.insts[1].p, pin.p, 1e-9) && rl.name === 'Assieme1';
+    // doppio clic nell'albero: apre la parte; Annulla è suo; cambio l'altezza della piastra da 10 a 25: il perno si riporta a y = 25
+    await p.dblclick('.tinst >> nth=0'); await p.waitForTimeout(250);
+    const inPart = await p.evaluate(() => ({ mode: App.mode, name: App.doc.name, sel: document.querySelector('#partSel').value, undo: App.undoStack.length, tab: document.querySelector('[data-ct="features"]').getAttribute('aria-selected'), feats: App.doc.features.length }));
+    await p.evaluate(() => App.change(() => { App.doc.features.find(f => f.type === 'extrude').depth = 25; }));
+    await p.waitForTimeout(100);
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(250);
+    const after = await p.evaluate(id => ({ b: __asm.box(id), s: __asm.state(), undo: App.undoStack.length }), pin.id);
+    const edit = inPart.mode === 'part' && inPart.name === 'Piastra' && inPart.undo === 0 && inPart.sel === 'p1' && near([after.b[1], after.b[4]], [25, 55]);
+    // togliendo il foro dalla parte: il concentrico ha il punto esclamativo, il resto continua
+    await p.evaluate(() => { App.openPart('p1'); App.change(() => { const f = App.doc.features.find(x => x.type === 'sketch'); f.sk.ents = f.sk.ents.filter(e => e.t !== 'ci' && !(e.t === 'pt' && Math.abs(e.x - 40) < 1e-9 && Math.abs(e.y - 25) < 1e-9)); }); });
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(250);
+    const lost = await p.evaluate(() => ({ badge: document.querySelectorAll('.tmate .badge.err').length, title: (document.querySelector('.tmate .badge.err') || {}).title, status: document.querySelector('#stMsg').textContent }));
+    // Annulla nella parte rimette il foro; il messaggio sparisce
+    await p.evaluate(() => { App.openPart('p1'); App.undo(); }); await p.click('[data-ct="assembly"]'); await p.waitForTimeout(250);
+    const back = await p.evaluate(() => document.querySelectorAll('.tmate .badge.err').length);
+    // Esporta e Importa: tutto il progetto in un file
+    const file = await p.evaluate(() => { let out = null; const f = App.offerFile; App.offerFile = (n, t, d) => { out = { n, d }; }; document.querySelector('#menuFile [data-act="export"]').click(); App.offerFile = f; return out; });
+    const j = JSON.parse(file.d);
+    await p.evaluate(() => document.querySelector('#menuFile [data-act="new"]').click()); await p.waitForTimeout(80);
+    await p.click('#modal >> text=Nuovo progetto >> nth=-1'); await p.waitForTimeout(200);
+    const fresh2 = await p.evaluate(() => ({ mode: App.mode, parts: App.project.parts.length, asm: App.project.assembly, sel: document.querySelector('#partSel').hidden, feats: App.doc.features.length }));
+    await p.evaluate(() => document.querySelector('#menuFile [data-act="import"]').click()); await p.waitForTimeout(80);
+    await p.fill('#impText', file.d); await p.click('#modal >> text=Importa >> nth=-1'); await p.waitForTimeout(300);
+    const imp = await p.evaluate(() => ({ mode: App.mode, parts: App.project.parts.map(x => x.doc.name), s: __asm.state() }));
+    // Elimina questa parte: il perno e i suoi accoppiamenti spariscono
+    await p.evaluate(() => { App.openPart('p2'); document.querySelector('#menuFile [data-act="delPart"]').click(); }); await p.waitForTimeout(80);
+    await p.click('#modal >> text=Elimina la parte'); await p.waitForTimeout(250);
+    const del = await p.evaluate(() => ({ parts: App.project.parts.length, active: App.doc.name, insts: App.project.assembly.insts.length, mates: App.project.assembly.mates.length, hidden: document.querySelector('#menuFile [data-act="delPart"]').hidden }));
+    await c.close();
+    const ok = saved.has && saved.parts === 2 && saved.active && saved.open === 'assembly' && saved.nm === 'Piastra' && reopen && edit && lost.badge === 1 && /non esiste più/.test(lost.title) && /errori/.test(lost.status) && back === 0 && j.app === 'banco-cad' && j.v === 2 && /Assieme1\.bcad\.json/.test(file.n) && fresh2.parts === 1 && !fresh2.asm && fresh2.mode === 'part' && fresh2.feats === 0 && imp.parts.join() === 'Piastra,Perno' && imp.s.mates === 2 && imp.mode === 'assembly' && del.parts === 1 && del.active === 'Piastra' && del.insts === 1 && del.mates === 0 && del.hidden && !errs.length;
+    rec(ASM4, ok, `salvato ${JSON.stringify(saved)}; riaperto ${reopen}; parte ${JSON.stringify(inPart)}; y ${fmtv([after.b[1], after.b[4]])}; perso ${lost.badge} «${lost.title}»; dopo Annulla ${back}; file ${file.n} v${j.v}; nuovo ${JSON.stringify(fresh2)}; importato ${imp.parts} ${imp.s.mates}; eliminata ${JSON.stringify(del)}; ${errs.join(' / ')}`);
+  } catch (e) { rec(ASM4, false, e.message.split('\n')[0]); }
+
+  const ASM5 = 'Assieme: inserire da file: STEP con due corpi (due parti alle posizioni del file), STL in cm, progetto esportato; file sbagliato spiegato; esportazione STEP di due solidi';
+  try {
+    const { stepTwoBoxes } = require('./stepgen.js');
+    const { c, p, errs, st } = await asmSetup();
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    const open = async () => { await p.click('[data-cmd="insertPart"]'); await p.waitForSelector('#asmFile'); };
+    await open();
+    await p.setInputFiles('#asmFile', { name: 'due.step', mimeType: 'application/step', buffer: Buffer.from(stepTwoBoxes(10, 5)) });
+    await p.waitForFunction(() => App.project.assembly.insts.length === 2 && document.querySelector('#modal').hidden, null, { timeout: 30000 });
+    await p.waitForTimeout(150);
+    const s1 = await st(), bb = await p.evaluate(ids => ids.map(id => __asm.box(id)), s1.insts.map(i => i.id));
+    const names = await p.evaluate(() => App.project.parts.map(x => x.doc.name));
+    // cubo 10 e cubo 10 staccato di 5: x 0..10 e 15..25; la prima parte è fissa, l'altra è libera
+    const step = names.length === 4 && near(bb[0].slice(0, 6), [0, 0, 0, 10, 10, 10]) && near(bb[1].slice(0, 6), [15, 0, 0, 25, 10, 10]) && s1.insts[0].fixed && !s1.insts[1].fixed;
+    // STL: un triangolo non basta, serve un solido: tetraedro 1 cm di lato sugli assi → in mm x massimo 10, accanto all'ultimo
+    const tris = [[[0, 0, 0], [0, 1, 0], [1, 0, 0]], [[0, 0, 0], [1, 0, 0], [0, 0, 1]], [[0, 0, 0], [0, 0, 1], [0, 1, 0]], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]];
+    const stl = 'solid t\n' + tris.map(t => ' facet normal 0 0 0\n  outer loop\n' + t.map(v => `   vertex ${v.join(' ')}\n`).join('') + '  endloop\n endfacet\n').join('') + 'endsolid t\n';
+    await open();
+    await p.selectOption('#asmUnit', 'cm');
+    await p.setInputFiles('#asmFile', { name: 'tetra.stl', mimeType: 'model/stl', buffer: Buffer.from(stl) });
+    await p.waitForFunction(() => App.project.assembly.insts.length === 3, null, { timeout: 10000 }); await p.waitForTimeout(150);
+    const s2 = await st(), b2 = await p.evaluate(id => __asm.box(id), s2.insts[2].id);
+    // accanto all'ingombro: 25 + 0,25 × 10 = 27,5; altezza e profondità in mm dal file in cm
+    const stlOk = near(b2, [27.5, 0, 0, 37.5, 10, 10], 1e-5);
+    // progetto esportato: una parte
+    const onePart = JSON.stringify({ app: 'banco-cad', v: 1, doc: await p.evaluate(() => App.project.parts[1].doc), drawing: null });
+    await open();
+    await p.setInputFiles('#asmFile', { name: 'perno.bcad.json', mimeType: 'application/json', buffer: Buffer.from(onePart) });
+    await p.waitForFunction(() => App.project.assembly.insts.length === 4, null, { timeout: 10000 }); await p.waitForTimeout(150);
+    const nm = await p.evaluate(() => App.project.parts.map(x => x.doc.name));
+    // file sbagliato: messaggio, niente cambia
+    await open();
+    await p.setInputFiles('#asmFile', { name: 'nota.txt', mimeType: 'text/plain', buffer: Buffer.from('ciao') });
+    await p.waitForTimeout(250);
+    const wrong = await p.evaluate(() => ({ toast: document.querySelector('#toast').textContent, n: App.project.assembly.insts.length, m: App.mode, d: App.doc.name }));
+    // esportazione STEP dell'assieme dal programma: un solido per componente
+    const ex = await p.evaluate(() => { const r = App.stepText(); return { solids: r.stats.solids, bad: r.stats.badEdges + r.stats.openLoops, name: /FILE_NAME\('([^']*)/.exec(r.text)[1] }; });
+    await p.evaluate(() => { App.undo(); }); await p.waitForTimeout(150);
+    const un = await st();
+    await p.screenshot({ path: path.join(OUT, 'assieme-file.png') });
+    await c.close();
+    const ok = step && stlOk && nm[nm.length - 1] === 'Perno (2)' && /Formato non riconosciuto/.test(wrong.toast) && wrong.n === 4 && wrong.m === 'assembly' && wrong.d === 'Piastra' && ex.solids === 4 && ex.bad === 0 && /Assieme1/.test(ex.name) && un.insts.length === 3 && !errs.length;
+    rec(ASM5, ok, `parti ${names}; corpi ${fmtv(bb[0])} / ${fmtv(bb[1])}; STL ${fmtv(b2)}; nomi ${nm}; sbagliato «${wrong.toast}»; STEP ${JSON.stringify(ex)}; dopo Annulla ${un.insts.length}; ${errs.join(' / ')}`);
+  } catch (e) { rec(ASM5, false, e.message.split('\n')[0]); }
+
+  const ASM6 = 'Assieme: progetto troppo grande per il salvataggio normale: va nell\'archivio del browser, si riapre, torna indietro quando c\'entra';
+  try {
+    const { c, p, errs, insert, st } = await asmSetup();
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    await insert('p1'); await insert('p2');
+    await p.evaluate(() => { const o = Storage.prototype.setItem; window.__restore = () => { Storage.prototype.setItem = o; }; Storage.prototype.setItem = function (k, v) { if (v.length > 50) { const e = new Error('piena'); e.name = 'QuotaExceededError'; throw e; } return o.call(this, k, v); }; App.save(); });
+    await p.waitForFunction(() => App.storeInDb, null, { timeout: 5000 }).catch(() => {});
+    await p.waitForTimeout(100);
+    const db = await p.evaluate(async () => ({ ls: localStorage.getItem('banco-cad-v1'), inDb: !!App.storeInDb, big: ((await App.dbDo('readonly', os => os.get('banco-cad-v1'))) || '').length, toast: document.querySelector('#toast').hidden ? '' : document.querySelector('#toast').textContent, p: App.project.assembly.insts[1].pose.p }));
+    await p.reload(); await p.waitForFunction(() => window.App && App.st && !App.storeLoading && App.mode === 'assembly', null, { timeout: 15000 }); await p.waitForTimeout(300);
+    const rl = await p.evaluate(() => ({ n: App.project.assembly.insts.length, parts: App.project.parts.length, p: App.project.assembly.insts[1].pose.p, name: App.project.parts[1].doc.name, inDb: App.storeInDb }));
+    await p.evaluate(() => App.save()); await p.waitForTimeout(600);
+    const back = await p.evaluate(async () => { const raw = localStorage.getItem('banco-cad-v1'); return { full: raw.length > 50 && !!JSON.parse(raw).project, inDb: !!App.storeInDb, db: await App.dbDo('readonly', os => os.get('banco-cad-v1')) }; });
+    // archivio impossibile da usare: il vecchio messaggio resta
+    const fail = await p.evaluate(async () => { const o = Storage.prototype.setItem; Storage.prototype.setItem = function () { const e = new Error('piena'); e.name = 'QuotaExceededError'; throw e; }; const od = indexedDB.open; IDBFactory.prototype.open = function () { throw new Error('no'); }; App.save(); await new Promise(r => setTimeout(r, 500)); const t = document.querySelector('#toast').textContent; Storage.prototype.setItem = o; IDBFactory.prototype.open = od; return t; });
+    await c.close();
+    const ok = db.ls === '{"inDb":1}' && db.inDb && db.big > 1000 && !/troppo grande/.test(db.toast) && rl.n === 2 && rl.parts === 2 && rl.name === 'Perno' && near(rl.p, db.p, 1e-9) && back.full && !back.inDb && back.db === undefined && /troppo grande/.test(fail) && !errs.length;
+    rec(ASM6, ok, `segno ${db.ls}, archivio ${db.big} caratteri; riaperto ${rl.n} componenti; indietro ${back.full}/${back.inDb}/${back.db}; senza archivio «${fail.slice(0, 60)}»; ${errs.join(' / ')}`);
+  } catch (e) { rec(ASM6, false, e.message.split('\n')[0]); }
+
+  const ASM8 = 'Assieme: le altre schede e i comandi: tavola della parte e ritorno, sezione, PDF, STL con tutti i triangoli, importazioni nella finestra giusta, Canc';
+  try {
+    const { c, p, errs, insert, st } = await asmSetup();
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    await insert('p1'); await insert('p2');
+    await p.click('[data-ct="drawing"]'); await p.waitForTimeout(400);
+    const dr = await p.evaluate(() => ({ mode: App.mode, sheet: !document.querySelector('#sheetView').hidden, doc: App.doc.name, tree: document.querySelector('#tree').textContent.includes('Componenti') }));
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(300);
+    const back = await p.evaluate(() => ({ mode: App.mode, sheet: !document.querySelector('#sheetView').hidden, n: App.st.bodies.length }));
+    await p.click('[data-cmd="section"]'); await p.waitForTimeout(150);
+    const sec = await p.evaluate(() => App.sectionOn); await p.evaluate(() => { document.querySelector('#btnSection').click(); }); await p.waitForTimeout(80);
+    const files = await p.evaluate(async () => {
+      const out = {}; const f = App.offerFile;
+      App.offerFile = (n, t, d) => { out[n] = d.size !== undefined ? d.size : d.length; };
+      document.querySelector('#menuFile [data-act="stl"]').click();
+      const tri = App.st.body.reduce((a, q) => a + q.v.length - 2, 0);
+      App.offerFile = f;
+      await App.savePdf(); const pdf = App.lastPdf;
+      return { out, tri, pdf: pdf && (pdf.name || true) };
+    });
+    const dlg = await p.evaluate(() => { document.querySelector('#menuFile [data-act="importCad"]').click(); return !!document.querySelector('#asmFile'); });
+    await p.evaluate(() => { document.querySelector('#modal').hidden = true; document.querySelector('#menuFile [data-act="importDxf"]').click(); });
+    const dxf = await p.evaluate(() => ({ t: document.querySelector('#toast').textContent, modal: !document.querySelector('#modal').hidden }));
+    await p.click('.tinst >> nth=1'); await p.waitForTimeout(80);
+    const hl = await p.evaluate(() => ({ sel: App.sel[0] && App.sel[0].kind, cls: document.querySelector('.tinst.sel') && document.querySelector('.tinst.sel').textContent }));
+    await p.keyboard.press('Delete'); await p.waitForTimeout(150);
+    const s1 = await st();
+    await c.close();
+    const stl = Object.entries(files.out).find(([n]) => /Assieme1.*\.stl$/.test(n));
+    const ok = dr.mode === 'drawing' && dr.sheet && dr.doc === 'Piastra' && back.mode === 'assembly' && !back.sheet && back.n === 2 && sec === true && stl && stl[1] === 84 + 50 * files.tri && files.pdf && dlg && /apri prima una parte/.test(dxf.t) && !dxf.modal && hl.sel === 'body' && /Perno/.test(hl.cls) && s1.insts.length === 1 && !errs.length;
+    rec(ASM8, ok, `tavola ${JSON.stringify(dr)}; ritorno ${JSON.stringify(back)}; sezione ${sec}; file ${JSON.stringify(files)}; DXF «${dxf.t}»; selezione ${JSON.stringify(hl)}; dopo Canc ${s1.insts.length}; ${errs.join(' / ')}`);
+  } catch (e) { rec(ASM8, false, e.message.split('\n')[0]); }
+
+  const ASM7 = 'Assieme su tablet e telefono: Sposta parte con il dito; il dito sul pezzo fuori dal comando non lo muove; niente scorrimento laterale a 390 px';
+  try {
+    const c = await browser.newContext({ viewport: { width: 1000, height: 700 }, hasTouch: true });
+    const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+    await p.goto('file://' + page_); await p.waitForFunction(() => window.App && App.r, null, { timeout: 15000 });
+    await p.evaluate(() => { const d = Model.newDoc(); d.name = 'Blocco'; const s = Sketch.newSketch(); const P = [[0, 0], [80, 0], [80, 50], [0, 50]].map(([x, y]) => { const id = 'p' + s.next++; s.ents.push({ id, t: 'pt', x, y }); return id; }); for (let i = 0; i < 4; i++) s.ents.push({ id: 'l' + s.next++, t: 'ln', a: P[i], b: P[(i + 1) % 4] }); const sid = Model.uid(d, 'F'); d.features.push({ id: sid, type: 'sketch', name: 'Schizzo1', plane: { kind: 'std', id: 'top' }, sk: s }); d.features.push({ id: Model.uid(d, 'F'), name: 'Estrusione1', type: 'extrude', sketch: sid, end: 'blind', depth: 10 }); App.setProject({ doc: d, drawing: null }); App.regen(); });
+    await p.tap('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    await p.tap('[data-cmd="insertPart"]'); await p.tap('#asmParts [data-part="p1"]'); await p.waitForTimeout(100);
+    await p.tap('[data-cmd="insertPart"]'); await p.tap('#asmParts [data-part="p1"]'); await p.waitForTimeout(100);
+    await p.evaluate(() => { App.r.setView(GLView.Renderer.viewQ('top')); App.r.fit(false); }); await p.waitForTimeout(700);
+    const px = w => p.evaluate(w => { const q = App.r.project(w), b = document.querySelector('#view').getBoundingClientRect(); return [q[0] + b.left, q[1] + b.top]; }, w);
+    const cdp = await c.newCDPSession(p);
+    const swipe = async (a, dx) => { const pt = (x, y) => [{ x, y, id: 0 }]; await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt(a[0], a[1]) }); for (let i = 1; i <= 5; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pt(a[0] + dx * i / 5, a[1]) }); await p.waitForTimeout(30); } await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await p.waitForTimeout(100); };
+    const pose = () => p.evaluate(() => App.project.assembly.insts[1].pose.p.slice());
+    const p0 = await pose();
+    const a = await px([p0[0] + 40, 10, -25]);
+    await swipe(a, 60);
+    const p1 = await pose();
+    const pxs = await p.evaluate(() => App.r.pxSize());
+    await p.tap('[data-cmd="movepart"]'); await p.waitForTimeout(300);
+    await p.evaluate(() => App.r.fit(false)); await p.waitForTimeout(700);
+    const a2 = await px([p0[0] + 40, 10, -25]), pxs2 = await p.evaluate(() => App.r.pxSize());
+    await swipe(a2, 60);
+    const p2 = await pose();
+    await p.evaluate(() => App.closePM(false));
+    await c.close();
+    const c2 = await browser.newContext({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
+    const m = await c2.newPage(); await m.goto('file://' + page_); await m.waitForFunction(() => window.App && App.r, null, { timeout: 15000 });
+    await m.evaluate(() => { const d = App.doc; App.project.parts.push({ id: 'p2', doc: Model.newDoc(), drawing: null }); App.project.parts[1].doc.name = 'Una parte con un nome molto lungo per vedere'; App.asm.refreshPartSel(); });
+    await m.waitForTimeout(100);
+    const over = await m.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, sel: !document.querySelector('#partSel').hidden, r: document.querySelector('#partSel').getBoundingClientRect().right }));
+    await m.screenshot({ path: path.join(OUT, 'assieme-telefono.png') });
+    await c2.close();
+    const moved = 60 * pxs2; void pxs;
+    const ok = near(p1, p0, 1e-9) && near(p2, [p0[0] + moved, p0[1], p0[2]], 1e-5) && over.sel && over.sw <= over.cw && over.r <= over.cw && !errs.length;
+    rec(ASM7, ok, `senza comando ${fmtv(p1)}; con il comando ${fmtv(p2)} (atteso +${moved.toFixed(4)}); larghezza ${over.sw}/${over.cw}, elenco fino a ${over.r}; ${errs.join(' / ')}`);
+  } catch (e) { rec(ASM7, false, e.message.split('\n')[0]); }
 
   await browser.close();
   const f = results.filter(r => !r.ok).length;

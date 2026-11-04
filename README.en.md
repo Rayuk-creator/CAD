@@ -117,6 +117,14 @@ Line, corner and centre rectangle, circle, arcs (centre-ends, 3-point, tangent),
 - **Solid bodies**: **Unisci risultato** (Merge result) box, folder in the tree, **Combina** (Combine: Add, Subtract, Common), **Sposta/Copia corpo** (Move/Copy body), **Elimina/Mantieni corpo** (Delete/Keep body), **Ambito funzione** (Feature scope) to choose the bodies of a cut or hole; mass for each body, one solid per body in STEP.
 - Feature tree with edit, suppress, rollback bar, undo and redo.
 
+### Assembly
+
+- Several parts **in the same project** (and the same file): **Nuova parte** (New part), part list at the top, double-click a component to open its part.
+- **Inserisci parte** (Insert part): a part of the project, several copies of it, or a STEP, IGES, STL, OBJ file or an exported project. A STEP file with several bodies gives one part per body, at the positions in the file.
+- **Mates**: coincident, concentric, parallel, perpendicular, distance, angle, between faces, edges and vertices; fixed part; degrees of freedom of each component in the tree; a message when two mates contradict each other.
+- **Dragging** components within their remaining degrees of freedom, by mouse or finger (**Sposta parte**, Move part). If you edit a part, the assembly is solved again.
+- **Export STEP** of the assembly: one solid per component. Interference checks, exploded views, bills of materials and assembly drawings are not there yet.
+
 ### Evaluate
 
 Mass properties (volume, area, mass, centre of mass, bounding box) computed on the exact surfaces, 13 materials (steels, cast iron, aluminium, brass, copper, plastics), measure, section view.
@@ -131,8 +139,8 @@ Orthographic views in **first-angle projection** (ISO 5456-2), hidden lines, cen
 
 ![«How to» guide: fillet and chamfer edges](docs/img/guida.png)
 
-- **Guida** (Guide, button at the top): 50 «how to» topics with numbered steps, tips and terms. **Mostrami dove** (Show me where) opens the right tab and makes the command blink.
-- **Glossario** (Glossary): more than 170 terms explained in plain words (commands, relations, options, standards). The small **ⓘ** next to panel headings opens the explanation of that item.
+- **Guida** (Guide, button at the top): 54 «how to» topics with numbered steps, tips and terms. **Mostrami dove** (Show me where) opens the right tab and makes the command blink.
+- **Glossario** (Glossary): more than 190 terms explained in plain words (commands, relations, options, standards). The small **ⓘ** next to panel headings opens the explanation of that item.
 
 ## Verified calculations
 

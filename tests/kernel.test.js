@@ -9,6 +9,7 @@ const Model = isNode ? require(path.join(dir, 'model.js')) : root.Model;
 const Sketch = isNode ? require(path.join(dir, 'sketch.js')) : root.Sketch;
 const Geom = isNode ? require(path.join(dir, 'geom.js')) : root.Geom;
 const Export = isNode ? require(path.join(dir, 'export.js')) : root.Export;
+const Assembly = isNode ? require(path.join(dir, 'assembly.js')) : root.Assembly;
 const TOL = isNode ? +(process.env.TOL || 0.01) : 0.01;
 const PI = Math.PI;
 
@@ -1198,6 +1199,290 @@ SK.push(['Sfondo DXF nello schizzo: stessa origine e scala; geometria, stato e c
     an.dof === an0.dof && an.status === an0.status ? 1 : 0, b.s.bg === undefined ? 1 : 0, pr.regions.reduce((s, x) => s + x.area, 0), pr.regions.length === pr0.regions.length ? 1 : 0, back.bg.length === 2 * nBg ? 1 : 0] };
 }]);
 
+/* ---------- assiemi: posizioni e gradi di libertà calcolati a mano ---------- */
+const ASM = [];
+const asmSet = docs => { const infos = new Map(); for (const k in docs) infos.set(k, Assembly.partInfo(docs[k])); return infos; };
+const asmFace = (doc, n, w) => ({ k: 'face', name: face(doc, nearW(n, w)).name });
+const asmRev = (doc, i = 0) => { const st = Model.regen(doc); const ids = [...new Set(st.body.map(p => p.t))].filter(t => st.tags.get(t).kind === 'rev'); return { k: 'face', name: st.tags.get(ids[i]).name }; };
+const asmEdge = (doc, p, kind) => ({ k: 'edge', ...edge(doc, p, kind) });
+const asmPose = (p, q) => ({ p, q: q || [1, 0, 0, 0] });
+const rotY = a => Assembly.qexp([0, a, 0]), rotZ = a => Assembly.qexp([0, 0, a]);
+// mate: elementi A (di ia) e B (di ib); verso e lato si danno a mano, altrimenti quelli più vicini alla posizione attuale
+function asmMate(asm, infos, type, ia, ra, ib, rb, extra = {}) {
+  const a = { inst: ia.id, ...ra }, b = { inst: ib.id, ...rb };
+  const EA = Assembly.worldEnt(Assembly.entityOf(a, infos.get(ia.part)), ia.pose), EB = Assembly.worldEnt(Assembly.entityOf(b, infos.get(ib.part)), ib.pose);
+  const m = { id: Assembly.uid(asm, 'M'), type, a, b, ...Assembly.mateDefaults(type, EA, EB), ...extra };
+  asm.mates.push(m);
+  return m;
+}
+// ingombro vero di un componente: dai vertici della scena, non dalle equazioni del risolutore
+function asmBox(asm, infos, inst) {
+  const s = Assembly.scene(asm, infos), b = s.bodies.find(x => x.id === inst.id);
+  const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+  for (const p of b.polys) for (const v of p.v) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], v[k]); mx[k] = Math.max(mx[k], v[k]); }
+  return [...mn, ...mx];
+}
+const asmNormal = (asm, infos, inst, ref) => { const s = Assembly.scene(asm, infos); return s.tags.byName.get(inst.id + '/' + ref.name).n; };
+function plateHole(L, W, H, cx, cy, r) { const d = D0('piastra'); const b = SB(); b.rect(0, 0, L, W); b.circle(cx, cy, r); const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: H }); return d; }
+function pin(r, h) { const d = D0('perno'); const b = SB(); b.circle(0, 0, r); const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: h }); return d; }
+const eqs = (got, exp, tol = 1e-6) => ({ got, exp, tol });
+// due blocchi 80×50×10: A fermo, B libero in (200, 50, 30): x 200..280, y 50..60, z -20..30
+function twoBlocks(pose) {
+  const docs = { a: box(), b: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: pose || asmPose([200, 50, 30]) });
+  return { docs, infos, asm, A, B };
+}
+const UP = [0, 1, 0], DN = [0, -1, 0], XM = [-1, 0, 0], ZP = [0, 0, 1];
+ASM.push(['Coincidente faccia-faccia: B si appoggia su A e si muove solo in Y (y 10..20, x e z invariati); 3 gradi di libertà', () => {
+  const t = twoBlocks(); asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0));
+  const r = Assembly.solve(t.asm, t.infos);
+  return eqs([...asmBox(t.asm, t.infos, t.B), r.dof.total, r.dof.byInst.get(t.B.id), r.ok ? 1 : 0], [200, 10, -20, 280, 20, 30, 3, 3, 1]);
+}]);
+ASM.push(['Tre facce coincidenti in fila: 3 → 1 → 0 gradi di libertà (la seconda toglie uno spostamento e la rotazione); B esattamente sopra A (x 0..80, y 10..20, z -50..0)', () => {
+  const t = twoBlocks(), out = [];
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0)); out.push(Assembly.solve(t.asm, t.infos).dof.total);
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, XM, 0), t.B, asmFace(t.docs.b, XM, 0), { s: 1 }); out.push(Assembly.solve(t.asm, t.infos).dof.total);
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, ZP, 0), t.B, asmFace(t.docs.b, ZP, 0), { s: 1 }); out.push(Assembly.solve(t.asm, t.infos).dof.total);
+  return eqs([...out, ...asmBox(t.asm, t.infos, t.B)], [3, 1, 0, 0, 10, -50, 80, 20, 0]);
+}]);
+ASM.push(['Coincidente con il verso invertito: partendo dal punto morto B si capovolge (normale +Y, y 0..10)', () => {
+  const t = twoBlocks(); const fb = asmFace(t.docs.b, DN, 0);
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, fb, { s: 1 });
+  const r = Assembly.solve(t.asm, t.infos), b = asmBox(t.asm, t.infos, t.B);
+  return eqs([...asmNormal(t.asm, t.infos, t.B, fb), b[1], b[4], r.dof.total, r.ok ? 1 : 0], [0, 1, 0, 0, 10, 3, 1]);
+}]);
+ASM.push(['Concentrico: perno Ø20 nel foro Ø20 in (40, -25): 2 gradi di libertà; con la base su A 1 solo; y 10..40', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 0, 60]) });
+  asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b));
+  const d1 = Assembly.solve(asm, infos).dof.total, b1 = asmBox(asm, infos, B);
+  asmMate(asm, infos, 'coincident', A, asmFace(docs.a, UP, 10), B, asmFace(docs.b, DN, 0));
+  const d2 = Assembly.solve(asm, infos).dof.total, b2 = asmBox(asm, infos, B);
+  return eqs([d1, (b1[0] + b1[3]) / 2, (b1[2] + b1[5]) / 2, b1[1], b1[4], d2, b2[1], b2[4], (b2[0] + b2[3]) / 2, (b2[2] + b2[5]) / 2], [2, 40, -25, 0, 30, 1, 10, 40, 40, -25]);
+}]);
+ASM.push(['Concentrico con il verso invertito: il perno si gira (normale della base +Y) e resta sull\'asse', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([40, 0, -25]) }); const fb = asmFace(docs.b, DN, 0);
+  const m = asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b));
+  m.s = -m.s;
+  const r = Assembly.solve(asm, infos), bx = asmBox(asm, infos, B);
+  return eqs([...asmNormal(asm, infos, B, fb), (bx[0] + bx[3]) / 2, (bx[2] + bx[5]) / 2, r.dof.total], [0, 1, 0, 40, -25, 2]);
+}]);
+ASM.push(['Coincidente spigolo circolare-spigolo circolare: stesso centro e stesso piano (perno sul foro), 1 grado di libertà', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 7, 60]) });
+  asmMate(asm, infos, 'coincident', A, asmEdge(docs.a, [50, 10, -25], 'circle'), B, asmEdge(docs.b, [10, 0, 0], 'circle'));
+  const r = Assembly.solve(asm, infos), b = asmBox(asm, infos, B);
+  return eqs([(b[0] + b[3]) / 2, (b[2] + b[5]) / 2, b[1], b[4], r.dof.total], [40, -25, 10, 40, 1]);
+}]);
+ASM.push(['Spigolo tra un cono e un piano (smusso): il centro viene dai punti del bordo, sull\'asse del perno', () => {
+  const dp = pin(10, 30); feat(dp, { type: 'chamfer', d: 2, edges: [edge(dp, [10, 30, 0], 'circle')] });
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: dp }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 0, 60]) });
+  // lo spigolo tra il cono e la faccia in cima: edgeGeometry non lo conosce, quindi qui si cerca nei gruppi
+  const st0 = Model.regen(dp), g0 = [...Model.edgeGroups(st0, st0.topo).values()].find(g => g.segs.every(e => Math.abs(st0.topo.verts[e.a][1] - 30) < 1e-9 && Math.abs(Math.hypot(st0.topo.verts[e.a][0], st0.topo.verts[e.a][2]) - 8) < 1e-9));
+  const ed = { k: 'edge', a: st0.tags.get(g0.t1).name, b: st0.tags.get(g0.t2).name, p: [8, 30, 0] };
+  const E = Assembly.entityOf({ inst: B.id, ...ed }, infos.get('b'));
+  asmMate(asm, infos, 'coincident', A, asmEdge(docs.a, [50, 10, -25], 'circle'), B, ed);
+  const r = Assembly.solve(asm, infos), b = asmBox(asm, infos, B);
+  return eqs([E.R, E.o[0], E.o[1], E.o[2], (b[0] + b[3]) / 2, (b[2] + b[5]) / 2, b[1], r.ok ? 1 : 0], [8, 0, 30, 0, 40, -25, -20, 1]);
+}]);
+ASM.push(['Concentrico tra due sfere R10: centri uguali, 3 gradi di libertà', () => {
+  const sph = () => revDoc(b => { const c = b.pt(0, 0), a = b.pt(0, -10), e = b.pt(0, 10); b.arc(c, a, e); b.line(e, a); });
+  const docs = { a: sph(), b: sph() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([50, 20, -30]) });
+  const m = asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b));
+  const E = Assembly.entityOf(m.a, infos.get('a')), r = Assembly.solve(asm, infos), b = asmBox(asm, infos, B), a = asmBox(asm, infos, A);
+  return eqs([E.sphere ? 1 : 0, E.R, r.dof.total, (b[0] + b[3]) / 2 - (a[0] + a[3]) / 2, (b[1] + b[4]) / 2 - (a[1] + a[4]) / 2, (b[2] + b[5]) / 2 - (a[2] + a[5]) / 2], [1, 10, 3, 0, 0, 0], 1e-3);
+}]);
+ASM.push(['Parallelo: B ruotato di 30° attorno a Z torna con la faccia superiore +Y, senza spostare il centro; 4 gradi di libertà', () => {
+  const t = twoBlocks(asmPose([200, 50, 30], rotZ(PI / 6))); const fb = asmFace(t.docs.b, UP, 10);
+  const c0 = Assembly.toWorld(t.B.pose, t.infos.get('b').c);
+  asmMate(t.asm, t.infos, 'parallel', t.A, asmFace(t.docs.a, UP, 10), t.B, fb);
+  const r = Assembly.solve(t.asm, t.infos), c1 = Assembly.toWorld(t.B.pose, t.infos.get('b').c);
+  return eqs([...asmNormal(t.asm, t.infos, t.B, fb), ...c1, r.dof.total], [0, 1, 0, ...c0, 4]);
+}]);
+ASM.push(['Perpendicolare: da 30° a 90° (rotazione minima attorno a Z, normale −X), centro fermo; 5 gradi di libertà', () => {
+  const t = twoBlocks(asmPose([200, 50, 30], rotZ(PI / 6))); const fb = asmFace(t.docs.b, UP, 10);
+  const c0 = Assembly.toWorld(t.B.pose, t.infos.get('b').c);
+  asmMate(t.asm, t.infos, 'perpendicular', t.A, asmFace(t.docs.a, UP, 10), t.B, fb);
+  const r = Assembly.solve(t.asm, t.infos), c1 = Assembly.toWorld(t.B.pose, t.infos.get('b').c);
+  return eqs([...asmNormal(t.asm, t.infos, t.B, fb), ...c1, r.dof.total], [-1, 0, 0, ...c0, 5]);
+}]);
+ASM.push(['Distanza 25 tra due facce: y 35..45; con il lato invertito -15..-5; 3 gradi di libertà', () => {
+  const t = twoBlocks(), m = asmMate(t.asm, t.infos, 'distance', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0), { value: 25 });
+  const r1 = Assembly.solve(t.asm, t.infos), b1 = asmBox(t.asm, t.infos, t.B);
+  m.side = -m.side;
+  Assembly.solve(t.asm, t.infos); const b2 = asmBox(t.asm, t.infos, t.B);
+  return eqs([b1[1], b1[4], b2[1], b2[4], r1.dof.total], [35, 45, -15, -5, 3]);
+}]);
+ASM.push(['Distanza 25 tra due vertici e 60 tra due assi: misure rilette dalla scena', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const v0 = { k: 'vertex', p: [80, 10, 0] }, v1 = { k: 'vertex', p: [0, 0, 0] };
+  asmMate(t.asm, t.infos, 'distance', t.A, v0, t.B, v1, { value: 25 });
+  const r = Assembly.solve(t.asm, t.infos);
+  const d = Math.hypot(...[0, 1, 2].map(k => Assembly.toWorld(t.B.pose, v1.p)[k] - v0.p[k]));
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 0, 60]) });
+  asmMate(asm, infos, 'distance', A, asmRev(docs.a), B, asmRev(docs.b), { value: 60 });
+  const r2 = Assembly.solve(asm, infos), bb = asmBox(asm, infos, B);
+  const da = Math.hypot((bb[0] + bb[3]) / 2 - 40, (bb[2] + bb[5]) / 2 + 25);
+  return eqs([d, r.dof.total, da, r2.dof.total], [25, 5, 60, 3]);
+}]);
+ASM.push(['Cerniera: concentrico, facce a contatto e angolo 30°: estremo del braccio calcolato a mano; 0 gradi di libertà', () => {
+  const docs = { a: plateHole(120, 20, 10, 10, 10, 5), b: plateHole(120, 20, 10, 10, 10, 5) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a');
+  // posizione di partenza: 10° attorno a Y, attorno al centro del foro
+  const q = rotY(10 * PI / 180), h = [10, 0, -10], rh = Assembly.qrot(q, h);
+  const B = Assembly.addInst(asm, 'b', { pose: asmPose([h[0] - rh[0], 40 - rh[1], h[2] - rh[2]], q) });
+  asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b), { s: 1 });
+  asmMate(asm, infos, 'coincident', A, asmFace(docs.a, UP, 10), B, asmFace(docs.b, DN, 0), { s: -1 });
+  const d1 = Assembly.solve(asm, infos).dof.total;
+  asmMate(asm, infos, 'angle', A, asmFace(docs.a, ZP, 0), B, asmFace(docs.b, ZP, 0), { value: 30 });
+  const r = Assembly.solve(asm, infos);
+  // vertice (120, 10, 0): rispetto al foro (110, 10, 10); rotazione +30° attorno a Y: x' = x cos + z sin, z' = -x sin + z cos
+  const c = Math.cos(PI / 6), s = Math.sin(PI / 6), tip = Assembly.toWorld(B.pose, [120, 10, 0]);
+  return eqs([d1, r.dof.total, ...tip], [1, 0, 10 + 110 * c + 10 * s, 20, -10 - 110 * s + 10 * c]);
+}]);
+ASM.push(['Gradi di libertà di ogni coppia di elementi (tabella scritta a mano)', () => {
+  const v0 = { k: 'vertex', p: [80, 10, 0] }, v1 = { k: 'vertex', p: [0, 0, 0] };
+  const got = [], exp = [];
+  const row = (type, ra, rb, n, extra) => { const t = twoBlocks(asmPose([200, 50, 30], Assembly.qnorm(Assembly.qmul(rotY(0.2), rotZ(0.3))))); const fa = typeof ra === 'function' ? ra(t.docs.a) : ra, fb = typeof rb === 'function' ? rb(t.docs.b) : rb; asmMate(t.asm, t.infos, type, t.A, fa, t.B, fb, extra); const r = Assembly.solve(t.asm, t.infos); got.push(r.dof.total, r.ok ? 1 : 0); exp.push(n, 1); };
+  const fT = d => asmFace(d, UP, 10), fB = d => asmFace(d, DN, 0), eL = d => asmEdge(d, [40, 10, 0], 'line');
+  row('coincident', v0, v1, 3); row('coincident', fT, v1, 5); row('coincident', eL, eL, 2); row('coincident', fT, eL, 4); row('coincident', eL, v1, 4);
+  row('parallel', eL, eL, 4); row('perpendicular', eL, eL, 5); row('parallel', fT, eL, 5); row('perpendicular', fT, eL, 4);
+  row('distance', v0, v1, 5, { value: 25 }); row('distance', fT, v1, 5, { value: 25 }); row('distance', fT, eL, 4, { value: 25 }); row('distance', eL, eL, 3, { value: 25 }); row('distance', eL, v1, 5, { value: 25 });
+  row('angle', fT, fB, 5, { value: 40 }); row('angle', eL, eL, 5, { value: 40 }); row('angle', fT, eL, 5, { value: 40 });
+  // 0° e 180° tolgono 2 gradi come il parallelo
+  row('angle', fT, fB, 4, { value: 0 }); row('angle', fT, fB, 4, { value: 180 });
+  return eqs(got, exp);
+}]);
+ASM.push(['Accoppiamenti che si contraddicono: il secondo è segnato, il primo resta (y 10..20); parti ferme tutte e due: segnato', () => {
+  const t = twoBlocks();
+  const m1 = asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0));
+  const m2 = asmMate(t.asm, t.infos, 'distance', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0), { value: 5, side: 1 });
+  const r = Assembly.solve(t.asm, t.infos), b = asmBox(t.asm, t.infos, t.B);
+  const u = twoBlocks(); u.B.fixed = true;
+  asmMate(u.asm, u.infos, 'coincident', u.A, asmFace(u.docs.a, UP, 10), u.B, asmFace(u.docs.b, DN, 0));
+  const r2 = Assembly.solve(u.asm, u.infos);
+  return eqs([r.ok ? 1 : 0, r.status.get(m1.id).ok ? 1 : 0, r.status.get(m2.id).ok ? 1 : 0, b[1], b[4], r2.ok ? 1 : 0, r2.dof.total], [0, 1, 0, 10, 20, 0, 0]);
+}]);
+ASM.push(['Catena: A fermo, B su A, C su B: 6 gradi in tutto, 3 per B e 3 per C; senza accoppiamenti 6 e parte fissa 0', () => {
+  const docs = { a: box(), b: box(), c: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) }), C = Assembly.addInst(asm, 'c', { pose: asmPose([-100, 90, 10]) });
+  const r0 = Assembly.solve(asm, infos);
+  asmMate(asm, infos, 'coincident', A, asmFace(docs.a, UP, 10), B, asmFace(docs.b, DN, 0));
+  asmMate(asm, infos, 'coincident', B, asmFace(docs.b, UP, 10), C, asmFace(docs.c, DN, 0));
+  const r = Assembly.solve(asm, infos), cb = asmBox(asm, infos, C);
+  return eqs([r0.dof.byInst.get(A.id), r0.dof.byInst.get(B.id), r0.dof.total, r.dof.total, r.dof.byInst.get(A.id), r.dof.byInst.get(B.id), r.dof.byInst.get(C.id), cb[1], cb[4]], [0, 6, 12, 6, 0, 3, 3, 20, 30]);
+}]);
+ASM.push(['Copie: stessa parte due volte: volume 2·40000, spigoli doppi; una parte rimane ferma dove la si mette', () => {
+  const docs = { a: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'a', { pose: asmPose([100, 0, 0], rotZ(0.4)) });
+  const s = Assembly.scene(asm, infos), st = infos.get('a').st;
+  const p0 = JSON.stringify(B.pose); Assembly.solve(asm, infos);
+  return eqs([Geom.massProps(s.body, s.tags).volume, s.body.length, s.topo.edges.filter(e => e.sharp).length, A.n, B.n, p0 === JSON.stringify(B.pose) ? 1 : 0], [80000, 2 * st.body.length, 2 * st.topo.edges.filter(e => e.sharp).length, 1, 2, 1]);
+}]);
+ASM.push(['Parte modificata: A da 10 a 25 mm di altezza, B si riporta sulla faccia nuova (y 25..35)', () => {
+  const t = twoBlocks(); asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0));
+  Assembly.solve(t.asm, t.infos);
+  t.docs.a.features.find(f => f.type === 'extrude').depth = 25;
+  const infos = asmSet(t.docs); const r = Assembly.solve(t.asm, infos), b = asmBox(t.asm, infos, t.B);
+  return eqs([b[1], b[4], r.ok ? 1 : 0], [25, 35, 1]);
+}]);
+ASM.push(['Elemento perso: se il foro sparisce dalla parte, l\'accoppiamento è segnato e il programma non si ferma', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos0 = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 0, 60]) });
+  const m = asmMate(asm, infos0, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b));
+  Assembly.solve(asm, infos0);
+  const sk = docs.a.features[0].sk; sk.ents = sk.ents.filter(e => e.t !== 'ci');
+  const r = Assembly.solve(asm, asmSet(docs));
+  return eqs([r.ok ? 1 : 0, r.status.get(m.id).ok ? 1 : 0, /non esiste più/.test(r.status.get(m.id).err) ? 1 : 0, r.dof.total], [0, 0, 1, 6]);
+}]);
+ASM.push(['Trascinamento: sul piano si sposta senza girare (+30, +10), y resta 10; il blocco libero si sposta e basta', () => {
+  const t = twoBlocks(); asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0));
+  Assembly.solve(t.asm, t.infos);
+  const P = [40, 5, -25], w = Assembly.toWorld(t.B.pose, P);
+  const ok = Assembly.drag(t.asm, t.infos, { inst: t.B.id, local: P, target: [w[0] + 30, w[1] + 99, w[2] + 10], dirs: [[1, 0, 0], [0, 0, 1]] });
+  const b = asmBox(t.asm, t.infos, t.B);
+  const u = twoBlocks(); const P2 = [40, 5, -25], w2 = Assembly.toWorld(u.B.pose, P2);
+  Assembly.drag(u.asm, u.infos, { inst: u.B.id, local: P2, target: [w2[0] + 7, w2[1] - 3, w2[2]], dirs: [[1, 0, 0], [0, 1, 0]] });
+  return eqs([ok ? 1 : 0, b[0], b[1], b[2], b[3], b[4], b[5], ...t.B.pose.q, ...u.B.pose.p, ...u.B.pose.q], [1, 230, 10, -10, 310, 20, 40, 1, 0, 0, 0, 207, 47, 30, 1, 0, 0, 0]);
+}]);
+ASM.push(['Trascinamento di una cerniera: l\'estremo arriva a +20° lungo il cerchio, il foro resta fermo; un perno scorre lungo l\'asse', () => {
+  const docs = { a: plateHole(120, 20, 10, 10, 10, 5), b: plateHole(120, 20, 10, 10, 10, 5), c: pin(5, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([0, 10, 0]) });
+  asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b), { s: 1 });
+  asmMate(asm, infos, 'coincident', A, asmFace(docs.a, UP, 10), B, asmFace(docs.b, DN, 0), { s: -1 });
+  Assembly.solve(asm, infos);
+  const P = [120, 10, 0], c = Math.cos(PI / 9), s = Math.sin(PI / 9), target = [10 + 110 * c + 10 * s, 20, -10 - 110 * s + 10 * c];
+  for (let i = 0; i < 2; i++) Assembly.drag(asm, infos, { inst: B.id, local: P, target, dirs: [[1, 0, 0], [0, 0, 1]] });
+  const tip = Assembly.toWorld(B.pose, P), hole = Assembly.toWorld(B.pose, [10, 0, -10]);
+  const asm2 = Assembly.newAssembly(), A2 = Assembly.addInst(asm2, 'a'), C2 = Assembly.addInst(asm2, 'c', { pose: asmPose([10, 0, -10]) });
+  asmMate(asm2, infos, 'concentric', A2, asmRev(docs.a), C2, asmRev(docs.c), { s: 1 });
+  Assembly.solve(asm2, infos);
+  const Q = [0, 15, 0], wq = Assembly.toWorld(C2.pose, Q);
+  Assembly.drag(asm2, infos, { inst: C2.id, local: Q, target: [wq[0] + 3, wq[1] + 12, wq[2]], dirs: [[1, 0, 0], [0, 1, 0]] });
+  const cb = asmBox(asm2, infos, C2);
+  return eqs([...tip, ...hole, (cb[0] + cb[3]) / 2, cb[1], cb[4], (cb[2] + cb[5]) / 2], [...target, 10, 10, -10, 10, 12, 42, -10]);
+}]);
+ASM.push(['Ruota: il punto preso a 30 mm dal centro gira di 25° e il centro non si sposta; una parte fissa non si trascina', () => {
+  const t = twoBlocks(), c0 = Assembly.toWorld(t.B.pose, t.infos.get('b').c), a = 25 * PI / 180;
+  const P = [t.infos.get('b').c[0] + 30, t.infos.get('b').c[1], t.infos.get('b').c[2]];
+  // rotazione attorno a Y: (30, 0, 0) → (30 cos, 0, -30 sin)
+  const ok = Assembly.drag(t.asm, t.infos, { inst: t.B.id, local: P, rotate: true, target: [c0[0] + 30 * Math.cos(a), c0[1], c0[2] - 30 * Math.sin(a)], dirs: [[1, 0, 0], [0, 0, 1]] });
+  const c1 = Assembly.toWorld(t.B.pose, t.infos.get('b').c), n = Assembly.dirWorld(t.B.pose, [1, 0, 0]);
+  const res = Assembly.drag(t.asm, t.infos, { inst: t.A.id, local: [0, 0, 0], target: [5, 5, 5], dirs: [[1, 0, 0]] });
+  return eqs([ok ? 1 : 0, ...c1, ...n, res ? 1 : 0], [1, ...c0, Math.cos(a), 0, -Math.sin(a), 0]);
+}]);
+ASM.push(['Ruota su una cerniera lontana dal centro: gira attorno al foro, non al centro del pezzo (estremo a +20° calcolato a mano)', () => {
+  const docs = { a: plateHole(120, 20, 10, 10, 10, 5), b: plateHole(120, 20, 10, 10, 10, 5) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([0, 10, 0]) });
+  asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b), { s: 1 });
+  asmMate(asm, infos, 'coincident', A, asmFace(docs.a, UP, 10), B, asmFace(docs.b, DN, 0), { s: -1 });
+  Assembly.solve(asm, infos);
+  const P = [120, 10, 0], c = Math.cos(PI / 9), s = Math.sin(PI / 9), target = [10 + 110 * c + 10 * s, 20, -10 - 110 * s + 10 * c];
+  for (let i = 0; i < 4; i++) Assembly.drag(asm, infos, { inst: B.id, local: P, rotate: true, target, dirs: [[1, 0, 0], [0, 0, 1]] });
+  return eqs([...Assembly.toWorld(B.pose, P), ...Assembly.toWorld(B.pose, [10, 0, -10])], [...target, 10, 10, -10]);
+}]);
+ASM.push(['Scena: facce, assi e vertici di un componente ruotato coincidono; salvando e rileggendo l\'assieme non si muove nulla', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 'a'); const B = Assembly.addInst(asm, 'a', { pose: asmPose([11, 22, 33], Assembly.qnorm([0.8, 0.2, -0.3, 0.5])) });
+  const s = Assembly.scene(asm, infos);
+  let plane = 0, rev = 0;
+  for (const p of s.body) { const tg = s.tags.get(p.t); for (const v of p.v) { plane = Math.max(plane, Math.abs(p.p.n[0] * v[0] + p.p.n[1] * v[1] + p.p.n[2] * v[2] - p.p.w)); if (tg.kind === 'plane' && !tg.mesh) plane = Math.max(plane, Math.abs(tg.n[0] * v[0] + tg.n[1] * v[1] + tg.n[2] * v[2] - tg.w)); if (tg.kind === 'rev') { const r = [v[0] - tg.o[0], v[1] - tg.o[1], v[2] - tg.o[2]], t = r[0] * tg.d[0] + r[1] * tg.d[1] + r[2] * tg.d[2]; rev = Math.max(rev, Math.abs(Math.hypot(r[0] - t * tg.d[0], r[1] - t * tg.d[1], r[2] - t * tg.d[2]) - 10)); } } }
+  const copy = JSON.parse(JSON.stringify(asm)), before = JSON.stringify(copy.insts); Assembly.solve(copy, infos);
+  return eqs([plane, rev, before === JSON.stringify(copy.insts) ? 1 : 0, copy.insts[1].pose.p[0], B.pose.p[0]], [0, 0, 1, 11, 11], 1e-9);
+}]);
+ASM.push(['Valori di partenza: B sotto A: lato e distanza sono quelli attuali (lato -1, 40 mm) e B non si muove; angolo attuale 30°', () => {
+  const t = twoBlocks(asmPose([200, -30, 30]));
+  const m = asmMate(t.asm, t.infos, 'distance', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0), { s: -1 });
+  const p0 = t.B.pose.p.slice(); Assembly.solve(t.asm, t.infos);
+  const u = twoBlocks(asmPose([200, 50, 30], rotZ(PI / 6)));
+  const a = asmMate(u.asm, u.infos, 'angle', u.A, asmFace(u.docs.a, UP, 10), u.B, asmFace(u.docs.b, UP, 10));
+  return eqs([m.side, m.value, ...t.B.pose.p, a.value], [-1, 40, ...p0, 30]);
+}]);
+ASM.push(['Faccia sparita: la cima del blocco è tolta tutta da un taglio: il nome c\'è ancora, ma l\'accoppiamento è segnato', () => {
+  const docs = { a: box(), b: box() }, infos0 = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  const top = asmFace(docs.a, UP, 10);
+  const m = asmMate(asm, infos0, 'coincident', A, top, B, asmFace(docs.b, DN, 0));
+  Assembly.solve(asm, infos0);
+  // taglio di tutta la pianta, profondo 2 mm dall'alto: rimane y 0..8
+  const b = SB(); b.rect(-5, -5, 85, 55);
+  const sk = feat(docs.a, { type: 'sketch', plane: { kind: 'face', ...face(docs.a, nearW(UP, 10)) }, sk: b.s });
+  feat(docs.a, { type: 'cut', sketch: sk, end: 'blind', depth: 2 });
+  const infos = asmSet(docs), inf = infos.get('a');
+  const r = Assembly.solve(asm, infos);
+  return eqs([Geom.massProps(inf.st.body, inf.st.tags).volume, inf.st.tags.byName.has(top.name) ? 1 : 0, r.status.get(m.id).ok ? 1 : 0, /non esiste più/.test(r.status.get(m.id).err || '') ? 1 : 0], [32000, 1, 0, 1], 1e-3);
+}]);
+ASM.push(['Accoppiamenti possibili: Concentrico solo tra elementi tondi; Angolo e Parallelo non tra vertici', () => {
+  const T = (a, b) => Assembly.allowedTypes(a, b);
+  const P = { t: 'plane' }, R = { t: 'axis', round: true }, Lx = { t: 'axis', round: false }, V = { t: 'point' }, S = { t: 'point', sphere: true };
+  const has = (l, t) => l.includes(t) ? 1 : 0;
+  return eqs([has(T(P, P), 'concentric'), has(T(R, R), 'concentric'), has(T(R, Lx), 'concentric'), has(T(R, V), 'concentric'), has(T(S, S), 'concentric'), has(T(V, V), 'concentric'), has(T(V, V), 'angle'), has(T(V, V), 'parallel'), has(T(P, V), 'perpendicular'), has(T(P, P), 'distance'), has(T(V, R), 'distance'), Assembly.suggest(R, R) === 'concentric' ? 1 : 0, Assembly.suggest(P, P) === 'coincident' ? 1 : 0], [0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1]);
+}]);
+
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
   const rows = [];
@@ -1230,6 +1515,17 @@ function run(tol = TOL) {
     catch (e) { ok = false; msg.push('ERRORE ' + e.message); }
     rows.push({ name: 'Schizzo · ' + name, ok, errs, msg });
   }
+  // assiemi: numeri esatti (scarto assoluto, in mm), non la tolleranza dell'1 %
+  for (const [name, fn] of ASM) {
+    let ok = true; const msg = [], errs = {};
+    try {
+      const r = fn(); let worst = 0;
+      r.exp.forEach((e, i) => { const q = Math.abs(r.got[i] - e); if (!(q <= r.tol)) { ok = false; msg.push('valore ' + i + ': ' + r.got[i] + ', atteso ' + e); } worst = Math.max(worst, q); });
+      if (r.got.length !== r.exp.length) { ok = false; msg.push('numero di valori diverso'); }
+      errs.S = worst;
+    } catch (e) { ok = false; msg.push('ERRORE ' + e.message); }
+    rows.push({ name: 'Assieme · ' + name, ok, errs, msg });
+  }
   return rows;
 }
 if (isNode) {
@@ -1240,5 +1536,5 @@ if (isNode) {
   console.log(`\n${rows.length - fail}/${rows.length} superati (tolleranza ${(TOL * 100).toFixed(1)}%)`);
   if (process.env.JSON) require('fs').writeFileSync(process.env.JSON, JSON.stringify(rows, null, 1));
   process.exit(fail ? 1 : 0);
-} else root.SelfTest = { run, count: () => CASES.length + SK.length };
+} else root.SelfTest = { run, count: () => CASES.length + SK.length + ASM.length };
 })(this);

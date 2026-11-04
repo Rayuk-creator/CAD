@@ -115,6 +115,14 @@ Linea, rettangolo e rettangolo centrale, cerchio, archi (centro-estremi, 3 punti
 - **Corpi solidi**: casella **Unisci risultato**, cartella nell'albero, **Combina** (Aggiungi, Sottrai, Comune), **Sposta/Copia corpo**, **Elimina/Mantieni corpo**, **Ambito funzione** per scegliere i corpi di un taglio o di un foro; massa per ogni corpo, un solido per corpo nello STEP.
 - Albero di progettazione con modifica, soppressione, barra di ripristino, annulla e ripeti.
 
+### Assieme
+
+- Più parti **nello stesso progetto** (e nello stesso file): **Nuova parte**, elenco delle parti in alto, doppio clic su un componente per aprire la sua parte.
+- **Inserisci parte**: una parte del progetto, più copie della stessa parte, oppure un file STEP, IGES, STL, OBJ o un progetto esportato. Uno STEP con più corpi dà una parte per ogni corpo, nelle posizioni del file.
+- **Accoppiamenti**: coincidente, concentrico, parallelo, perpendicolare, distanza, angolo, tra facce, spigoli e vertici; parte fissa; gradi di libertà di ogni componente nell'albero; messaggio quando due accoppiamenti si contraddicono.
+- **Trascinamento** dei componenti nei gradi di libertà che restano, con il mouse o con il dito (**Sposta parte**). Se modifichi una parte, l'assieme si ricalcola.
+- **Esporta STEP** dell'assieme: un solido per ogni componente. Non ci sono ancora interferenze, vista esplosa, distinta base e tavola dell'assieme.
+
 ### Valuta
 
 Proprietà di massa (volume, area, massa, baricentro, ingombro) calcolate sulle superfici esatte, 13 materiali (acciai, ghisa, alluminio, ottone, rame, plastiche), misura, vista in sezione.
@@ -129,8 +137,8 @@ Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nasc
 
 ![Guida «Come si fa»: raccordo e smusso degli spigoli](docs/img/guida.png)
 
-- **Guida** (pulsante in alto): 50 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
-- **Glossario**: oltre 170 termini spiegati in parole semplici (comandi, relazioni, opzioni, norme). La piccola **ⓘ** accanto ai titoli dei pannelli apre la spiegazione della voce.
+- **Guida** (pulsante in alto): 54 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
+- **Glossario**: oltre 190 termini spiegati in parole semplici (comandi, relazioni, opzioni, norme). La piccola **ⓘ** accanto ai titoli dei pannelli apre la spiegazione della voce.
 
 ## Calcoli verificati
 

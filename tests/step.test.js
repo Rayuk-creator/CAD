@@ -228,6 +228,58 @@ const CASES = [
     if (!ok) fail++;
     console.log((ok ? 'OK  ' : 'NO  ') + 'Esporta STEP con le superfici vere e rileggi con OpenCascade: ' + name + '\n      ' + m2.join('\n      '));
   }
+  // assiemi con pezzi importati: i cilindri di uno STEP sono solo triangoli, l'asse si ricava; un assieme si esporta con un solido per componente
+  {
+    const Assembly = require(path.join(dir, 'assembly.js'));
+    const eqn = (m, lab, g, e, tol = 1e-6) => { if (!(Math.abs(g - e) <= tol)) m.push(`${lab}: ${g} invece di ${e}`); };
+    const entOf = st => { const names = new Set(), out = []; for (const p of st.body) { const tg = st.tags.get(p.t); if (names.has(tg.bf)) continue; names.add(tg.bf); out.push(tg.name); } return out; };
+    const asmDoc = (text) => { const d = importDoc(occt, text, 'step'); const doc = Model.newDoc(); doc.features.push({ id: 'F1', name: 'Importato1', type: 'import', fmt: 'step', file: 'x.step', unit: 'mm', mesh: (() => { const r = IM.readCAD(occt, enc(text), 'step'); const m = IM.weld(r.pos); m.f = new Uint32Array([...m.src].map(t => r.face[t])); return IM.pack(m); })() }); return { d, doc }; };
+    n++;
+    {
+      const m = [];
+      try {
+        const info = Assembly.partInfo(asmDoc(stepCylinder(15, 40)).doc);
+        const es = entOf(info.st).map(name => Assembly.entityOf({ inst: 'I', k: 'face', name }, info));
+        const ax = es.filter(e => e.t === 'axis'), pl = es.filter(e => e.t === 'plane');
+        eqn(m, 'facce', es.length, 3); eqn(m, 'cilindri', ax.length, 1); eqn(m, 'piani', pl.length, 2);
+        eqn(m, 'raggio', ax[0].R, 15); eqn(m, 'asse |z|', Math.abs(ax[0].d[2]), 1, 1e-9); eqn(m, 'asse x', ax[0].o[0], 0); eqn(m, 'asse y', ax[0].o[1], 0);
+        const st = info.st, g0 = [...Model.edgeGroups(st, st.topo).values()][0];
+        const ed = Assembly.entityOf({ inst: 'I', k: 'edge', a: st.tags.get(g0.t1).name, b: st.tags.get(g0.t2).name, p: st.topo.verts[g0.segs[0].a] }, info);
+        eqn(m, 'bordo tondo', ed.circle ? 1 : 0, 1); eqn(m, 'raggio del bordo', ed.R, 15); eqn(m, 'centro del bordo x', ed.o[0], 0); eqn(m, 'centro del bordo y', ed.o[1], 0);
+      } catch (e) { m.push('ERRORE ' + e.message); }
+      if (m.length) fail++;
+      console.log((m.length ? 'NO  ' : 'OK  ') + 'Assieme: faccia cilindrica e bordo di uno STEP: asse e raggio 15 ricavati dai triangoli\n      ' + (m.join('; ') || 'scarti sotto 10⁻⁶ mm'));
+    }
+    n++;
+    {
+      const m = [];
+      try {
+        const docs = { a: asmDoc(stepPlateHole(60, 40, 10, 15)).doc, b: asmDoc(stepCylinder(15, 40)).doc };
+        const infos = new Map(Object.entries(docs).map(([k, d]) => [k, Assembly.partInfo(d)]));
+        const asm = Assembly.newAssembly(), A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: { p: [200, 100, 50], q: [1, 0, 0, 0] } });
+        const face = (k, pred) => { const st = infos.get(k).st; for (const name of entOf(st)) { const e = Assembly.entityOf({ inst: 'I', k: 'face', name }, infos.get(k)); if (pred(e)) return { k: 'face', name }; } throw new Error('faccia non trovata'); };
+        asm.mates.push({ id: 'M1', type: 'concentric', a: { inst: A.id, ...face('a', e => e.t === 'axis') }, b: { inst: B.id, ...face('b', e => e.t === 'axis') }, s: 1, side: 1, value: 0 });
+        asm.mates.push({ id: 'M2', type: 'coincident', a: { inst: A.id, ...face('a', e => e.t === 'plane' && e.n[2] > 0.9) }, b: { inst: B.id, ...face('b', e => e.t === 'plane' && e.n[2] < -0.9) }, s: -1, side: 1, value: 0 });
+        const r = Assembly.solve(asm, infos);
+        eqn(m, 'tutto giusto', r.ok ? 1 : 0, 1); eqn(m, 'gradi di libertà', r.dof.total, 1);
+        // centro del foro in (30, 20); la base del cilindro sulla faccia superiore z = 10
+        eqn(m, 'x', B.pose.p[0], 30); eqn(m, 'y', B.pose.p[1], 20); eqn(m, 'z', B.pose.p[2], 10);
+        // assieme esportato e riletto: due solidi, volumi sommati, ingombro delle posizioni nuove
+        const s = Assembly.scene(asm, infos);
+        const ex = Export.toSTEP(s.body, Geom.topology(s.body, s.tags), { name: 'assieme', color: [0.66, 0.7, 0.74], tags: s.tags, bodies: Model.stepBodies(s) });
+        const rr = IM.readCAD(occt, enc(ex.text), 'step');
+        const w = IM.weld(rr.pos); w.f = new Uint32Array([...w.src].map(t => rr.face[t]));
+        const d2 = Model.newDoc(); d2.features.push({ id: 'F1', name: 'Importato1', type: 'import', fmt: 'step', file: 'x.step', unit: 'mm', mesh: IM.pack(w) });
+        const st2 = Model.regen(d2), mp = Model.massProperties(st2, d2);
+        const Vexp = 60 * 40 * 10 - Math.PI * 225 * 10 + Math.PI * 225 * 40;
+        eqn(m, 'solidi nel file', ex.stats.solids, 2); eqn(m, 'solidi riletti', rr.bodies.length, 2); eqn(m, 'spigoli aperti', ex.stats.badEdges + ex.stats.openLoops, 0);
+        if (Math.abs(mp.volume - Vexp) / Vexp > 2e-4) m.push(`volume riletto ${mp.volume} invece di ${Vexp}`);
+        eqn(m, 'altezza dell\'ingombro', mp.bbox.mx[2], 50, 1e-4);
+      } catch (e) { m.push('ERRORE ' + e.message); }
+      if (m.length) fail++;
+      console.log((m.length ? 'NO  ' : 'OK  ') + 'Assieme: perno e piastra da STEP accoppiati (centro 30, 20, base a z = 10), poi esportati e riletti con OpenCascade: 2 solidi\n      ' + (m.join('; ') || 'posizioni e volume giusti'));
+    }
+  }
   console.log(`\n${n - fail}/${n} superati (tolleranza ${(TOL * 100).toFixed(1)}%)`);
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

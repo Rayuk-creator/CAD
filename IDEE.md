@@ -36,12 +36,21 @@ Risultato: il cablaggio 3D steso in piano. Ellissi e spline del DXF sono pronte.
 
 ## Assiemi con gli accoppiamenti (come SolidWorks)
 
-Chiesto dall'utente il 28 ottobre 2026 («l'opzione per montare gli assiemi con gli accoppiamenti, c'è?»): **non c'è**, il Banco CAD fa una parte alla volta (gli STEP di assiemi si importano come corpi fermi). Deciso: **lavoro grande da fare dopo**, in una chat nuova. Da chiarire all'inizio:
+Chiesto dall'utente il 28 ottobre 2026. **La base è fatta il 4 novembre 2026** (scelte dell'utente: parti dentro il progetto, solo la base nel primo lavoro, un assieme per progetto, senza sottoassiemi): vedi `RIPARTENZA.md`.
 
-- Come si salvano le parti dentro l'assieme (oggi il progetto è una parte sola, in `localStorage`): più parti nello stesso progetto, oppure parti importate da file.
-- Accoppiamenti di base come in SolidWorks: **coincidente** (facce, assi, punti), **concentrico**, **parallelo**, **perpendicolare**, **distanza**, **angolo**; parte **fissa**; trascinamento delle parti libere nei gradi di libertà che restano.
-- Albero dell'assieme (parti e accoppiamenti), interferenze, vista esplosa, distinta base nella tavola dell'assieme.
-- Prove con valori calcolati a mano (posizioni dopo gli accoppiamenti, gradi di libertà rimasti), Guida e Glossario per ogni comando.
+**Ancora da fare, in una chat nuova:**
+
+- Interferenze (parti che si compenetrano), vista esplosa, distinta base e tavola dell'assieme, proprietà di massa dell'assieme.
+- Più assiemi per progetto e sottoassiemi; accoppiamenti con i piani e l'origine delle parti; coni e sfere nelle facce curve degli STEP.
+- Se servirà: parti collegate a file separati (scartate per ora: funzionerebbero solo in Chrome ed Edge).
+
+## Viti, bulloni e filettature (lavoro successivo, chiesto il 4 novembre 2026)
+
+Oggi ci sono solo i **fori** per le viti (Creazione guidata fori, M3–M20): il foro filettato è il foro di preparazione, senza filetto nel pezzo 3D, e non ci sono viti, bulloni, dadi e rondelle da inserire. **L'utente ha chiesto di segnarlo come lavoro successivo.** Da chiarire all'inizio:
+
+- Quali pezzi: viti (ISO 4762 a testa cilindrica, ISO 10642 svasate, ISO 4017/4014 a testa esagonale), dadi (ISO 4032), rondelle (ISO 7089), e con quali misure di norma.
+- La filettatura: filetto indicato (cosmetico), come di solito in SolidWorks, oppure elica vera nel 3D, molto più pesante da calcolare.
+- Come si inseriscono nell'assieme: una raccolta di parti pronte, da mettere nel foro con gli accoppiamenti.
 
 ## Licenza e pubblicazione su AlternativeTo (controllo del 1° novembre 2026)
 
@@ -52,7 +61,7 @@ L'utente vuole inserire il Banco CAD su **AlternativeTo**. Controllo fatto su tu
 Cose ancora da fare:
 
 5. **Sorgenti di occt-import-js «nello stesso posto»** (LGPL 2.1, punto 6d): **fatto** il 4 novembre con due fork (`Rayuk-creator/occt-import-js` e `Rayuk-creator/OCCT`, vedi `licenze/LEGGIMI.md`). Facoltativo lo stesso per libredwg-web 0.8.2 (la GPL 3 permette già i sorgenti su un altro server): chiesto il 4 novembre, il fork lo deve fare l'utente (vedi `RIPARTENZA.md`).
-9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 50 argomenti, Glossario 176 termini), da decidere con l'utente.
+9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 50 argomenti, Glossario 197 termini), da decidere con l'utente.
 
 ## Tutela del nome e dell'autore (4 novembre 2026)
 
@@ -62,4 +71,4 @@ Il marchio ora costa troppo. **Fatti:** condizioni aggiuntive GPL 3 sezione 7 (`
 
 - Sfondo del disegno: **fatti** il 3 novembre testi e quote, il 4 novembre tratteggi, tolleranze geometriche, MULTILEADER e tabelle (limite: le tabelle dei DWG dal 2010 in poi, che LibreDWG non scrive).
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
-- Le pagine pubblicate su claude.ai: «Banco CAD» (versione 21 del 4 novembre) e «Convertitore DWG → DXF» (3 novembre notte) sono aggiornate. Tutte e due sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
+- Le pagine pubblicate su claude.ai: «Banco CAD» (versione 21 del 4 novembre) e «Convertitore DWG → DXF» (3 novembre notte) sono condivise con chiunque abbia il link. **Il Banco CAD su claude.ai non è aggiornato**: mancano sfondo completo, Ambito funzione, condizioni aggiuntive e assiemi; si ripubblica se l'utente lo chiede. La versione di riferimento resta `index.html` in questo repository.

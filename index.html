@@ -107,6 +107,12 @@ input, select, textarea { font: inherit; color: var(--ink); }
 .cmd-tabs button { border: 0; background: transparent; padding: 7px 14px 6px; cursor: pointer; font: 500 13px/1 var(--font); color: var(--ink-2); border-bottom: 2px solid transparent; white-space: nowrap; }
 .cmd-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
 .cmd-tabs button:hover { color: var(--ink); }
+.part-sel { max-width: 180px; font: 500 13px/1.2 var(--font); padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink); }
+.part-sel[hidden] { display: none; }
+@media (max-width: 640px) { .part-sel { max-width: 92px; min-width: 0; flex: 0 1 92px; } .top:has(#partSel:not([hidden])) .brand-name { display: none; } .top:has(#partSel:not([hidden])) .docname { width: 70px; } .top { gap: 6px; } }
+.asm-err { color: #c0392b; font-weight: 600; }
+.asm-types .relbtn[aria-pressed="true"] { outline: 2px solid var(--accent); }
+.tmate .tl, .tinst .tl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmd-bar { display: flex; flex-wrap: wrap; align-items: stretch; gap: 2px; padding: 4px 8px; min-height: 58px; }
 .tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 64px; max-width: 86px; padding: 5px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; cursor: pointer; font: 500 11.5px/1.15 var(--font-c); color: var(--ink); text-align: center; flex: none; }
 .tool svg { width: 24px; height: 24px; color: var(--ink-2); }
@@ -376,13 +382,16 @@ label.chk .gl-i { margin-left: 2px; }
       <span class="brand-name">Banco CAD</span>
     </div>
     <input class="docname" id="docName" value="Parte1" aria-label="Nome della parte" spellcheck="false">
+    <select class="part-sel" id="partSel" aria-label="Parte aperta" title="Scegli la parte da aprire, o l'assieme" hidden></select>
     <div class="tools">
       <button class="icon-btn" id="btnUndo" type="button" title="Annulla (Ctrl+Z)" aria-label="Annulla"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M7 5L3 9l4 4M3.5 9H12a5 5 0 010 10h-2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button class="icon-btn" id="btnRedo" type="button" title="Ripeti (Ctrl+Y)" aria-label="Ripeti"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M13 5l4 4-4 4M16.5 9H8a5 5 0 000 10h2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <div class="menu-wrap">
         <button class="btn btn-ghost" id="btnFile" type="button" aria-haspopup="true" aria-expanded="false">Progetto</button>
         <div class="menu" id="menuFile" hidden>
-          <button type="button" data-act="new">Nuova parte</button>
+          <button type="button" data-act="new">Nuovo progetto</button>
+          <button type="button" data-act="addPart">Aggiungi una parte</button>
+          <button type="button" data-act="delPart" hidden>Elimina questa parte</button>
           <button type="button" data-act="export">Esporta il progetto</button>
           <button type="button" data-act="import">Importa un progetto</button>
           <button type="button" data-act="importCad">Importa STEP o IGES</button>
@@ -404,6 +413,7 @@ label.chk .gl-i { margin-left: 2px; }
       <button role="tab" type="button" data-ct="sketch" aria-selected="false">Schizzo</button>
       <button role="tab" type="button" data-ct="evaluate" aria-selected="false">Valuta</button>
       <button role="tab" type="button" data-ct="drawing" aria-selected="false">Messa in tavola</button>
+      <button role="tab" type="button" data-ct="assembly" aria-selected="false">Assieme</button>
     </div>
     <div class="cmd-bar" id="cmdBar"></div>
   </nav>
@@ -6679,6 +6689,646 @@ self.postMessage({ hello: true });`;
   if (isNode) module.exports = api; else root.Model = api;
 })(this);
 
+/* ======================== Assieme: parti, accoppiamenti, risolutore ========================
+   Una parte è un progetto a sé (doc); ogni componente dell'assieme (inst) ne è una copia con la sua posizione:
+   x_mondo = R(q)·x_parte + p. Un accoppiamento lega due elementi (faccia, spigolo, vertice) di due componenti.
+   Il risolutore muove i componenti liberi il meno possibile: passi di Newton a norma minima sulle equazioni degli
+   accoppiamenti, con le righe dipendenti scartate. Ogni componente ha 6 incognite: spostamento e rotazione attorno al
+   centro del suo ingombro. I gradi di libertà rimasti = incognite − rango della matrice alla soluzione. */
+(function (root) {
+  'use strict';
+  const isNode = typeof module !== 'undefined' && typeof window === 'undefined';
+  const Model = isNode ? require('./model.js') : root.Model;
+  const G = isNode ? require('./geom.js') : root.Geom;
+
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const len = a => Math.hypot(a[0], a[1], a[2]);
+  const norm = a => { const l = len(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  // quaternioni [w, x, y, z]
+  const qmul = (a, b) => [
+    a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+    a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+    a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+    a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0],
+  ];
+  const qnorm = q => { const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1; return [q[0] / l, q[1] / l, q[2] / l, q[3] / l]; };
+  function qrot(q, v) {
+    const u = [q[1], q[2], q[3]], t = mul(cross(u, v), 2);
+    return add(add(v, mul(t, q[0])), cross(u, t));
+  }
+  const qconj = q => [q[0], -q[1], -q[2], -q[3]];
+  // rotazione di un vettore w (direzione = asse, lunghezza = angolo in radianti)
+  function qexp(w) {
+    const a = len(w);
+    if (a < 1e-12) return qnorm([1, w[0] / 2, w[1] / 2, w[2] / 2]);
+    const s = Math.sin(a / 2) / a;
+    return [Math.cos(a / 2), w[0] * s, w[1] * s, w[2] * s];
+  }
+  const identity = () => ({ p: [0, 0, 0], q: [1, 0, 0, 0] });
+  const toWorld = (pose, x) => add(qrot(pose.q, x), pose.p);
+  const dirWorld = (pose, d) => qrot(pose.q, d);
+  const toLocal = (pose, x) => qrot(qconj(pose.q), sub(x, pose.p));
+
+  /* ---------------- progetto ---------------- */
+  function newAssembly(name) { return { name: name || 'Assieme1', next: 1, insts: [], mates: [] }; }
+  const uid = (asm, pre) => pre + (asm.next++);
+  function addInst(asm, part, opts = {}) {
+    const n = asm.insts.filter(i => i.part === part).reduce((m, i) => Math.max(m, i.n || 0), 0) + 1;
+    const inst = { id: uid(asm, 'I'), part, n, pose: opts.pose || identity(), fixed: opts.fixed !== undefined ? !!opts.fixed : !asm.insts.length };
+    asm.insts.push(inst);
+    return inst;
+  }
+  const instLabel = (inst, partName) => (partName || 'Parte') + '<' + inst.n + '>';
+  // dati di una parte che servono all'assieme: la parte ricostruita, l'ingombro e il centro
+  function partInfo(doc) {
+    const st = Model.regen(doc);
+    let mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (const p of st.body) for (const v of p.v) for (let k = 0; k < 3; k++) { if (v[k] < mn[k]) mn[k] = v[k]; if (v[k] > mx[k]) mx[k] = v[k]; }
+    const empty = !st.body.length;
+    if (empty) { mn = [0, 0, 0]; mx = [0, 0, 0]; }
+    return { st, bbox: { mn, mx }, c: mul(add(mn, mx), 0.5), r: len(sub(mx, mn)) / 2, empty, ents: new Map(), used: new Set(st.body.map(p => p.t)) };
+  }
+
+  /* ---------------- elementi geometrici ---------------- */
+  // autovalori di una matrice simmetrica 3×3 (Jacobi), dal più piccolo
+  function eig3(M) {
+    const A = M.map(r => r.slice()), V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    for (let it = 0; it < 60; it++) {
+      let p = 0, q = 1, big = Math.abs(A[0][1]);
+      if (Math.abs(A[0][2]) > big) { p = 0; q = 2; big = Math.abs(A[0][2]); }
+      if (Math.abs(A[1][2]) > big) { p = 1; q = 2; big = Math.abs(A[1][2]); }
+      if (big < 1e-16) break;
+      const th = (A[q][q] - A[p][p]) / (2 * A[p][q]);
+      const t = (th >= 0 ? 1 : -1) / (Math.abs(th) + Math.sqrt(th * th + 1));
+      const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < 3; k++) { const a = A[k][p], b = A[k][q]; A[k][p] = c * a - s * b; A[k][q] = s * a + c * b; }
+      for (let k = 0; k < 3; k++) { const a = A[p][k], b = A[q][k]; A[p][k] = c * a - s * b; A[q][k] = s * a + c * b; }
+      for (let k = 0; k < 3; k++) { const a = V[k][p], b = V[k][q]; V[k][p] = c * a - s * b; V[k][q] = s * a + c * b; }
+    }
+    return [0, 1, 2].map(i => ({ val: A[i][i], vec: [V[0][i], V[1][i], V[2][i]] })).sort((x, y) => x.val - y.val);
+  }
+  const perpBasis = d => { const u = norm(cross(Math.abs(d[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], d)); return [u, cross(d, u)]; };
+  // cerchio per punti del piano di normale n (minimi quadrati, Kåsa); null se i punti non stanno su un cerchio
+  function circleFit(pts, n, tolRel) {
+    const [u, v] = perpBasis(n);
+    let c0 = [0, 0, 0]; for (const p of pts) c0 = add(c0, p); c0 = mul(c0, 1 / pts.length);
+    const S = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+    const P2 = pts.map(p => { const r = sub(p, c0); return [dot(r, u), dot(r, v)]; });
+    for (const [x, y] of P2) {
+      const row = [2 * x, 2 * y, 1], b = x * x + y * y;
+      for (let i = 0; i < 3; i++) { for (let j = 0; j < 3; j++) S[i][j] += row[i] * row[j]; S[i][3] += row[i] * b; }
+    }
+    for (let i = 0; i < 3; i++) {
+      let pv = i; for (let k = i + 1; k < 3; k++) if (Math.abs(S[k][i]) > Math.abs(S[pv][i])) pv = k;
+      [S[i], S[pv]] = [S[pv], S[i]];
+      if (Math.abs(S[i][i]) < 1e-14) return null;
+      for (let k = 0; k < 3; k++) if (k !== i) { const f = S[k][i] / S[i][i]; for (let j = i; j < 4; j++) S[k][j] -= f * S[i][j]; }
+    }
+    const a = S[0][3] / S[0][0], b = S[1][3] / S[1][1], c = S[2][3] / S[2][2];
+    const R = Math.sqrt(Math.max(0, c + a * a + b * b));
+    if (!(R > 0)) return null;
+    for (const [x, y] of P2) if (Math.abs(Math.hypot(x - a, y - b) - R) > tolRel * R) return null;
+    return { c: add(add(c0, mul(u, a)), mul(v, b)), R };
+  }
+  // faccia curva di un file STEP o IGES (tanti triangoli): è un cilindro? asse dalle normali, raggio dai vertici
+  function fitCylinder(polys) {
+    const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    const pts = [];
+    for (const p of polys) {
+      const n = p.p.n;
+      let A = 0; for (let i = 1; i < p.v.length - 1; i++) A += len(cross(sub(p.v[i], p.v[0]), sub(p.v[i + 1], p.v[0])));
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M[i][j] += A * n[i] * n[j];
+      for (const v of p.v) pts.push(v);
+    }
+    const E = eig3(M), tr = E[0].val + E[1].val + E[2].val;
+    if (!(tr > 0) || E[0].val / tr > 1e-4) return null;
+    const d = norm(E[0].vec);
+    const c = circleFit(pts, d, 2e-3);
+    if (!c) return null;
+    return { t: 'axis', o: c.c, d, round: true, R: c.R };
+  }
+  function distPtSeg(p, a, b) {
+    const ab = sub(b, a), L2 = dot(ab, ab);
+    const t = L2 > 0 ? Math.max(0, Math.min(1, dot(sub(p, a), ab) / L2)) : 0;
+    return len(sub(p, add(a, mul(ab, t))));
+  }
+  // spigolo: stessa ricerca di Model.resolveEdge (per nome delle due facce, poi punto più vicino), ma tiene anche quelli senza geometria nota
+  function edgeEntity(ref, info) {
+    const st = info.st, topo = st.topo;
+    const Ta = st.tags.byName.get(ref.a), Tb = st.tags.byName.get(ref.b);
+    if (Ta && Tb && Ta.mesh && Tb.mesh && Ta.bf !== undefined && Tb.bf !== undefined) return fileEdge(ref, Ta, Tb, st);
+    if (!info.groups) info.groups = Model.edgeGroups(st, topo);
+    let best = null, bd = Infinity;
+    for (const g of info.groups.values()) {
+      const n1 = st.tags.get(g.t1).name, n2 = st.tags.get(g.t2).name;
+      const byName = (n1 === ref.a && n2 === ref.b) || (n1 === ref.b && n2 === ref.a) || (g.names && g.names.has(ref.a) && g.names.has(ref.b));
+      if (!byName) continue;
+      let dm = Infinity;
+      for (const e of g.segs) dm = Math.min(dm, distPtSeg(ref.p, topo.verts[e.a], topo.verts[e.b]));
+      if (dm < bd) { bd = dm; best = g; }
+    }
+    if (!best) return { err: 'Lo spigolo scelto non esiste più nella parte.' };
+    const geo = Model.edgeGeometry(best, st, topo);
+    if (geo && geo.kind === 'line') return { t: 'axis', o: geo.p0, d: geo.d, round: false };
+    if (geo && geo.kind === 'circle') return { t: 'axis', o: geo.c, d: norm(geo.axis), round: true, circle: true, R: geo.R };
+    // bordo di un cono o di una curva: dai punti
+    const pts = [];
+    for (const e of best.segs) pts.push(topo.verts[e.a], topo.verts[e.b]);
+    return edgeFromPoints(pts);
+  }
+  // spigolo tra due facce vere di un file STEP o IGES: è fatto di tanti tratti tra triangoli. Si prendono quelli tra le stesse
+  // due facce, collegati a quello scelto (due facce possono toccarsi in più punti)
+  function fileEdge(ref, Ta, Tb, st) {
+    const topo = st.topo, key = t => t.feature + ':' + t.bf, want = [key(Ta), key(Tb)].sort().join('|');
+    const segs = topo.edges.filter(e => {
+      if (e.polys.length !== 2) return false;
+      const a = st.tags.get(st.body[e.polys[0]].t), b = st.tags.get(st.body[e.polys[1]].t);
+      return [key(a), key(b)].sort().join('|') === want;
+    });
+    if (!segs.length) return { err: 'Lo spigolo scelto non esiste più nella parte.' };
+    let start = segs[0], bd = Infinity;
+    for (const e of segs) { const d = distPtSeg(ref.p, topo.verts[e.a], topo.verts[e.b]); if (d < bd) { bd = d; start = e; } }
+    const seen = new Set([start]), verts = new Set([start.a, start.b]);
+    for (let grown = true; grown;) {
+      grown = false;
+      for (const e of segs) if (!seen.has(e) && (verts.has(e.a) || verts.has(e.b))) { seen.add(e); verts.add(e.a); verts.add(e.b); grown = true; }
+    }
+    return edgeFromPoints([...verts].map(v => topo.verts[v]));
+  }
+  function edgeFromPoints(pts) {
+    let c0 = [0, 0, 0]; for (const p of pts) c0 = add(c0, p); c0 = mul(c0, 1 / pts.length);
+    const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (const p of pts) { const r = sub(p, c0); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M[i][j] += r[i] * r[j]; }
+    const E = eig3(M);
+    const spread = Math.sqrt(Math.max(E[2].val, 0) / pts.length) || 1;
+    if (Math.sqrt(Math.max(E[1].val, 0) / pts.length) < 1e-6 * spread) return { t: 'axis', o: c0, d: norm(E[2].vec), round: false };
+    if (Math.sqrt(Math.max(E[0].val, 0) / pts.length) > 1e-4 * spread) return { err: 'Questo spigolo non è né una retta né un cerchio.' };
+    const n = norm(E[0].vec), c = circleFit(pts, n, 2e-3);
+    if (!c) return { err: 'Questo spigolo non è né una retta né un cerchio.' };
+    return { t: 'axis', o: c.c, d: n, round: true, circle: true, R: c.R };
+  }
+  /* elemento nelle coordinate della parte:
+     { t: 'plane', c, n }                    faccia piana (punto e normale uscente)
+     { t: 'axis', o, d, round, circle, R }   asse di una faccia di rivoluzione, cerchio (circle) oppure spigolo rettilineo (round falso)
+     { t: 'point', p, sphere }               vertice, oppure centro di una sfera
+     { err }                                 elemento perso o senza geometria utile */
+  function computeEntity(ref, info) {
+    const st = info.st;
+    if (info.empty) return { err: 'La parte non ha un solido.' };
+    if (ref.k === 'vertex') {
+      let best = Infinity;
+      for (const v of st.topo.verts) { const d = len(sub(v, ref.p)); if (d < best) best = d; }
+      if (best > 1e-4) return { err: 'Il vertice scelto non esiste più nella parte.' };
+      return { t: 'point', p: ref.p.slice() };
+    }
+    if (ref.k === 'edge') return edgeEntity(ref, info);
+    const tg = st.tags.byName.get(ref.name);
+    if (!tg || !info.used.has(tg.id)) return { err: 'La faccia scelta non esiste più nella parte.' };
+    if (tg.kind === 'rev') {
+      const d = norm(tg.d);
+      if (tg.prof && tg.prof.pt === 'arc' && Math.abs(tg.prof.rc) < 1e-9) return { t: 'point', p: add(tg.o, mul(d, tg.prof.zc)), sphere: true, R: tg.prof.a };
+      return { t: 'axis', o: tg.o.slice(), d, round: true, R: tg.R };
+    }
+    if (tg.kind !== 'plane') return { err: 'Questa faccia non si può usare in un accoppiamento.' };
+    if (tg.mesh && tg.bf !== undefined) {
+      // faccia vera di un file STEP o IGES: tutti i suoi triangoli
+      const polys = st.body.filter(p => { const t = st.tags.get(p.t); return t.bf === tg.bf && t.feature === tg.feature; });
+      const n0 = polys[0].p.n;
+      if (polys.some(p => len(cross(p.p.n, n0)) > 1e-6)) {
+        return fitCylinder(polys) || { err: 'Questa faccia curva non è un cilindro: per l\'accoppiamento usa una faccia piana, un cilindro, un vertice o uno spigolo.' };
+      }
+    }
+    return { t: 'plane', c: mul(tg.n, tg.w), n: tg.n.slice() };
+  }
+  function entityOf(ref, info) {
+    if (!info) return { err: 'La parte di questo componente non esiste più.' };
+    const key = JSON.stringify(ref);
+    let e = info.ents.get(key);
+    if (!e) { const { inst, ...plain } = ref; e = computeEntity(plain, info); info.ents.set(key, e); }
+    return e;
+  }
+  function worldEnt(E, pose) {
+    if (E.t === 'plane') return { t: 'plane', c: toWorld(pose, E.c), n: dirWorld(pose, E.n) };
+    if (E.t === 'axis') return { t: 'axis', o: toWorld(pose, E.o), d: dirWorld(pose, E.d), round: E.round, circle: E.circle, R: E.R };
+    return { t: 'point', p: toWorld(pose, E.p), sphere: E.sphere, R: E.R };
+  }
+
+  /* ---------------- accoppiamenti ---------------- */
+  const MATE_TYPES = ['coincident', 'concentric', 'parallel', 'perpendicular', 'distance', 'angle'];
+  const MATE_LABEL = { coincident: 'Coincidente', concentric: 'Concentrico', parallel: 'Parallelo', perpendicular: 'Perpendicolare', distance: 'Distanza', angle: 'Angolo' };
+  // quali accoppiamenti valgono per due elementi
+  function allowedTypes(A, B) {
+    const a = A.t, b = B.t, out = [];
+    const pair = (x, y) => (a === x && b === y) || (a === y && b === x);
+    if (pair('plane', 'plane') || pair('axis', 'axis') || pair('plane', 'axis')) out.push('coincident');
+    else if (pair('plane', 'point') || pair('axis', 'point') || pair('point', 'point')) out.push('coincident');
+    if ((pair('axis', 'axis') && A.round && B.round) || (pair('axis', 'point') && (a === 'axis' ? A : B).round) || (pair('point', 'point') && A.sphere && B.sphere)) out.push('concentric');
+    if (pair('plane', 'plane') || pair('axis', 'axis') || pair('plane', 'axis')) out.push('parallel', 'perpendicular');
+    out.push('distance');
+    if (pair('plane', 'plane') || pair('axis', 'axis') || pair('plane', 'axis')) out.push('angle');
+    return out;
+  }
+  function suggest(A, B) {
+    if (A.t === 'axis' && B.t === 'axis' && A.round && B.round) return 'concentric';
+    if (A.sphere && B.sphere) return 'concentric';
+    return 'coincident';
+  }
+  const dirOf = E => E.t === 'plane' ? E.n : E.d;
+  const perpOff = (o, d, p) => { const r = sub(p, o); return sub(r, mul(d, dot(r, d))); };
+  // equazioni di un accoppiamento: A e B nel mondo, L = lunghezza che rende confrontabili le righe delle direzioni (mm)
+  function mateRows(m, A, B, L) {
+    const s = m.s === -1 ? -1 : 1, side = m.side === -1 ? -1 : 1, v = +m.value || 0;
+    const align = (a, b) => { const r = sub(a, mul(b, s)); return [r[0] * L, r[1] * L, r[2] * L]; };
+    // elementi nell'ordine piano, asse, punto
+    const rank = { plane: 0, axis: 1, point: 2 };
+    if (rank[A.t] > rank[B.t]) { const t = A; A = B; B = t; }
+    const kind = A.t + '-' + B.t;
+    switch (m.type) {
+      case 'coincident':
+        if (kind === 'plane-plane') return [...align(A.n, B.n), dot(A.n, sub(B.c, A.c))];
+        if (kind === 'plane-axis') return B.circle ? [...align(A.n, B.d), dot(A.n, sub(B.o, A.c))] : [dot(A.n, B.d) * L, dot(A.n, sub(B.o, A.c))];
+        if (kind === 'plane-point') return [dot(A.n, sub(B.p, A.c))];
+        if (kind === 'axis-axis') return A.circle && B.circle ? [...align(A.d, B.d), ...sub(B.o, A.o)] : [...align(A.d, B.d), ...perpOff(A.o, A.d, B.o)];
+        if (kind === 'axis-point') return perpOff(A.o, A.d, B.p);
+        if (kind === 'point-point') return sub(B.p, A.p);
+        break;
+      case 'concentric':
+        if (kind === 'axis-axis') return [...align(A.d, B.d), ...perpOff(A.o, A.d, B.o)];
+        if (kind === 'axis-point') return perpOff(A.o, A.d, B.p);
+        if (kind === 'point-point') return sub(B.p, A.p);
+        break;
+      case 'parallel':
+        if (kind === 'plane-plane') return align(A.n, B.n);
+        if (kind === 'axis-axis') return align(A.d, B.d);
+        if (kind === 'plane-axis') return [dot(A.n, B.d) * L];
+        break;
+      case 'perpendicular':
+        if (kind === 'plane-plane') return [dot(A.n, B.n) * L];
+        if (kind === 'axis-axis') return [dot(A.d, B.d) * L];
+        if (kind === 'plane-axis') return align(A.n, B.d);
+        break;
+      case 'distance':
+        if (kind === 'plane-plane') return [...align(A.n, B.n), dot(A.n, sub(B.c, A.c)) - side * v];
+        if (kind === 'plane-axis') return [dot(A.n, B.d) * L, dot(A.n, sub(B.o, A.c)) - side * v];
+        if (kind === 'plane-point') return [dot(A.n, sub(B.p, A.c)) - side * v];
+        if (kind === 'axis-axis') return v > 0 ? [...align(A.d, B.d), len(perpOff(A.o, A.d, B.o)) - v] : [...align(A.d, B.d), ...perpOff(A.o, A.d, B.o)];
+        if (kind === 'axis-point') return v > 0 ? [len(perpOff(A.o, A.d, B.p)) - v] : perpOff(A.o, A.d, B.p);
+        if (kind === 'point-point') return v > 0 ? [len(sub(B.p, A.p)) - v] : sub(B.p, A.p);
+        break;
+      case 'angle': {
+        const th = v * Math.PI / 180, near = (a, b) => Math.abs(a - b) < 1e-9;
+        if (kind === 'plane-axis') {
+          // angolo tra la retta e il piano: seno = |n·d|. 0° = retta parallela al piano, 90° = retta lungo la normale
+          if (near(v, 90)) return align(A.n, B.d);
+          return [(dot(A.n, B.d) - s * Math.sin(th)) * L];
+        }
+        const a = dirOf(A), b = dirOf(B);
+        if (kind !== 'plane-plane' && kind !== 'axis-axis') break;
+        // tra 0° e 180° il coseno basta; ai due estremi il coseno è piatto e si scrive come parallelo
+        if (near(v, 0)) { const r = sub(a, b); return [r[0] * L, r[1] * L, r[2] * L]; }
+        if (near(v, 180)) { const r = add(a, b); return [r[0] * L, r[1] * L, r[2] * L]; }
+        return [(dot(a, b) - Math.cos(th)) * L];
+      }
+    }
+    return null;
+  }
+  // valori di partenza: verso e lato più vicini alla posizione attuale, misura attuale
+  function mateDefaults(type, A, B) {
+    const out = { s: 1, side: 1, value: 0 };
+    const rank = { plane: 0, axis: 1, point: 2 };
+    if (rank[A.t] > rank[B.t]) { const t = A; A = B; B = t; }
+    const kind = A.t + '-' + B.t;
+    const a = A.t === 'point' ? null : dirOf(A), b = B.t === 'point' ? null : dirOf(B);
+    if (a && b) {
+      const c = dot(a, b);
+      // due facce di fronte quando non c'è una preferenza; gli assi nello stesso verso
+      out.s = Math.abs(c) < 1e-9 ? (kind === 'plane-plane' ? -1 : 1) : (c < 0 ? -1 : 1);
+    }
+    if (type === 'distance') {
+      let sd = 0;
+      if (A.t === 'plane') sd = dot(A.n, sub(B.t === 'plane' ? B.c : B.t === 'axis' ? B.o : B.p, A.c));
+      out.side = sd < 0 ? -1 : 1;
+      if (A.t === 'plane') out.value = Math.abs(sd);
+      else if (kind === 'axis-axis') out.value = len(perpOff(A.o, A.d, B.o));
+      else if (kind === 'axis-point') out.value = len(perpOff(A.o, A.d, B.p));
+      else out.value = len(sub(B.p, A.p));
+    }
+    if (type === 'angle' && a && b) {
+      const c = Math.max(-1, Math.min(1, dot(a, b)));
+      if (kind === 'plane-axis') { out.value = Math.asin(Math.abs(c)) * 180 / Math.PI; out.s = c < 0 ? -1 : 1; }
+      else out.value = Math.acos(c) * 180 / Math.PI;
+    }
+    return out;
+  }
+
+  /* ---------------- algebra: base ortonormale delle righe e passo a norma minima ---------------- */
+  // Le righe valgono circa 1 (mm per mm, grazie a L e a rs): sotto questa soglia assoluta una riga è solo rumore delle
+  // differenze finite (circa 1e-11), e non va contata nel rango
+  const RANK_TOL = 1e-7;
+  // Gram-Schmidt con riortogonalizzazione: Q = righe indipendenti ortonormali; coef = coefficienti di ogni riga scelta sulle Q
+  function basis(J) {
+    const Q = [], picks = [];
+    J.forEach((row, ri) => {
+      const v = Float64Array.from(row);
+      let n0 = 0; for (let i = 0; i < v.length; i++) n0 += v[i] * v[i];
+      n0 = Math.sqrt(n0);
+      if (!(n0 > RANK_TOL)) return;
+      const coef = new Array(Q.length).fill(0);
+      for (let pass = 0; pass < 2; pass++) {
+        for (let k = 0; k < Q.length; k++) {
+          const q = Q[k]; let c = 0;
+          for (let i = 0; i < v.length; i++) c += v[i] * q[i];
+          for (let i = 0; i < v.length; i++) v[i] -= c * q[i];
+          coef[k] += c;
+        }
+      }
+      let nn = 0; for (let i = 0; i < v.length; i++) nn += v[i] * v[i];
+      nn = Math.sqrt(nn);
+      if (nn <= RANK_TOL * Math.max(1, n0)) return;
+      for (let i = 0; i < v.length; i++) v[i] /= nn;
+      Q.push(v);
+      picks.push({ ri, coef, d: nn });
+    });
+    return { Q, picks };
+  }
+  // soluzione di norma minima di J·x = b sulle righe indipendenti (le dipendenti si ignorano)
+  function minNorm(J, b, B) {
+    B = B || basis(J);
+    const n = J.length ? J[0].length : 0, x = new Float64Array(n), y = [];
+    B.picks.forEach((pk, k) => {
+      let t = b[pk.ri];
+      for (let j = 0; j < k; j++) t -= pk.coef[j] * y[j];
+      y.push(t / pk.d);
+    });
+    y.forEach((yk, k) => { const q = B.Q[k]; for (let i = 0; i < n; i++) x[i] += yk * q[i]; });
+    return x;
+  }
+
+  // minimi quadrati di norma minima per poche righe (al più 3), che possono dipendere l'una dall'altra: x = Dᵀ·G⁺·b con G = D·Dᵀ.
+  // Serve al trascinamento: con un solo grado di libertà le due direzioni della vista contano tutte e due, non solo la prima.
+  function leastNorm(D, b) {
+    const n = D.length ? D[0].length : 0, x = new Float64Array(n), m = D.length;
+    const Gm = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (let i = 0; i < m; i++) for (let j = 0; j < m; j++) { let c = 0; for (let k = 0; k < n; k++) c += D[i][k] * D[j][k]; Gm[i][j] = c; }
+    const E = eig3(Gm), top = Math.max(E[2].val, 0);
+    const y = [0, 0, 0];
+    for (const e of E) {
+      if (!(e.val > Math.max(1e-10 * top, 1e-14))) continue;
+      const c = (e.vec[0] * (b[0] || 0) + e.vec[1] * (b[1] || 0) + e.vec[2] * (b[2] || 0)) / e.val;
+      for (let i = 0; i < 3; i++) y[i] += c * e.vec[i];
+    }
+    for (let i = 0; i < m; i++) for (let k = 0; k < n; k++) x[k] += y[i] * D[i][k];
+    return x;
+  }
+
+  /* ---------------- sistema da risolvere ---------------- */
+  function buildSystem(asm, infos, opts = {}) {
+    const byId = new Map(asm.insts.map(i => [i.id, i]));
+    let L = 1;
+    for (const inst of asm.insts) { const inf = infos.get(inst.part); if (inf && inf.r > L) L = inf.r; }
+    const free = asm.insts.filter(i => !i.fixed && infos.get(i.part) && !infos.get(i.part).empty);
+    const off = new Map(free.map((i, k) => [i.id, k * 6]));
+    const status = new Map();
+    const rows = [];
+    for (const m of asm.mates) {
+      if (m.suppressed) { status.set(m.id, { ok: true, suppressed: true }); continue; }
+      const ia = byId.get(m.a.inst), ib = byId.get(m.b.inst);
+      if (!ia || !ib) { status.set(m.id, { ok: false, err: 'Uno dei componenti non esiste più.' }); continue; }
+      const EA = entityOf(m.a, infos.get(ia.part)), EB = entityOf(m.b, infos.get(ib.part));
+      if (EA.err || EB.err) { status.set(m.id, { ok: false, err: EA.err || EB.err }); continue; }
+      if (!allowedTypes(EA, EB).includes(m.type)) { status.set(m.id, { ok: false, err: MATE_LABEL[m.type] + ' non vale per questi due elementi.' }); continue; }
+      status.set(m.id, { ok: true });
+      if (opts.skip && opts.skip.has(m.id)) continue;
+      rows.push({ m, ia, ib, EA, EB });
+    }
+    return { asm, infos, L, free, off, n: free.length * 6, mates: rows, status };
+  }
+  const rowsOf = (sys, M) => mateRows(M.m, worldEnt(M.EA, M.ia.pose), worldEnt(M.EB, M.ib.pose), sys.L);
+  function residuals(sys, list) {
+    const r = [];
+    for (const M of list || sys.mates) for (const x of rowsOf(sys, M)) r.push(x);
+    return r;
+  }
+  const maxAbs = r => r.reduce((a, x) => Math.max(a, Math.abs(x)), 0);
+  const sum2 = r => r.reduce((a, x) => a + x * x, 0);
+  // spostamento e rotazione (attorno al centro dell'ingombro) di un componente
+  function moved(pose, c, dp, w) {
+    const W = toWorld(pose, c);
+    const q = qnorm(qmul(qexp(w), pose.q));
+    return { q, p: sub(add(W, dp), qrot(q, c)) };
+  }
+  const H = 1e-4;
+  // righe della matrice: per ogni accoppiamento differenze centrali sulle 6 incognite dei suoi due componenti.
+  // Colonne: spostamento in mm, rotazione in «mm» (radianti × rs)
+  function jacobian(sys, rs, list) {
+    const J = [];
+    for (const M of list || sys.mates) {
+      const r0 = rowsOf(sys, M), base = J.length;
+      for (let i = 0; i < r0.length; i++) J.push(new Float64Array(sys.n));
+      for (const inst of (M.ia === M.ib ? [M.ia] : [M.ia, M.ib])) {
+        const o = sys.off.get(inst.id); if (o === undefined) continue;
+        const c = sys.infos.get(inst.part).c, save = inst.pose;
+        for (let k = 0; k < 6; k++) {
+          const dp = [0, 0, 0], w = [0, 0, 0];
+          if (k < 3) dp[k] = H; else w[k - 3] = H / rs;
+          inst.pose = moved(save, c, dp, w);
+          const rp = rowsOf(sys, M);
+          if (k < 3) dp[k] = -H; else w[k - 3] = -H / rs;
+          inst.pose = moved(save, c, dp, w);
+          const rm = rowsOf(sys, M);
+          inst.pose = save;
+          for (let i = 0; i < r0.length; i++) J[base + i][o + k] += (rp[i] - rm[i]) / (2 * H);
+        }
+      }
+    }
+    return J;
+  }
+  function applyStep(sys, x, rs, alpha) {
+    for (const inst of sys.free) {
+      const o = sys.off.get(inst.id);
+      inst.pose = moved(inst.pose, sys.infos.get(inst.part).c, [x[o] * alpha, x[o + 1] * alpha, x[o + 2] * alpha], [x[o + 3] * alpha / rs, x[o + 4] * alpha / rs, x[o + 5] * alpha / rs]);
+    }
+  }
+  const savePoses = sys => sys.free.map(i => i.pose);
+  const restorePoses = (sys, s) => sys.free.forEach((i, k) => { i.pose = s[k]; });
+  // Newton con passi a norma minima e ricerca sulla lunghezza del passo
+  function newton(sys, list, maxIter = 80) {
+    const rs = sys.L, tol = 1e-9 * sys.L;
+    for (let it = 0; it < maxIter; it++) {
+      const r = residuals(sys, list);
+      if (maxAbs(r) < tol) return true;
+      if (!sys.n) return false;
+      const J = jacobian(sys, rs, list);
+      const x = minNorm(J, r.map(v => -v));
+      let big = 0, rot = 0;
+      for (let i = 0; i < x.length; i++) { big = Math.max(big, Math.abs(x[i])); if (i % 6 >= 3) rot = Math.max(rot, Math.abs(x[i]) / rs); }
+      if (big < 1e-13) return maxAbs(r) < 1e-7 * sys.L;
+      const lim = rot > 0.6 ? 0.6 / rot : 1;
+      const save = savePoses(sys), e0 = sum2(r);
+      let done = false;
+      for (let a = lim, tries = 0; tries < 14; a *= 0.5, tries++) {
+        applyStep(sys, x, rs, a);
+        if (sum2(residuals(sys, list)) < e0) { done = true; break; }
+        restorePoses(sys, save);
+      }
+      if (!done) return maxAbs(r) < 1e-7 * sys.L;
+    }
+    return maxAbs(residuals(sys, list)) < 1e-7 * sys.L;
+  }
+  // punti di partenza diversi, sempre gli stessi: serve quando la posizione è un punto morto (per esempio due facce che
+  // devono diventare opposte e sono esattamente nello stesso verso: la derivata è nulla e Newton non si muove)
+  const KICKS = [[0.01, 0, 0], [0, 0.01, 0], [0, 0, 0.01], [0.7, 0.2, -0.3], [-0.4, 0.8, 0.1], [0.2, -0.5, 0.9], [1.5, -1, 0.4], [-1.2, 1.4, 1]];
+  function solveFrom(sys, list, restarts) {
+    const start = savePoses(sys);
+    if (newton(sys, list)) return true;
+    for (let k = 0; k < restarts && k < KICKS.length; k++) {
+      restorePoses(sys, start);
+      for (const inst of sys.free) inst.pose = moved(inst.pose, sys.infos.get(inst.part).c, [0, 0, 0], KICKS[k]);
+      if (newton(sys, list)) return true;
+    }
+    restorePoses(sys, start);
+    return false;
+  }
+  // gradi di libertà: totale e per ogni componente (rango della parte del nucleo che riguarda il componente)
+  function dofOf(sys) {
+    const byInst = new Map();
+    for (const i of sys.asm.insts) byInst.set(i.id, 0);
+    if (!sys.n) return { total: 0, byInst };
+    const J = jacobian(sys, sys.L);
+    const { Q } = basis(J);
+    for (const inst of sys.free) {
+      const o = sys.off.get(inst.id), P = [];
+      for (let k = 0; k < 6; k++) {
+        const row = new Float64Array(6); row[k] = 1;
+        for (const q of Q) { const c = q[o + k]; for (let j = 0; j < 6; j++) row[j] -= c * q[o + j]; }
+        P.push(row);
+      }
+      byInst.set(inst.id, basis(P).Q.length);
+    }
+    return { total: sys.n - Q.length, byInst };
+  }
+  /* risolve: sposta i componenti e restituisce { ok, status: mate → {ok, err}, dof: {total, byInst} }.
+     Se gli accoppiamenti non si possono soddisfare insieme, tiene nell'ordine quelli che vanno e segna gli altri. */
+  function solve(asm, infos, opts = {}) {
+    const sys = buildSystem(asm, infos);
+    let ok = solveFrom(sys, sys.mates, opts.restarts === undefined ? KICKS.length : opts.restarts);
+    if (!ok) {
+      const good = [];
+      for (const M of sys.mates) {
+        good.push(M);
+        if (!solveFrom(sys, good, 3)) { good.pop(); sys.status.set(M.m.id, { ok: false, conflict: true, err: 'Questo accoppiamento non si può soddisfare insieme agli altri.' }); }
+      }
+      sys.mates = good;
+    }
+    const allOk = [...sys.status.values()].every(s => s.ok);
+    return { ok: allOk, status: sys.status, dof: dofOf(sys), sys };
+  }
+  /* trascinamento di un componente: il punto preso (local, coordinate della parte) va verso target (punto nel mondo), contando solo
+     le direzioni dirs (destra e su della vista); se non può arrivarci va il più vicino possibile.
+     Si muove prima con i soli spostamenti (una parte libera si sposta senza girare) e poi, per quello che manca, anche ruotando.
+     Con rotate il componente gira soltanto: il suo centro sta fermo se può, altrimenti si muove come vogliono gli accoppiamenti
+     (una cerniera lontana dal centro). Alla fine gli accoppiamenti sono di nuovo esatti; se non si può, il componente resta dov'era. */
+  function drag(asm, infos, d) {
+    const skip = new Set();
+    for (const [id, s] of solveStatus(asm, infos)) if (!s.ok) skip.add(id);
+    const sys = buildSystem(asm, infos, { skip });
+    const inst = asm.insts.find(i => i.id === d.inst);
+    const o = sys.off.get(d.inst);
+    if (o === undefined) return false;
+    const start = savePoses(sys), rs = sys.L, c = infos.get(inst.part).c;
+    const gapOf = () => { const g = sub(d.target, toWorld(inst.pose, d.local)); return d.dirs.map(u => dot(u, g)); };
+    const rowsOf2 = rot => {
+      const P = toWorld(inst.pose, d.local), r = sub(P, toWorld(inst.pose, c));
+      return d.dirs.map(u => {
+        const row = new Float64Array(sys.n);
+        for (let k = 0; k < 3; k++) row[o + k] = u[k];
+        if (rot) { const a = cross(r, u); for (let k = 0; k < 3; k++) row[o + 3 + k] = a[k] / rs; }
+        return row;
+      });
+    };
+    const project = (rows, Q) => rows.map(row => {
+      const v = Float64Array.from(row);
+      for (const q of Q) { let a = 0; for (let i = 0; i < v.length; i++) a += v[i] * q[i]; for (let i = 0; i < v.length; i++) v[i] -= a * q[i]; }
+      return v;
+    });
+    const go = x => {
+      let rmax = 0; for (let i = 3; i < x.length; i += 6) rmax = Math.max(rmax, Math.abs(x[i]) / rs, Math.abs(x[i + 1]) / rs, Math.abs(x[i + 2]) / rs);
+      applyStep(sys, x, rs, rmax > 0.5 ? 0.5 / rmax : 1);
+    };
+    const moves = x => x.some(v => Math.abs(v) > 1e-12);
+    // passi: i soli spostamenti, poi anche le rotazioni
+    const stepMove = rot => {
+      const J = jacobian(sys, rs);
+      if (!rot) for (const row of J) for (let i = 3; i < sys.n; i += 6) { row[i] = row[i + 1] = row[i + 2] = 0; }
+      go(leastNorm(project(rowsOf2(rot), basis(J).Q), gapOf()));
+    };
+    const stepRotate = () => {
+      const J = jacobian(sys, rs);
+      // centro fermo: le tre righe che lo tengono si aggiungono alle equazioni degli accoppiamenti
+      const hold = [0, 1, 2].map(k => { const row = new Float64Array(sys.n); row[o + k] = 1; return row; });
+      const rows = rowsOf2(true);
+      let x = leastNorm(project(rows, basis([...J, ...hold]).Q), gapOf());
+      if (!moves(x)) x = leastNorm(project(rows, basis(J).Q), gapOf());
+      go(x);
+    };
+    for (let it = 0; it < 4; it++) {
+      const g0 = Math.max(...gapOf().map(Math.abs));
+      if (g0 < 1e-9) break;
+      if (d.rotate) stepRotate();
+      else { stepMove(false); stepMove(true); }
+      if (!newton(sys, sys.mates, 30)) { restorePoses(sys, start); return false; }
+    }
+    return true;
+  }
+  // stato degli accoppiamenti senza spostare niente: giusto = equazioni soddisfatte alla posizione attuale
+  function solveStatus(asm, infos) {
+    const sys = buildSystem(asm, infos);
+    for (const M of sys.mates) if (maxAbs(rowsOf(sys, M)) > 1e-6 * sys.L) sys.status.set(M.m.id, { ok: false, conflict: true, err: 'Non soddisfatto.' });
+    return sys.status;
+  }
+
+  /* ---------------- scena: i componenti come un corpo solo, per la vista, la selezione e le misure ---------------- */
+  function scene(asm, infos) {
+    const tags = new G.Tags();
+    const body = [], bodies = [];
+    const topo = { verts: [], polyVerts: [], edges: [], surfKeys: [], faceKeys: [] };
+    for (const inst of asm.insts) {
+      const info = infos.get(inst.part);
+      if (!info || info.empty || inst.hidden) continue;
+      const st = info.st, pose = inst.pose, T = st.topo;
+      const t0 = tags.list.length, p0 = body.length, v0 = topo.verts.length;
+      for (const tg of st.tags.list) {
+        const nt = { ...tg, name: inst.id + '/' + tg.name, src: tg.name, inst: inst.id };
+        delete nt.id;
+        if (tg.n) { nt.n = dirWorld(pose, tg.n); nt.w = tg.w + dot(nt.n, pose.p); }
+        if (tg.o) nt.o = toWorld(pose, tg.o);
+        if (tg.d) nt.d = dirWorld(pose, tg.d);
+        tags.add(nt);
+      }
+      const polys = [];
+      for (const p of st.body) {
+        const n = dirWorld(pose, p.p.n);
+        const np = { v: p.v.map(v => toWorld(pose, v)), p: { n, w: p.p.w + dot(n, pose.p) }, t: p.t + t0 };
+        body.push(np); polys.push(np);
+      }
+      for (const v of T.verts) topo.verts.push(toWorld(pose, v));
+      for (const pv of T.polyVerts) topo.polyVerts.push(pv.map(i => i + v0));
+      for (const e of T.edges) topo.edges.push({ ...e, a: e.a + v0, b: e.b + v0, polys: e.polys.map(i => i + p0) });
+      T.surfKeys.forEach((k, i) => { topo.surfKeys[t0 + i] = inst.id + '/' + k; });
+      T.faceKeys.forEach((k, i) => { topo.faceKeys[t0 + i] = inst.id + '/' + k; });
+      bodies.push({ id: inst.id, name: inst.id, polys, start: p0 });
+    }
+    return { body, bodies, bodySeq: bodies.length, tags, topo, frames: new Map(), errors: new Map(), warn: new Map(), info: new Map(), holes: [], tools: new Map(), isAssembly: true };
+  }
+
+  const api = { newAssembly, addInst, uid, instLabel, partInfo, identity, toWorld, toLocal, dirWorld, entityOf, worldEnt, MATE_TYPES, MATE_LABEL, allowedTypes, suggest, mateDefaults, mateRows, solve, solveStatus, drag, scene, qexp, qmul, qnorm, qrot, moved, fitCylinder };
+  if (isNode) module.exports = api; else root.Assembly = api;
+})(this);
+
 /* Visualizzazione 3D con WebGL: facce ombreggiate, spigoli, linee nascoste, selezione. */
 (function (root) {
   'use strict';
@@ -7275,6 +7925,7 @@ self.postMessage({ hello: true });`;
 
   const App = window.App = {
     doc: Model.newDoc(), st: null, mode: 'part', sel: [], hover: null, pm: null,
+    project: { parts: [{ id: 'p1' }], active: 'p1', assembly: null, next: 2 },
     undoStack: [], redoStack: [], showPlanes: false, sectionOn: false, section: { plane: 'front', off: 0, flip: false },
     el, esc, fmt, $,
   };
@@ -7300,6 +7951,10 @@ self.postMessage({ hello: true });`;
     sweepcut: I('<path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M6 13h4a5 5 0 005-5V6" stroke-width="2.4" opacity=".7"/>'),
     rib: I('<path d="M4 20V4h4v12h12v4z"/><path d="M8 9l7 7" stroke-width="2.6"/>'),
     import: I('<path d="M5 9l7-4 7 4v8l-7 4-7-4z" stroke-dasharray="2 1.6"/><path d="M12 1v11M8.5 8.5L12 12l3.5-3.5"/>'),
+    assembly: I('<path d="M3 10l5-2.5L13 10v6l-5 2.5L3 16z"/><path d="M13 8l4-2 4 2v5l-4 2-4-2z"/><path d="M3 10l5 2.5L13 10M8 12.5v6"/>'),
+    insertPart: I('<path d="M4 10l6-3 6 3v7l-6 3-6-3z"/><path d="M4 10l6 3 6-3M10 13v7"/><path d="M19 3v6M16 6h6"/>'),
+    mate: I('<path d="M3 8h8v4H3zM13 12h8v4h-8z"/><path d="M11 10h2v4h-2z" fill="currentColor" fill-opacity=".3"/>'),
+    movepart: I('<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>'),
     plane: I('<path d="M3 16l5-8h13l-5 8z"/><path d="M8 12h8" stroke-dasharray="1.5 1.5"/>'),
     material: I('<path d="M4 8l8-4 8 4v8l-8 4-8-4z" fill="currentColor" fill-opacity=".15"/><path d="M4 8l8 4 8-4M12 12v8"/>'),
     mass: I('<path d="M7 9h10l2 11H5z"/><circle cx="12" cy="6" r="2.5"/>'),
@@ -7337,7 +7992,8 @@ self.postMessage({ hello: true });`;
   };
 
   /* ================= persistenza e annulla ================= */
-  function snapshot() { return JSON.stringify(App.doc); }
+  function snapshot() { return JSON.stringify(App.mode === 'assembly' ? App.project.assembly : App.doc); }
+  function restoreSnapshot(s) { if (App.mode === 'assembly') App.project.assembly = JSON.parse(s); else App.doc = JSON.parse(s); }
   App.commit = function (before) {
     App.undoStack.push(before);
     // con un corpo importato grande ogni passo occupa molta memoria: se ne tengono meno
@@ -7358,13 +8014,13 @@ self.postMessage({ hello: true });`;
     if (App.mode === 'sketch') { Sketcher.undo(); return; }
     if (App.pm) App.closePM(false);
     const s = App.undoStack.pop(); if (!s) return;
-    App.redoStack.push(snapshot()); App.doc = JSON.parse(s); App.sel = []; App.regen(); App.save(); updateUndo();
+    App.redoStack.push(snapshot()); restoreSnapshot(s); App.sel = []; App.regen(); App.save(); updateUndo();
   };
   App.redo = function () {
     if (App.mode === 'sketch') { Sketcher.redo(); return; }
     if (App.pm) App.closePM(false);
     const s = App.redoStack.pop(); if (!s) return;
-    App.undoStack.push(snapshot()); App.doc = JSON.parse(s); App.sel = []; App.regen(); App.save(); updateUndo();
+    App.undoStack.push(snapshot()); restoreSnapshot(s); App.sel = []; App.regen(); App.save(); updateUndo();
   };
   function updateUndo() {
     $('#btnUndo').disabled = App.mode !== 'sketch' && !App.undoStack.length;
@@ -7375,14 +8031,43 @@ self.postMessage({ hello: true });`;
   // si salva l'ultimo stato confermato: con un pannello aperto, la funzione non ancora confermata resta fuori
   function writeStore() {
     saveT = 0;
+    // durante la lettura dall'archivio grande o l'importazione in una parte temporanea non si salva: si perderebbe il progetto vero
+    if (App.storeLoading || App.tempPart) return;
     let doc = App.doc;
     if (App.pm && App.pm._before) { try { doc = JSON.parse(App.pm._before); } catch (e) { /* stato corrente */ } }
-    try { localStorage.setItem(STORE, JSON.stringify({ doc, drawing: App.drawingState || null })); App.storeFull = false; }
-    catch (e) {
-      // spazio del browser esaurito (di solito per un file importato molto grande): lo si dice una volta
-      if (e && (e.name === 'QuotaExceededError' || e.code === 22) && !App.storeFull) { App.storeFull = true; toast('Il progetto è troppo grande per il salvataggio automatico del browser: salvalo con Progetto › Esporta il progetto.', 8000); }
+    const data = JSON.stringify(projectData(doc));
+    try {
+      localStorage.setItem(STORE, data); App.storeFull = false;
+      if (App.storeInDb) { App.storeInDb = false; dbDo('readwrite', os => os.delete(STORE)).catch(() => { /* resta solo una copia vecchia non usata */ }); }
+    } catch (e) {
+      // spazio del browser esaurito (di solito molte parti o un file importato molto grande): si passa all'archivio grande del browser
+      if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
+        dbDo('readwrite', os => os.put(data, STORE)).then(() => {
+          App.storeInDb = true; App.storeFull = false;
+          try { localStorage.setItem(STORE, DB_MARK); } catch (e2) { try { localStorage.removeItem(STORE); localStorage.setItem(STORE, DB_MARK); } catch (e3) { /* niente segno: la prossima apertura guarda comunque l'archivio */ } }
+        }).catch(() => {
+          if (!App.storeFull) { App.storeFull = true; toast('Il progetto è troppo grande per il salvataggio automatico di questo browser: usa Progetto › Esporta il progetto per non perderlo.', 8000); }
+        });
+      }
     }
   }
+  // archivio grande del browser (IndexedDB): serve solo quando il progetto non entra nel salvataggio normale
+  const DB_MARK = '{"inDb":1}';
+  function dbDo(mode, fn) {
+    return new Promise((res, rej) => {
+      let rq;
+      try { rq = indexedDB.open('banco-cad', 1); } catch (e) { rej(e); return; }
+      rq.onupgradeneeded = () => rq.result.createObjectStore('progetti');
+      rq.onerror = () => rej(rq.error);
+      rq.onsuccess = () => {
+        const db = rq.result, tx = db.transaction('progetti', mode);
+        const r = fn(tx.objectStore('progetti'));
+        tx.oncomplete = () => { db.close(); res(r && r.result); };
+        tx.onerror = tx.onabort = () => { db.close(); rej(tx.error); };
+      };
+    });
+  }
+  App.dbDo = dbDo;
   App.save = function () {
     clearTimeout(saveT);
     saveT = setTimeout(writeStore, 300);
@@ -7393,14 +8078,34 @@ self.postMessage({ hello: true });`;
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSave(); });
   function load() {
     try {
-      const d = JSON.parse(localStorage.getItem(STORE) || 'null');
-      if (d && d.doc && Array.isArray(d.doc.features)) { App.doc = d.doc; App.drawingState = d.drawing || null; return true; }
+      const raw = localStorage.getItem(STORE);
+      if (raw === DB_MARK) { App.storeLoading = true; App.storeInDb = true; return true; }
+      const d = JSON.parse(raw || 'null');
+      if (d && d.doc && Array.isArray(d.doc.features)) { App.openMode = setProject(d); return true; }
     } catch (e) { /* ignora */ }
     return false;
+  }
+  // il progetto era nell'archivio grande: la pagina parte vuota e un attimo dopo arriva il progetto
+  function loadFromDb() {
+    dbDo('readonly', os => os.get(STORE)).then(raw => {
+      App.storeLoading = false;
+      const d = JSON.parse(raw || 'null');
+      if (!d || !d.doc || !Array.isArray(d.doc.features)) { toast('Il progetto salvato non si trova più nell\'archivio del browser.', 6000); return; }
+      afterLoad(setProject(d));
+    }).catch(() => { App.storeLoading = false; App.storeInDb = false; toast('Il progetto salvato non si può leggere dall\'archivio del browser.', 6000); });
+  }
+  function afterLoad(mode) {
+    $('#docName').value = App.doc.name || 'Parte1';
+    App.mode = 'part'; $('#app').dataset.mode = 'part';
+    App.undoStack = []; App.redoStack = []; App.sel = [];
+    if (mode === 'assembly') App.asm.enter();
+    else { App.setCmdTab(App.doc.features.length ? 'features' : 'sketch'); App.regen(); App.r.fit(); App.asm.refreshPartSel(); }
+    updateUndo();
   }
 
   /* ================= rigenerazione ================= */
   App.regen = function (opts = {}) {
+    if (App.mode === 'assembly') { App.asm.regen(); return; }
     const t0 = performance.now();
     let st;
     try { st = Model.regen(App.doc, opts); }
@@ -7530,7 +8235,7 @@ self.postMessage({ hello: true });`;
   }
   // schizzi da mostrare: quelli non ancora usati da una funzione, quello della funzione aperta e quelli selezionati
   function visibleSketches() {
-    if (App.mode === 'drawing') return [];
+    if (App.mode === 'drawing' || App.mode === 'assembly') return [];
     const doc = App.doc, used = new Set(doc.features.flatMap(Model.sketchesOf));
     const cur = App.mode === 'sketch' && Sketcher.session() ? Sketcher.session().f.id : null;
     const pmSk = App.pm && App.pm.sketchId ? App.pm.sketchId() : null, pmSk2 = App.pm && App.pm.sketchId2 ? App.pm.sketchId2() : null;
@@ -7699,6 +8404,7 @@ self.postMessage({ hello: true });`;
     const r = App.r;
     const want = filter || (App.pm && App.pm.filter) || null; // ['face','edge','plane','vertex']
     const ok = k => !want || want.includes(k);
+    if (want && ok('vertex') && App.mode === 'assembly') { const vx = App.asm.vertexAt(sx, sy); if (vx) return vx; }
     // piani visibili
     let res = null;
     // scelta del piano (schizzo, funzioni): il bordo di un piano visibile ha la precedenza sul pezzo
@@ -7746,7 +8452,7 @@ self.postMessage({ hello: true });`;
     if (!best) return null;
     return { kind: 'plane', id: best, label: Model.STD_PLANES[best] ? Model.STD_PLANES[best].name : (App.doc.features.find(f => f.id === best) || {}).name };
   }
-  App.sameItem = (a, b) => a && b && a.kind === b.kind && (a.kind === 'face' ? a.key === b.key : a.kind === 'edge' ? a.gkey === b.gkey : a.kind === 'plane' ? a.id === b.id : a.kind === 'feature' ? a.id === b.id : false);
+  App.sameItem = (a, b) => a && b && a.kind === b.kind && (a.kind === 'face' ? a.key === b.key : a.kind === 'edge' ? a.gkey === b.gkey : a.kind === 'plane' ? a.id === b.id : a.kind === 'feature' || a.kind === 'body' || a.kind === 'mate' ? a.id === b.id : a.kind === 'vertex' ? a.vkey === b.vkey : false);
   App.select = function (item, additive) {
     if (!item) { if (!additive) App.sel = []; }
     else if (additive) {
@@ -7805,6 +8511,8 @@ self.postMessage({ hello: true });`;
       const btn = e.pointerType === 'touch' ? 0 : e.button;
       if (App.mode === 'sketch' && btn === 0 && Sketcher.down(x, y, e)) { drag = { kind: 'sketch' }; return; }
       if (App.pm && App.pm.down && btn === 0 && App.pm.down(x, y, e)) { drag = { kind: 'pm' }; return; }
+      // nell'assieme il mouse trascina i componenti liberi (come in SolidWorks); nel vuoto, sulle parti fisse o con la rotella premuta gira la vista
+      if (App.mode === 'assembly' && !App.pm && btn === 0 && !e.shiftKey && e.pointerType !== 'touch' && App.asm.dragStart(x, y, false)) { drag = { kind: 'asm', ctrl: e.ctrlKey || e.metaKey }; return; }
       drag = { x0: x, y0: y, x, y, btn, moved: false, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, touch: e.pointerType === 'touch' };
     });
     v.addEventListener('pointermove', e => {
@@ -7823,6 +8531,7 @@ self.postMessage({ hello: true });`;
       }
       if (drag && drag.kind === 'sketch') { Sketcher.move(x, y, e, true); return; }
       if (drag && drag.kind === 'pm') { App.pm.move && App.pm.move(x, y, e, true); return; }
+      if (drag && drag.kind === 'asm') { App.asm.dragMove(x, y); return; }
       if (!drag) { hoverAt(x, y, e); return; }
       const dx = x - drag.x, dy = y - drag.y;
       if (!drag.moved && Math.hypot(x - drag.x0, y - drag.y0) > 4) drag.moved = true;
@@ -7848,6 +8557,7 @@ self.postMessage({ hello: true });`;
       const d = drag; drag = null;
       if (d.kind === 'sketch') { Sketcher.up(x, y, e); return; }
       if (d.kind === 'pm') { App.pm.up && App.pm.up(x, y, e); return; }
+      if (d.kind === 'asm') { if (!App.asm.dragEnd()) App.asm.click(pickAt(x, y), d.ctrl); return; }
       if (App.boxSel) { const b = App.boxSel; App.boxSel = null; if (App.mode === 'sketch') Sketcher.boxSelect(b, e.ctrlKey || e.metaKey); App.redraw(); return; }
       if (d.moved) return;
       App.lastPointer = [x, y];
@@ -7858,6 +8568,7 @@ self.postMessage({ hello: true });`;
       // tablet: toccare il pezzo lo «prende» (poi si ruota e si sposta), toccare il vuoto lo lascia
       if (d.touch) setTouchGrab(!!(it && (it.kind === 'face' || it.kind === 'edge' || it.kind === 'vertex')));
       if (App.pm && App.pm.pick) { App.pm.pick(it, e); return; }
+      if (App.mode === 'assembly') { App.asm.click(it, d.ctrl); return; }
       App.select(it, d.ctrl);
     };
     App.touchGrab = false;
@@ -7880,6 +8591,7 @@ self.postMessage({ hello: true });`;
     v.addEventListener('dblclick', e => {
       const [x, y] = local(e);
       if (App.mode === 'sketch') { Sketcher.dblclick(x, y, e); return; }
+      if (App.mode === 'assembly') { if (!App.pm) App.asm.dblclick(x, y); return; }
       // doppio clic su una faccia: modifica la funzione che l'ha creata
       const it = pickAt(x, y, ['face']);
       if (it && it.tag && it.tag.feature) { const f = App.doc.features.find(ff => ff.id === String(it.tag.feature).split('@')[0].split('#')[0].split('*')[0].split('~')[0]); if (f) App.editFeature(f); }
@@ -7923,6 +8635,7 @@ self.postMessage({ hello: true });`;
     const t = $('#tree');
     const doc = App.doc, st = App.st;
     t.innerHTML = '';
+    if (App.mode === 'assembly') { App.asm.renderTree(t); return; }
     const node = (icon, label, attrs = {}, badge) => {
       const n = el('div', { class: 'tnode' + (attrs.cls ? ' ' + attrs.cls : ''), role: 'treeitem', tabindex: '-1', title: attrs.title || '' });
       n.innerHTML = `<span class="tg">${attrs.toggle || ''}</span><span class="ti">${App.ICON[icon] || ''}</span><span class="tl">${esc(label)}</span>${badge || ''}`;
@@ -8091,9 +8804,21 @@ self.postMessage({ hello: true });`;
       ['selftest', 'Autoverifica', 'Ricostruisce i pezzi di prova e confronta volume, area, baricentro e ingombro con i valori calcolati a mano (tolleranza 1%)', { icon: 'verify' }],
     ],
     drawing: null,
+    assembly: [
+      ['insertPart', 'Inserisci parte', 'Aggiunge una parte del progetto o un file (STEP, IGES, STL, OBJ, progetto) come componente dell\'assieme'],
+      ['addPart', 'Nuova parte', 'Crea una parte vuota in questo progetto e la apre', { icon: 'sketch' }],
+      '-',
+      ['mate', 'Accoppiamento', 'Lega due elementi di due componenti: coincidente, concentrico, parallelo, perpendicolare, distanza, angolo'],
+      ['movepart', 'Sposta parte', 'Sposta o ruota un componente nei gradi di libertà che gli restano (anche su tablet)'],
+      '-',
+      ['measure', 'Misura', 'Distanze, diametri e angoli tra gli elementi selezionati'],
+      ['section', 'Vista in sezione', 'Taglia la vista con un piano'],
+    ],
   };
   App.TOOLBARS = TOOLBARS;
   App.setCmdTab = function (tab) {
+    if (tab === 'assembly' && App.mode !== 'assembly') { App.asm.enter(); return; }
+    if (tab !== 'assembly' && App.mode === 'assembly') App.asm.leave();
     cmdTab = tab;
     document.querySelectorAll('.cmd-tabs [data-ct]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.ct === tab)));
     if (tab === 'drawing') { if (App.mode === 'sketch') { Sketcher.exit(true); } Drawing.enter(); }
@@ -8134,6 +8859,10 @@ self.postMessage({ hello: true });`;
       }
       case 'extrude': case 'cut': case 'revolve': case 'revcut': case 'hole': case 'fillet': case 'chamfer': case 'lpattern': case 'cpattern': case 'mirror': case 'plane': case 'sweep': case 'sweepcut': case 'rib': case 'combine': case 'movebody': case 'delbody':
         Features.create(id); return;
+      case 'insertPart': return App.asm.insertDialog();
+      case 'addPart': return addNewPart();
+      case 'mate': return App.asm.openMate();
+      case 'movepart': return App.asm.openMove();
       case 'material': return materialDialog();
       case 'mass': return massDialog();
       case 'measure': return Features.measure();
@@ -8299,6 +9028,7 @@ self.postMessage({ hello: true });`;
   App.showCtx = showCtx;
   function contextMenuAt(cx, cy, x, y) {
     if (App.mode === 'sketch') { Sketcher.contextMenu(cx, cy, x, y); return; }
+    if (App.mode === 'assembly') { App.asm.contextMenu(cx, cy, x, y); return; }
     const it = pickAt(x, y, ['face', 'edge']);
     const items = [];
     if (it && it.kind === 'face' && it.planar) items.push(['Schizzo su questa faccia', () => Sketcher.start({ kind: 'face', name: it.name, n: it.n, w: it.w })], ['Normale a', () => App.r.setView(GLView.Renderer.normalQ(Model.frameFromPlane(it.n, it.w)))]);
@@ -8406,8 +9136,9 @@ self.postMessage({ hello: true });`;
     } else if (!downloaded) toast('Lo scaricamento non è disponibile in questa pagina: usa il file del programma aperto direttamente in Chrome.');
   };
   function exportProject() {
-    const data = JSON.stringify({ app: 'banco-cad', v: 1, doc: App.doc, drawing: App.drawingState || null });
-    App.offerFile((App.doc.name || 'parte') + '.bcad.json', 'application/json', data, 'Esporta il progetto');
+    const pd = projectData(App.doc);
+    const data = JSON.stringify({ app: 'banco-cad', v: pd.project ? 2 : 1, ...pd });
+    App.offerFile((App.docTitle() || 'parte') + '.bcad.json', 'application/json', data, 'Esporta il progetto');
   }
   function importProject() {
     modal('Importa un progetto', `<p class="note">Incolla il testo di un progetto esportato oppure scegli il file.</p><textarea id="impText" placeholder='{"app":"banco-cad", ...}'></textarea><p><input type="file" id="impFile" accept=".json,.txt,application/json,text/plain"></p>`, [
@@ -8422,7 +9153,15 @@ self.postMessage({ hello: true });`;
     if (!d || d.app !== 'banco-cad' || !d.doc || !Array.isArray(d.doc.features)) { toast('Il testo non è un progetto di Banco CAD.'); return; }
     closeModal();
     if (App.mode === 'sketch') Sketcher.exit(false);
-    App.change(() => { App.doc = d.doc; App.drawingState = d.drawing || null; App.sel = []; });
+    if (d.project || isMulti()) {
+      // con più parti si sostituisce tutto il progetto: i passi di Annulla delle vecchie parti non valgono più
+      if (App.mode === 'drawing') App.setCmdTab('features');
+      afterLoad(setProject(d));
+      App.save();
+      toast('Progetto importato');
+      return;
+    }
+    App.change(() => { App.doc = d.doc; App.drawingState = d.drawing || null; App.sel = []; activePart().doc = App.doc; });
     $('#docName').value = App.doc.name || 'Parte1';
     App.r.fit();
     toast('Progetto importato');
@@ -8435,7 +9174,7 @@ self.postMessage({ hello: true });`;
     let ntri = 0; for (const p of st.body) ntri += p.v.length - 2;
     const buf = new ArrayBuffer(84 + ntri * 50);
     const dv = new DataView(buf);
-    const head = 'Banco CAD - ' + (App.doc.name || 'parte') + ' (mm)';
+    const head = 'Banco CAD - ' + (App.docTitle() || 'parte') + ' (mm)';
     for (let i = 0; i < 80; i++) dv.setUint8(i, i < head.length ? head.charCodeAt(i) & 127 : 32);
     dv.setUint32(80, ntri, true);
     let o = 84;
@@ -8444,7 +9183,7 @@ self.postMessage({ hello: true });`;
       for (const v of [p.v[0], p.v[i], p.v[i + 1]]) for (const x of v) { dv.setFloat32(o, x, true); o += 4; }
       dv.setUint16(o, 0, true); o += 2;
     }
-    App.offerFile((App.doc.name || 'parte') + '.stl', 'model/stl', new Blob([buf], { type: 'model/stl' }), 'Esporta STL');
+    App.offerFile((App.docTitle() || 'parte') + '.stl', 'model/stl', new Blob([buf], { type: 'model/stl' }), 'Esporta STL');
     toast('File STL pronto: ' + ntri + ' triangoli, unità in millimetri.');
   }
   /* ---------- PDF: tavola (vettoriale, 1:1), schizzo (vettoriale, scala normalizzata), vista 3D (immagine) ---------- */
@@ -8463,7 +9202,7 @@ self.postMessage({ hello: true });`;
     } };
   }
   async function sketchPdf() {
-    const name = App.doc.name || 'parte';
+    const name = App.docTitle() || 'parte';
     const doc = new Export.Doc({ title: name });
     const sh = pdfSheet(doc);
     const r = Sketcher.toPDF(sh.pg, sh.box);
@@ -8474,7 +9213,7 @@ self.postMessage({ hello: true });`;
       msg: `PDF dello schizzo pronto: A4 orizzontale, scala ${r.scale}.` };
   }
   async function viewPdf() {
-    const r = App.r, name = App.doc.name || 'parte';
+    const r = App.r, name = App.docTitle() || 'parte';
     // vista come sullo schermo, ma su fondo bianco e senza evidenziazioni del mouse
     const keep = { hover: App.hover, bg: r.bg };
     let cv;
@@ -8524,7 +9263,7 @@ self.postMessage({ hello: true });`;
   App.stepText = function () {
     const st = App.st;
     if (!st || !st.body.length) return null;
-    const name = App.doc.name || 'parte';
+    const name = App.docTitle() || 'parte';
     const topo = Geom.topology(st.body, st.tags);
     return Export.toSTEP(st.body, topo, { name, file: name + '.step', color: [0.66, 0.7, 0.74], tags: st.tags, bodies: Model.stepBodies(st) });
   };
@@ -8533,7 +9272,7 @@ self.postMessage({ hello: true });`;
     if (!r) { toast('Non c\'è nessun solido da esportare.'); return; }
     App.lastStep = r;   // (per le prove)
     const s = r.stats;
-    App.offerFile((App.doc.name || 'parte') + '.step', 'model/step', new Blob([r.text], { type: 'model/step' }), 'Esporta STEP');
+    App.offerFile((App.docTitle() || 'parte') + '.step', 'model/step', new Blob([r.text], { type: 'model/step' }), 'Esporta STEP');
     toast(s.badEdges || s.openLoops ? `File STEP pronto, ma il solido non è chiuso del tutto (${s.badEdges + s.openLoops} punti): l'altro programma potrebbe aprirlo come superfici.`
       : `File STEP pronto: ${s.solids === 1 ? 'un solido' : s.solids + ' solidi'} con ${s.faces} facce, in millimetri` + (s.exact ? `; ${s.exact} ${s.exact === 1 ? 'è una superficie vera' : 'sono superfici vere'} (${Object.entries(s.surfaces).filter(([k]) => k !== 'plane').map(([k, v]) => v + ' ' + ({ cyl: v === 1 ? 'cilindro' : 'cilindri', cone: v === 1 ? 'cono' : 'coni', sph: v === 1 ? 'sfera' : 'sfere', tor: v === 1 ? 'toro' : 'tori' }[k])).join(', ')})` : '') + (s.fallback ? `; ${s.fallback === 1 ? 'una superficie curva è' : s.fallback + ' superfici curve sono'} a facce piane` : '') + '.', 7000);
   }
@@ -9071,8 +9810,16 @@ self.postMessage({ hello: true });`;
   App.importDxfData = importDxfData;
   App.importDxfDialog = importDxfDialog;
   function newPart() {
-    confirmModal('Nuova parte', 'La parte attuale verrà sostituita da una parte vuota. Se ti serve, esportala prima.', 'Nuova parte', () => {
+    confirmModal('Nuovo progetto', 'Il progetto attuale verrà sostituito da una parte vuota. Se ti serve, esportalo prima.', 'Nuovo progetto', () => {
       if (App.mode === 'sketch') Sketcher.exit(false);
+      if (isMulti()) {
+        if (App.mode === 'drawing') App.setCmdTab('features');
+        afterLoad(setProject({ doc: Model.newDoc(), drawing: null }));
+        App.r.setView(GLView.Renderer.viewQ('iso'));
+        App.r.fit();
+        App.save();
+        return;
+      }
       App.change(() => { App.doc = Model.newDoc(); App.sel = []; App.drawingState = null; });
       $('#docName').value = 'Parte1';
       App.r.setView(GLView.Renderer.viewQ('iso'));
@@ -9102,7 +9849,10 @@ self.postMessage({ hello: true });`;
     }
     const restored = load();
     $('#docName').value = App.doc.name || 'Parte1';
-    $('#docName').addEventListener('change', e => { const v = e.target.value.trim() || 'Parte1'; App.change(() => { App.doc.name = v; }, { noRegen: true }); App.renderTree(); });
+    $('#partSel').addEventListener('change', e => { if (e.target.value === 'asm') App.setCmdTab('assembly'); else openPart(e.target.value); });
+    $('#docName').addEventListener('change', e => {
+      if (App.mode === 'assembly') { const v = e.target.value.trim() || 'Assieme1'; App.change(() => { App.project.assembly.name = v; }, { noRegen: true }); App.asm.refreshPartSel(); App.renderTree(); return; }
+      const v = e.target.value.trim() || 'Parte1'; App.change(() => { App.doc.name = v; }, { noRegen: true }); App.asm.refreshPartSel(); App.renderTree(); });
     document.querySelectorAll('.cmd-tabs [data-ct]').forEach(b => b.addEventListener('click', () => App.setCmdTab(b.dataset.ct)));
     $('#btnUndo').addEventListener('click', () => App.undo());
     $('#btnRedo').addEventListener('click', () => App.redo());
@@ -9112,6 +9862,10 @@ self.postMessage({ hello: true });`;
     });
     $('#menuFile').addEventListener('click', e => {
       const b = e.target.closest('[data-act]'); if (!b) return; hideMenus();
+      if (b.dataset.act === 'addPart') { addNewPart(); return; }
+      if (b.dataset.act === 'delPart') { deletePartDialog(); return; }
+      if (App.mode === 'assembly' && (b.dataset.act === 'importCad' || b.dataset.act === 'importMesh')) { App.asm.insertDialog(); return; }
+      if (App.mode === 'assembly' && b.dataset.act === 'importDxf') { toast('Il DXF va in uno schizzo: apri prima una parte.'); return; }
       ({ new: newPart, export: exportProject, import: importProject, importMesh: importMeshDialog, importCad: importCadDialog, importDxf: importDxfDialog, stl: exportSTL, pdf: () => App.savePdf(), step: exportSTEP, help: () => (window.Guide ? window.Guide.open(null) : help()), about: aboutDialog })[b.dataset.act]();
     });
     $('#btnViews').addEventListener('click', e => { e.stopPropagation(); const m = $('#viewsMenu'); const o = m.hidden; hideMenus(); m.hidden = !o; });
@@ -9134,6 +9888,10 @@ self.postMessage({ hello: true });`;
     App.r.fit(false);
     if (!App.doc.features.length) { App.showPlanes = true; App.autoPlanes = true; $('#btnPlanes').setAttribute('aria-pressed', 'true'); }
     App.setCmdTab(App.doc.features.length ? 'features' : 'sketch');
+    syncActive();
+    App.asm.refreshPartSel();
+    if (App.openMode === 'assembly') App.asm.enter();
+    if (App.storeLoading) loadFromDb();
     requestAnimationFrame(frame);
     if (!restored) setTimeout(() => toast('Benvenuto: per iniziare apri la Guida, in alto a destra.', 5000), 400);
     window.__cad = App;
@@ -9163,11 +9921,580 @@ self.postMessage({ hello: true });`;
     if (e.key === 'Enter' && App.pm) { App.closePM(true); return; }
     if (e.key === ' ' && App.mode !== 'drawing') { e.preventDefault(); const m = $('#viewsMenu'); m.hidden = !m.hidden; return; }
     if (e.key === 'f' || e.key === 'F') { App.r.fit(); App.redraw(); return; }
+    if (App.mode === 'assembly') { App.asm.key(e); return; }
     if ((e.key === 'Delete' || e.key === 'Backspace') && App.mode === 'part' && !App.pm) {
       const s = App.sel.find(x => x.kind === 'feature');
       if (s) { const f = App.doc.features.find(x => x.id === s.id); if (f) deleteFeature(f); }
     }
   }
+  /* ================= progetto con più parti e assieme (come SolidWorks, ma tutto dentro un solo progetto) ================= */
+  const P = () => App.project;
+  const activePart = () => P().parts.find(p => p.id === P().active);
+  // la parte aperta vive in App.doc: prima di leggere l'elenco delle parti la si riporta nel suo posto
+  function syncActive() { const p = activePart(); if (p) { p.doc = App.doc; p.drawing = App.drawingState || null; } }
+  App.syncActive = syncActive;
+  App.docTitle = () => App.mode === 'assembly' && P().assembly ? P().assembly.name : App.doc.name;
+  // Annulla: ogni parte e l'assieme hanno i loro passi
+  const undoCtx = new Map();
+  const ctxKey = () => App.mode === 'assembly' ? 'asm' : P().active;
+  function ctxStore() { undoCtx.set(ctxKey(), { undo: App.undoStack, redo: App.redoStack }); }
+  function ctxLoad() { const c = undoCtx.get(ctxKey()); App.undoStack = c ? c.undo : []; App.redoStack = c ? c.redo : []; updateUndo(); }
+  // dati da salvare: con una parte sola e senza assieme il file resta identico a prima
+  function projectData(doc) {
+    const pr = P(), data = { doc, drawing: App.drawingState || null };
+    if (isMulti()) {
+      data.project = {
+        active: pr.active, next: pr.next, assembly: pr.assembly, open: App.mode === 'assembly' ? 'assembly' : 'part',
+        parts: pr.parts.map(p => p.id === pr.active ? { id: p.id } : { id: p.id, doc: p.doc, drawing: p.drawing || null }),
+      };
+    }
+    return data;
+  }
+  // legge un progetto salvato (vecchio o nuovo); restituisce il modo in cui riaprirlo
+  function setProject(d) {
+    App.doc = d.doc; App.drawingState = d.drawing || null;
+    const s = d.project;
+    undoCtx.clear();
+    if (s && Array.isArray(s.parts) && s.parts.some(p => p.id === s.active)) {
+      App.project = { parts: s.parts.filter(p => p.id === s.active || (p.doc && Array.isArray(p.doc.features))).map(p => p.id === s.active ? { id: p.id, doc: d.doc, drawing: d.drawing || null } : p), active: s.active, assembly: s.assembly || null, next: s.next || s.parts.length + 1 };
+      return s.open === 'assembly' && s.assembly ? 'assembly' : 'part';
+    }
+    App.project = { parts: [{ id: 'p1', doc: d.doc, drawing: d.drawing || null }], active: 'p1', assembly: null, next: 2 };
+    return 'part';
+  }
+  App.setProject = setProject;
+  function isMulti() { const a = P().assembly; return P().parts.length > 1 || !!(a && (a.insts.length || a.mates.length)); }
+  App.isMultiProject = isMulti;
+  function uniquePartName(base) {
+    syncActive();
+    const names = new Set(P().parts.map(p => p.doc && p.doc.name));
+    if (base && !names.has(base)) return base;
+    const stem = base || 'Parte';
+    for (let k = base ? 2 : 1; ; k++) { const n = base ? stem + ' (' + k + ')' : stem + k; if (!names.has(n)) return n; }
+  }
+  function addPartDoc(doc, drawing) {
+    syncActive();
+    const id = 'p' + (P().next++);
+    P().parts.push({ id, doc, drawing: drawing || null });
+    return id;
+  }
+  // apre una parte per modificarla (anche uscendo dall'assieme)
+  function openPart(id, tab) {
+    if (App.mode === 'sketch') Sketcher.exit(true);
+    if (App.mode === 'drawing') App.setCmdTab('features');
+    if (App.pm) App.closePM(false);
+    syncActive();
+    ctxStore();
+    const part = P().parts.find(p => p.id === id);
+    P().active = id;
+    App.doc = part.doc; App.drawingState = part.drawing || null;
+    App.mode = 'part'; $('#app').dataset.mode = 'part';
+    ctxLoad();
+    App.sel = []; App.hover = null;
+    $('#docName').value = App.doc.name || 'Parte1';
+    App.setCmdTab(tab || (App.doc.features.length ? 'features' : 'sketch'));
+    App.regen();
+    App.r.fit();
+    App.asm.refreshPartSel();
+    App.save();
+  }
+  App.openPart = openPart;
+  function addNewPart() {
+    const doc = Model.newDoc(); doc.name = uniquePartName();
+    openPart(addPartDoc(doc));
+    toast('Parte nuova: «' + doc.name + '». Per tornare all\'assieme usa la scheda Assieme.');
+  }
+  function deletePartDialog() {
+    if (P().parts.length < 2) { toast('Il progetto ha una parte sola: per ricominciare usa Nuovo progetto.'); return; }
+    const a = P().assembly, part = activePart(), used = a ? a.insts.filter(i => i.part === part.id).length : 0;
+    confirmModal('Eliminare «' + (App.doc.name || 'la parte') + '» dal progetto?', (used ? 'Spariscono anche i suoi ' + used + ' componenti nell\'assieme, con i loro accoppiamenti. ' : '') + 'Questa operazione non si può annullare.', 'Elimina la parte', () => {
+      if (a) {
+        const gone = new Set(a.insts.filter(i => i.part === part.id).map(i => i.id));
+        a.insts = a.insts.filter(i => !gone.has(i.id));
+        a.mates = a.mates.filter(m => !gone.has(m.a.inst) && !gone.has(m.b.inst));
+        const c = undoCtx.get('asm'); if (c) { c.undo.length = 0; c.redo.length = 0; }
+      }
+      const other = P().parts.find(p => p.id !== part.id);
+      undoCtx.delete(part.id);
+      openPart(other.id);
+      P().parts = P().parts.filter(p => p.id !== part.id);
+      App.asm.refreshPartSel();
+      App.save();
+    });
+  }
+
+  App.asm = (function () {
+    let infos = new Map();
+    const cache = new Map();
+    let shown = null, last = null, verts = null, D = null, dragRaf = 0;
+    const asm = () => P().assembly;
+    const partOf = id => P().parts.find(p => p.id === id);
+    const partName = id => { const p = partOf(id); return p && p.doc ? p.doc.name : 'Parte'; };
+    const instById = id => asm().insts.find(i => i.id === id);
+    const label = inst => Assembly.instLabel(inst, partName(inst.part));
+    // parti ricostruite: si rifà solo quella cambiata
+    function refreshInfos() {
+      syncActive();
+      const out = new Map();
+      for (const p of P().parts) {
+        const j = JSON.stringify(p.doc);
+        let c = cache.get(p.id);
+        if (!c || c.j !== j) { c = { j, info: Assembly.partInfo(p.doc) }; cache.set(p.id, c); }
+        out.set(p.id, c.info);
+      }
+      infos = out;
+      return infos;
+    }
+    // mostra un assieme (quello vero o un'anteprima): App.st diventa la scena, così vista, selezione e misure funzionano come nella parte
+    function show(a) {
+      shown = a;
+      const st = Assembly.scene(a, infos);
+      for (const b of st.bodies) { const i = a.insts.find(x => x.id === b.id); if (i) b.name = label(i); }
+      App.st = st;
+      verts = null;
+      App.r.setBody(st, { hl: {} });
+      computeEdgeGroups();
+      App.r.recolor(highlighter());
+      App.mass = null;
+      App.renderTree();
+      App.redraw();
+    }
+    function status() {
+      const a = asm(); if (!a || !last) return;
+      const bad = [...last.status.values()].filter(s => !s.ok).length;
+      const nn = (k, one, many) => k + ' ' + (k === 1 ? one : many);
+      setStatus(`${nn(a.insts.length, 'componente', 'componenti')}, ${nn(a.mates.length, 'accoppiamento', 'accoppiamenti')}, ${nn(last.dof.total, 'grado', 'gradi')} di libertà` + (bad ? ` · ${nn(bad, 'accoppiamento', 'accoppiamenti')} con errori` : ''));
+    }
+    function regen() {
+      refreshInfos();
+      last = Assembly.solve(asm(), infos);
+      show(asm());
+      status();
+    }
+    function refreshPartSel() {
+      const s = $('#partSel'); if (!s) return;
+      syncActive();
+      const multi = isMulti();
+      s.hidden = !multi;
+      $('#menuFile [data-act="delPart"]').hidden = P().parts.length < 2;
+      if (!multi) return;
+      s.innerHTML = '';
+      for (const p of P().parts) s.append(el('option', { value: p.id }, p.doc.name || 'Parte'));
+      s.append(el('option', { value: 'asm' }, (asm() ? asm().name : 'Assieme') + ' (assieme)'));
+      s.value = App.mode === 'assembly' ? 'asm' : P().active;
+    }
+    function enter() {
+      if (App.mode === 'sketch') Sketcher.exit(true);
+      if (App.mode === 'drawing') Drawing.exit();
+      if (App.pm) App.closePM(false);
+      syncActive();
+      ctxStore();
+      if (!asm()) P().assembly = Assembly.newAssembly();
+      App.mode = 'assembly'; $('#app').dataset.mode = 'assembly';
+      ctxLoad();
+      App.sel = []; App.hover = null;
+      $('#docName').value = asm().name;
+      App.setCmdTab('assembly');
+      regen();
+      App.r.fit();
+      refreshPartSel();
+      App.save();
+    }
+    function leave() {
+      ctxStore();
+      App.mode = 'part'; $('#app').dataset.mode = 'part';
+      ctxLoad();
+      App.sel = []; App.hover = null;
+      $('#docName').value = App.doc.name || 'Parte1';
+      App.regen();
+      App.r.fit();
+      refreshPartSel();
+      App.save();
+    }
+
+    /* ---------- inserire componenti ---------- */
+    function placeBeside(info) {
+      const st = App.st, pose = Assembly.identity();
+      if (!st || !st.body.length) return pose;
+      const mx = App.r.bbox.mx[0], size = Math.max(info.bbox.mx[0] - info.bbox.mn[0], 10);
+      pose.p[0] = mx + 0.25 * size - info.bbox.mn[0];
+      return pose;
+    }
+    function insertPart(id) {
+      refreshInfos();
+      const info = infos.get(id);
+      if (!info || info.empty) { toast('«' + partName(id) + '» non ha ancora un solido: aprila e crea almeno un\'estrusione.'); return null; }
+      let inst;
+      App.change(() => { inst = Assembly.addInst(asm(), id, { pose: placeBeside(info) }); });
+      App.r.fit();
+      refreshPartSel();
+      return inst;
+    }
+    function insertDialog() {
+      if (App.pm) App.closePM(false);
+      syncActive();
+      const rows = P().parts.map(p => `<button type="button" class="relbtn" data-part="${esc(p.id)}">${esc(p.doc.name || 'Parte')}</button>`).join(' ');
+      modal('Inserisci parte', `<p class="note">Scegli una parte del progetto. Si può inserire più volte: le copie cambiano tutte insieme quando modifichi la parte.</p>
+        <div class="btnrow" id="asmParts">${rows}</div>
+        <p class="note">Oppure scegli un file: diventa una parte nuova di questo progetto (una copia: il file resta dov'è). Un file STEP con più corpi dà una parte per ogni corpo, nelle posizioni del file.</p>
+        <p><input type="file" id="asmFile" accept=".step,.stp,.iges,.igs,.stl,.obj,.json"></p>
+        <label class="chk"><input type="checkbox" id="asmZup"> Asse Z del file verso l'alto</label>
+        <div class="row"><label for="asmUnit">Unità del file (solo STL e OBJ)</label><select id="asmUnit"><option value="mm">millimetri</option><option value="cm">centimetri</option><option value="m">metri</option><option value="in">pollici</option></select></div>`, [{ label: 'Chiudi' }]);
+      $('#asmParts').addEventListener('click', e => { const b = e.target.closest('[data-part]'); if (!b) return; closeModal(); insertPart(b.dataset.part); });
+      $('#asmFile').addEventListener('change', e => {
+        const f = e.target.files[0]; if (!f) return;
+        const zUp = $('#asmZup').checked, unit = $('#asmUnit').value;
+        const rd = new FileReader();
+        rd.onload = () => { closeModal(); insertFile(f.name, new Uint8Array(rd.result), { zUp, unit }); };
+        rd.readAsArrayBuffer(f);
+      });
+    }
+    // un file diventa una o più parti del progetto
+    async function insertFile(name, data, opts = {}) {
+      const ext = (name.split('.').pop() || '').toLowerCase(), stem = name.replace(/\.[^.]*$/, '').replace(/\.bcad$/, '');
+      let docs;
+      if (ext === 'json') {
+        let d; try { d = JSON.parse(new TextDecoder().decode(data)); } catch (e) { toast('Il file non è un progetto valido.'); return null; }
+        if (!d || d.app !== 'banco-cad' || !d.doc || !Array.isArray(d.doc.features)) { toast('Il file non è un progetto di Banco CAD.'); return null; }
+        docs = d.project && Array.isArray(d.project.parts) ? d.project.parts.map(p => p.id === d.project.active ? d.doc : p.doc).filter(x => x && Array.isArray(x.features)) : [d.doc];
+      } else if (['step', 'stp', 'iges', 'igs', 'stl', 'obj'].includes(ext)) {
+        const isCad = !['stl', 'obj'].includes(ext);
+        // l'importazione lavora sulla parte aperta: per un momento la parte aperta è una parte nuova
+        const keep = { doc: App.doc, drawing: App.drawingState, undo: App.undoStack, redo: App.redoStack, sel: App.sel };
+        const tmp = Model.newDoc(); tmp.name = stem;
+        modal('Inserisci parte', `<p class="note">Lettura di «${esc(name)}» in corso…</p>`, []);
+        App.tempPart = true;
+        App.doc = tmp; App.drawingState = null; App.undoStack = []; App.redoStack = []; App.mode = 'part';
+        let res = null, err = null;
+        try { res = isCad ? await App.importCadData(name, data, { zUp: opts.zUp, separate: true, colors: true }) : App.importMeshData(name, data, { zUp: opts.zUp, unit: opts.unit }); }
+        catch (e) { err = e; }
+        const got = App.doc;
+        App.doc = keep.doc; App.drawingState = keep.drawing; App.undoStack = keep.undo; App.redoStack = keep.redo; App.sel = keep.sel; App.mode = 'assembly';
+        App.tempPart = false;
+        closeModal();
+        regen();
+        const msg = err ? (err.message || String(err)) : res && res.error;
+        if (msg || !got.features.length) { toast('File non inserito: ' + (msg || 'nessun solido.')); return null; }
+        const imports = got.features.filter(f => f.type === 'import');
+        docs = imports.length > 1
+          ? imports.map((f, k) => { const d = Model.newDoc(); d.name = /^Importato\d+$/.test(f.name || '') ? stem + ' ' + (k + 1) : f.name; d.next = got.next; d.features = [f]; return d; })
+          : [got];
+      } else { toast('Formato non riconosciuto: si possono inserire STEP, IGES, STL, OBJ e i progetti di Banco CAD (.json).'); return null; }
+      if (!docs.length) { toast('Il file non contiene parti.'); return null; }
+      const ids = docs.map(d => { d.name = uniquePartName(d.name || stem); return addPartDoc(d); });
+      refreshInfos();
+      // tutti i corpi insieme, nelle posizioni del file; accanto a quello che c'è già
+      const good = ids.filter(id => !infos.get(id).empty);
+      if (!good.length) { refreshPartSel(); toast('Il file è stato aggiunto alle parti, ma non contiene solidi.'); return null; }
+      const box = good.map(id => infos.get(id).bbox);
+      const insts = [];
+      App.change(() => {
+        const st = App.st; let dx = 0;
+        if (st && st.body.length) { const mn = Math.min(...box.map(b => b.mn[0])), mx = Math.max(...box.map(b => b.mx[0])); dx = App.r.bbox.mx[0] + 0.25 * Math.max(mx - mn, 10) - mn; }
+        for (const id of good) { const pose = Assembly.identity(); pose.p[0] = dx; insts.push(Assembly.addInst(asm(), id, { pose })); }
+      });
+      App.r.fit();
+      refreshPartSel();
+      toast(good.length > 1 ? `Inserite ${good.length} parti da «${name}».` : `Inserita «${partName(good[0])}».`);
+      return insts;
+    }
+
+    /* ---------- menu dei componenti ---------- */
+    function copyInst(inst) {
+      const info = infos.get(inst.part), dx = Math.max(info.bbox.mx[0] - info.bbox.mn[0], 10) * 1.25;
+      let out;
+      App.change(() => { out = Assembly.addInst(asm(), inst.part, { pose: { p: [inst.pose.p[0] + dx, inst.pose.p[1], inst.pose.p[2]], q: inst.pose.q.slice() }, fixed: false }); App.sel = []; });
+      App.r.fit();
+      return out;
+    }
+    function setFixed(inst, on) { App.change(() => { inst.fixed = !!on; }); }
+    function deleteInst(inst) {
+      const ms = asm().mates.filter(m => m.a.inst === inst.id || m.b.inst === inst.id);
+      const go = () => App.change(() => {
+        asm().insts = asm().insts.filter(i => i !== inst);
+        asm().mates = asm().mates.filter(m => !ms.includes(m));
+        App.sel = [];
+      });
+      if (ms.length) confirmModal('Eliminare ' + label(inst) + '?', 'Spariscono anche i suoi accoppiamenti: ' + ms.map(m => m.name).join(', ') + '.', 'Elimina', go);
+      else go();
+    }
+    function deleteMate(m) { App.change(() => { asm().mates = asm().mates.filter(x => x !== m); App.sel = []; }); }
+    function instMenu(e, inst) {
+      showCtx(e.clientX, e.clientY, [
+        ['Apri la parte', () => openPart(inst.part)],
+        ['Copia il componente', () => copyInst(inst)],
+        [inst.fixed ? 'Libera' : 'Fissa', () => setFixed(inst, !inst.fixed)],
+        '-',
+        ['Elimina', () => deleteInst(inst)],
+      ]);
+    }
+    function mateMenu(e, m) {
+      showCtx(e.clientX, e.clientY, [
+        ['Modifica accoppiamento', () => openMate(m)],
+        [m.suppressed ? 'Annulla soppressione' : 'Sopprimi', () => App.change(() => { m.suppressed = !m.suppressed; })],
+        '-',
+        ['Elimina', () => deleteMate(m)],
+      ]);
+    }
+    const instOfTag = t => t && t.inst ? instById(t.inst) : null;
+    function instOfItem(it) {
+      if (!it || !App.st) return null;
+      if (it.kind === 'face') return instOfTag(it.tag);
+      if (it.kind === 'edge') return instOfTag(App.st.tags.byName.get(it.ref.a));
+      if (it.kind === 'vertex') return instById(it.inst);
+      return null;
+    }
+    function click(it, additive) {
+      const inst = instOfItem(it);
+      App.select(inst ? { kind: 'body', id: inst.id, label: label(inst) } : null, additive);
+    }
+    function contextMenu(cx, cy, x, y) {
+      const inst = instOfItem(pickAt(x, y, ['face', 'edge']));
+      if (inst) { instMenu({ clientX: cx, clientY: cy }, inst); return; }
+      showCtx(cx, cy, [['Inserisci parte', () => insertDialog()], ['Adatta alla finestra', () => App.r.fit()]]);
+    }
+    function dblclick(x, y) { const inst = instOfItem(pickAt(x, y, ['face'])); if (inst) openPart(inst.part); }
+    function key(e) {
+      if ((e.key !== 'Delete' && e.key !== 'Backspace') || App.pm) return;
+      const s = App.sel[0]; if (!s) return;
+      if (s.kind === 'body') { const i = instById(s.id); if (i) deleteInst(i); }
+      if (s.kind === 'mate') { const m = asm().mates.find(x => x.id === s.id); if (m) deleteMate(m); }
+    }
+    function renderTree(t) {
+      const a = asm();
+      const node = (icon, text, o = {}) => {
+        const n = el('div', { class: 'tnode' + (o.cls ? ' ' + o.cls : ''), role: 'treeitem', tabindex: '-1', title: o.title || '' });
+        n.innerHTML = `<span class="tg"></span><span class="ti">${App.ICON[icon] || ''}</span><span class="tl">${esc(text)}</span>${o.badge || ''}`;
+        if (o.on) n.addEventListener('click', o.on);
+        if (o.dbl) n.addEventListener('dblclick', o.dbl);
+        if (o.ctx) n.addEventListener('contextmenu', e => { e.preventDefault(); o.ctx(e); });
+        return n;
+      };
+      t.append(node('assembly', a.name, { title: 'L\'assieme' }));
+      t.append(node('insertPart', 'Componenti (' + a.insts.length + ')', { title: 'Le parti montate, ognuna con la sua posizione' }));
+      if (!a.insts.length) t.append(el('p', { class: 'note' }, 'L\'assieme è vuoto: premi Inserisci parte.'));
+      for (const inst of a.insts) {
+        const dof = last && last.dof.byInst.get(inst.id);
+        const pre = inst.fixed ? '(f) ' : dof ? '(-) ' : '';
+        const sel = App.sel.some(s => s.kind === 'body' && s.id === inst.id);
+        const title = inst.fixed ? 'Fissa: non si muove' : dof ? `Sotto definita: restano ${dof} gradi di libertà` : 'Definita: nessun grado di libertà';
+        t.append(node('extrude', pre + label(inst), { cls: 'tchild tinst' + (sel ? ' sel' : ''), title: title + '. Doppio clic per aprire la parte.', on: e => App.select({ kind: 'body', id: inst.id, label: label(inst) }, e.ctrlKey || e.metaKey), dbl: () => openPart(inst.part), ctx: e => instMenu(e, inst) }));
+      }
+      t.append(node('mate', 'Accoppiamenti (' + a.mates.length + ')', { title: 'I legami tra i componenti' }));
+      for (const m of a.mates) {
+        const s = last && last.status.get(m.id), err = s && !s.ok ? s.err : '';
+        const ia = instById(m.a.inst), ib = instById(m.b.inst);
+        const val = m.type === 'distance' ? ' ' + fmt(m.value) + ' mm' : m.type === 'angle' ? ' ' + fmt(m.value) + '°' : '';
+        const sel = App.sel.some(x => x.kind === 'mate' && x.id === m.id);
+        t.append(node('mate', m.name + val + ' (' + (ia ? label(ia) : '?') + ', ' + (ib ? label(ib) : '?') + ')', {
+          cls: 'tchild tmate' + (sel ? ' sel' : '') + (m.suppressed ? ' sup' : '') + (err ? ' err' : ''), title: err || (m.name + val + ' tra ' + (ia ? label(ia) : '?') + ' e ' + (ib ? label(ib) : '?') + '. Doppio clic per modificare.'),
+          badge: err ? `<span class="badge err" title="${esc(err)}">!</span>` : '',
+          on: () => { App.sel = [{ kind: 'mate', id: m.id, label: m.name }, ...faceItems(m)]; App.recolor(); App.renderTree(); },
+          dbl: () => openMate(m), ctx: e => mateMenu(e, m),
+        }));
+      }
+    }
+    // facce di un accoppiamento nella scena, per evidenziarle
+    function faceItems(m) {
+      const st = App.st, out = [];
+      for (const r of [m.a, m.b]) {
+        if (r.k !== 'face') continue;
+        const tg = st.tags.byName.get(r.inst + '/' + r.name);
+        if (tg) out.push({ kind: 'face', key: st.topo.faceKeys[tg.id], tag: tg, label: tg.name });
+      }
+      return out;
+    }
+    // vertice sotto il puntatore (8 pixel), non nascosto da una faccia
+    function vertexAt(sx, sy) {
+      const r = App.r, st = App.st;
+      if (!st || !r.sharp) return null;
+      if (!verts) {
+        const seen = new Map();
+        for (const e of r.sharp) for (const v of [e.a, e.b]) if (!seen.has(v)) seen.set(v, e);
+        verts = seen;
+      }
+      let best = null, bd = 8;
+      for (const [v, e] of verts) {
+        const q = r.project(st.topo.verts[v]), d = Math.hypot(q[0] - sx, q[1] - sy);
+        if (d < bd) { bd = d; best = { v, e, q }; }
+      }
+      if (!best) return null;
+      const f = r.pickFace(sx, sy);
+      if (f && r.project(f.point)[2] > best.q[2] + 0.01 * (r.radius || 50)) return null;
+      const tg = st.tags.get(st.body[best.e.polys[0]].t);
+      return { kind: 'vertex', vkey: best.v, inst: tg.inst, p: st.topo.verts[best.v], point: st.topo.verts[best.v], label: 'Vertice' };
+    }
+
+    /* ---------- accoppiamento ---------- */
+    function refOf(it, a) {
+      const inst = instOfItem(it); if (!inst) return null;
+      const pose = a.insts.find(i => i.id === inst.id).pose;
+      if (it.kind === 'face') return { inst: inst.id, k: 'face', name: it.tag.src };
+      if (it.kind === 'vertex') return { inst: inst.id, k: 'vertex', p: Assembly.toLocal(pose, it.p) };
+      const st = App.st;
+      return { inst: inst.id, k: 'edge', a: st.tags.byName.get(it.ref.a).src, b: st.tags.byName.get(it.ref.b).src, p: Assembly.toLocal(pose, it.ref.p) };
+    }
+    const ITEM_LABEL = E => E.t === 'plane' ? 'Faccia piana' : E.t === 'point' ? (E.sphere ? 'Sfera' : 'Vertice') : !E.round ? 'Spigolo rettilineo' : E.circle ? 'Spigolo circolare' : 'Faccia cilindrica';
+    function openMate(edit) {
+      const real = asm();
+      if (real.insts.length < 2) { toast('Servono almeno due componenti: premi Inserisci parte.'); return; }
+      if (App.pm) App.closePM(false);
+      const base = () => { const c = JSON.parse(JSON.stringify(real)); if (edit) c.mates = c.mates.filter(m => m.id !== edit.id); return c; };
+      const S = { a: edit ? edit.a : null, b: edit ? edit.b : null, ia: null, ib: null, type: edit ? edit.type : null, s: edit ? edit.s : 1, side: edit ? edit.side : 1, value: edit ? edit.value : 0, tmp: null, ok: false, msg: '', mateId: edit ? edit.id : null };
+      const ent = (r, a) => { const i = a.insts.find(x => x.id === r.inst); return { L: Assembly.entityOf(r, infos.get(i.part)), W: null, i }; };
+      const world = r => { const e = ent(r, real); return Assembly.worldEnt(e.L, e.i.pose); };
+      const setDefaults = () => { const d = Assembly.mateDefaults(S.type, world(S.a), world(S.b)); S.s = d.s; S.side = d.side; S.value = Math.round(d.value * 1e6) / 1e6; };
+      function update(resetDefaults) {
+        S.ok = false; S.msg = ''; S.tmp = null;
+        if (!S.a || !S.b) { show(base()); App.refreshPM(); return; }
+        const A = ent(S.a, real).L, B = ent(S.b, real).L;
+        if (A.err || B.err) { S.msg = A.err || B.err; show(base()); App.refreshPM(); return; }
+        const allowed = Assembly.allowedTypes(A, B);
+        if (!S.type || !allowed.includes(S.type)) { S.type = Assembly.suggest(A, B); resetDefaults = true; }
+        if (resetDefaults) setDefaults();
+        const tmp = base();
+        const m = { id: S.mateId || Assembly.uid(tmp, 'M'), name: edit ? edit.name : '', type: S.type, a: S.a, b: S.b, s: S.s, side: S.side, value: S.value };
+        if (edit && edit.suppressed) m.suppressed = true;
+        if (!m.name) { let k = 1; const names = new Set(tmp.mates.map(x => x.name)); while (names.has(Assembly.MATE_LABEL[S.type] + k)) k++; m.name = Assembly.MATE_LABEL[S.type] + k; }
+        tmp.mates.push(m);
+        S.mateId = m.id;
+        const res = Assembly.solve(tmp, infos), st = res.status.get(m.id);
+        S.tmp = tmp; S.res = res; S.ok = !st || st.ok;
+        S.msg = S.ok ? `Gradi di libertà rimasti: ${res.dof.total}` : st.err;
+        show(tmp);
+        App.refreshPM();
+      }
+      const pm = {
+        title: 'Accoppiamento', icon: 'mate', hint: 'Fai clic su due elementi di due componenti diversi: facce, spigoli o vertici.',
+        filter: ['vertex', 'edge', 'face'],
+        build(b) {
+          const box = el('div', { class: 'selbox active' });
+          if (!S.a && !S.b) box.append(el('span', { class: 'empty' }, 'Nessun elemento: fai clic nella vista'));
+          for (const k of ['a', 'b']) {
+            if (!S[k]) continue;
+            const L = ent(S[k], real).L, i = ent(S[k], real).i;
+            box.append(el('span', { class: 'chip' }, (L.err ? 'Elemento' : ITEM_LABEL(L)) + ' di ' + label(i), el('button', { type: 'button', 'aria-label': 'Togli', onclick: () => { S[k] = null; S['i' + k] = null; update(); App.recolor(); } }, '×')));
+          }
+          b.append(el('div', { class: 'grp' }, el('h3', {}, 'Elementi da accoppiare'), box));
+          const both = S.a && S.b, A = both && ent(S.a, real).L, B = both && ent(S.b, real).L;
+          const allowed = both && !A.err && !B.err ? Assembly.allowedTypes(A, B) : [];
+          const g = el('div', { class: 'grp' }, el('h3', {}, 'Tipo'));
+          const row = el('div', { class: 'btnrow asm-types' });
+          for (const t of Assembly.MATE_TYPES) {
+            const bt = el('button', { class: 'relbtn', type: 'button', 'data-mate': t, 'aria-pressed': String(S.type === t && !!both), onclick: () => { S.type = t; S.name = null; update(true); } }, Assembly.MATE_LABEL[t]);
+            if (!allowed.includes(t)) bt.disabled = true;
+            row.append(bt);
+          }
+          g.append(row);
+          if (both && (S.type === 'distance' || S.type === 'angle')) {
+            const inp = el('input', { type: 'number', id: 'asmValue', min: '0', max: S.type === 'angle' ? '180' : null, step: 'any', value: String(S.value) });
+            inp.addEventListener('change', () => { let v = Math.abs(parseFloat(inp.value)); if (!isFinite(v)) v = 0; if (S.type === 'angle') v = Math.min(180, v); S.value = v; update(); });
+            g.append(el('div', { class: 'row' }, el('label', { for: 'asmValue' }, S.type === 'angle' ? 'Angolo (°)' : 'Distanza (mm)'), inp));
+          }
+          if (both && !A.err && !B.err && S.type) {
+            // un pulsante c'è solo se cambia davvero le equazioni
+            const WA = world(S.a), WB = world(S.b);
+            const rows = o => JSON.stringify(Assembly.mateRows({ type: S.type, value: S.type === 'angle' && S.value === 0 ? 30 : S.value || 1, s: 1, side: 1, ...o }, WA, WB, 1));
+            const btns = el('div', { class: 'btnrow' });
+            if (rows({ s: 1 }) !== rows({ s: -1 })) btns.append(el('button', { class: 'relbtn', type: 'button', id: 'asmFlip', onclick: () => { S.s = -S.s; update(); } }, 'Inverti allineamento'));
+            if (rows({ side: 1 }) !== rows({ side: -1 })) btns.append(el('button', { class: 'relbtn', type: 'button', id: 'asmSide', onclick: () => { S.side = -S.side; update(); } }, 'Inverti lato'));
+            if (S.type === 'angle' && A.t === B.t) btns.append(el('button', { class: 'relbtn', type: 'button', id: 'asmAngleFlip', onclick: () => { S.value = 180 - S.value; update(); } }, 'Inverti angolo'));
+            if (btns.children.length) g.append(btns);
+          }
+          b.append(g);
+          if (S.msg) b.append(el('p', { class: 'note' + (S.ok ? '' : ' asm-err'), id: 'asmMsg' }, S.msg));
+        },
+        pick(it) {
+          if (!it) return;
+          const inst = instOfItem(it); if (!inst) return;
+          const ref = refOf(it, shown || real);
+          const E = Assembly.entityOf(ref, infos.get(inst.part));
+          if (E.err) { toast(E.err); return; }
+          const other = !S.a ? null : S.a.inst === ref.inst ? 'a' : 'b';
+          if (!S.a) { S.a = ref; S.ia = it; }
+          else if (other === 'a') { toast('Scegli un elemento di un altro componente: questo è nello stesso.'); return; }
+          else { S.b = ref; S.ib = it; }
+          update(true);
+          App.recolor();
+        },
+        highlight() { return [S.ia, S.ib, ...(edit ? faceItems({ a: S.a || { k: 'x' }, b: S.b || { k: 'x' } }) : [])].filter(x => x && x.kind !== 'vertex'); },
+        overlay(c) {
+          const dot2 = (p, col) => { if (!p) return; const q = App.r.project(p); c.beginPath(); c.arc(q[0], q[1], 5, 0, Math.PI * 2); c.fillStyle = col; c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke(); };
+          if (App.hover && App.hover.kind === 'vertex') dot2(App.hover.p, '#f39c12');
+          const a = shown || real;
+          for (const r of [S.a, S.b]) if (r && (r.k === 'vertex' || r.k === 'edge')) { const i = a.insts.find(x => x.id === r.inst); if (i) dot2(Assembly.toWorld(i.pose, r.p), '#2e78e0'); }
+        },
+        ok() {
+          if (!S.a || !S.b) { toast('Scegli due elementi, oppure premi la X per uscire.'); return false; }
+          if (!S.ok || !S.tmp) { toast(S.msg || 'Questo accoppiamento non si può aggiungere.'); return false; }
+          const before = snapshot();
+          P().assembly = S.tmp;
+          App.commit(before);
+          regen();
+        },
+        cancel() { show(real); status(); },
+      };
+      App.openPM(pm);
+      if (edit) update(false);
+    }
+
+    /* ---------- spostare i componenti ---------- */
+    function dragStart(x, y, rot, inPM) {
+      const f = App.r.pickFace(x, y);
+      if (!f) return false;
+      const inst = instOfTag(App.st.tags.get(App.st.body[f.poly].t));
+      if (!inst) return false;
+      if (inst.fixed) { if (inPM) toast(label(inst) + ' è fissa: per muoverla usa Libera dal suo menu.'); return false; }
+      D = { inst, x0: x, y0: y, x, y, rot, moved: false, before: snapshot(), local: Assembly.toLocal(inst.pose, f.point), p0: f.point.slice() };
+      return true;
+    }
+    function dragStep() {
+      dragRaf = 0;
+      if (!D) return;
+      const r = App.r, b = r.basis();
+      const res = Assembly.drag(asm(), infos, { inst: D.inst.id, local: D.local, rotate: D.rot, target: add(D.p0, add(mul(b.right, (D.x - D.x0) * r.pxSize()), mul(b.up, -(D.y - D.y0) * r.pxSize()))), dirs: [b.right, b.up] });
+      if (res) show(asm());
+    }
+    function dragMove(x, y) {
+      if (!D) return;
+      if (!D.moved && Math.hypot(x - D.x0, y - D.y0) <= 4) return;
+      D.moved = true; D.x = x; D.y = y;
+      if (!dragRaf) dragRaf = requestAnimationFrame(dragStep);
+    }
+    // restituisce vero se c'è stato uno spostamento
+    function dragEnd() {
+      if (!D) return false;
+      if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; }
+      const moved = D.moved;
+      if (moved) { dragStep(); const before = D.before; D = null; App.commit(before); last = Assembly.solve(asm(), infos, { restarts: 0 }); show(asm()); status(); return true; }
+      D = null;
+      return false;
+    }
+    function openMove() {
+      const a = asm();
+      if (!a.insts.some(i => !i.fixed)) { toast('Nessun componente da spostare: sono tutti fissi.'); return; }
+      if (App.pm) App.closePM(false);
+      let mode = 'move';
+      App.openPM({
+        title: 'Sposta parte', icon: 'movepart', hint: 'Trascina un componente: si muove solo nei gradi di libertà che gli restano.',
+        filter: ['face'],
+        build(b) {
+          const g = el('div', { class: 'grp' }, el('h3', {}, 'Movimento'));
+          const row = el('div', { class: 'btnrow' });
+          row.append(el('button', { class: 'relbtn', type: 'button', id: 'asmMoveT', 'aria-pressed': String(mode === 'move'), onclick: () => { mode = 'move'; App.refreshPM(); } }, 'Sposta'));
+          row.append(el('button', { class: 'relbtn', type: 'button', id: 'asmMoveR', 'aria-pressed': String(mode === 'rot'), onclick: () => { mode = 'rot'; App.refreshPM(); } }, 'Ruota'));
+          g.append(row);
+          g.append(el('p', { class: 'note' }, 'I componenti fissi non si muovono. Quelli legati da accoppiamenti seguono il componente che trascini.'));
+          b.append(g);
+        },
+        pick() {},
+        down(x, y) { return dragStart(x, y, mode === 'rot', true); },
+        move(x, y, e, dragging) { if (dragging) { dragMove(x, y); return true; } return false; },
+        up() { dragEnd(); },
+      });
+    }
+    return { regen, show, refreshPartSel, enter, leave, insertPart, insertDialog, insertFile, copyInst, setFixed, deleteInst, deleteMate, openMate, openMove, click, contextMenu, dblclick, key, renderTree, vertexAt, dragStart, dragMove, dragEnd, instOfItem, get last() { return last; }, get infos() { return infos; } };
+  })();
   App.init = init;
   document.addEventListener('DOMContentLoaded', () => { /* avvio in fondo al file */ });
 })();
@@ -13680,7 +15007,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Funzioni', 'Elimina/Mantieni corpo', ['elimina corpo', 'mantieni corpo', 'corpi scelti'], 'Toglie i corpi scelti, oppure tiene solo quelli. Come ogni funzione si può sopprimere o cancellare: i corpi tornano.'],
     ['Interfaccia', 'Informazioni e licenze', ['informazioni', 'licenze'], 'Progetto › Informazioni e licenze: chi ha scritto il programma, la sua licenza, le parti di altri autori e i marchi citati.'],
     ['Interfaccia', 'GNU GPL 3', ['gpl', 'gpl 3', 'licenza gpl'], 'La licenza del Banco CAD. Permette a chiunque di usare, studiare, modificare e ridistribuire il programma, purché le versioni distribuite restino con la stessa licenza e con i sorgenti disponibili.'],
-    ['Interfaccia', 'CommandManager', ['barra dei comandi'], 'La barra in alto con le schede Funzioni, Schizzo, Valuta e Messa in tavola. Ogni scheda mostra i comandi di quel gruppo, come in SolidWorks.'],
+    ['Interfaccia', 'CommandManager', ['barra dei comandi'], 'La barra in alto con le schede Funzioni, Schizzo, Valuta, Messa in tavola e Assieme. Ogni scheda mostra i comandi di quel gruppo, come in SolidWorks.'],
     ['Interfaccia', 'Albero di progettazione', ['featuremanager', 'albero'], 'L\'elenco a sinistra con i piani, l\'origine e tutte le funzioni nell\'ordine in cui sono state create. Il pezzo si ricostruisce seguendo l\'albero dall\'alto in basso: doppio clic su una funzione per modificarla, clic destro per gli altri comandi.'],
     ['Interfaccia', 'PropertyManager', ['pannello delle proprietà'], 'Il pannello che si apre a sinistra quando crei o modifichi una funzione: contiene i parametri (profondità, raggio, numero di istanze…). ✓ conferma, ✕ annulla.'],
     ['Interfaccia', 'Angolo di conferma', ['conferma'], 'I pulsanti ✓ e ✕ in alto a destra della vista: confermano o annullano la funzione o lo schizzo aperti, come il PropertyManager.'],
@@ -13813,6 +15140,22 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Valuta', 'Materiale', ['densità'], 'Il materiale del pezzo (acciaio, alluminio, ottone, plastiche…). Ne determina la densità e quindi la massa.'],
     ['Valuta', 'Misura', [], 'Misura distanze, diametri e angoli tra facce, spigoli e vertici selezionati.'],
     ['Valuta', 'Vista in sezione', ['sezione'], 'Taglia la vista del modello con un piano per vedere l\'interno (non modifica il pezzo).'],
+    ['Assieme', 'Assieme', ['assembly', 'montaggio'], 'Più parti montate insieme, ognuna al suo posto. Nel Banco CAD l\'assieme e le sue parti stanno tutti nello stesso progetto, quindi in un solo file.'],
+    ['Assieme', 'Componente', ['componenti', 'istanza', 'copia il componente'], 'Una parte messa nell\'assieme, con la sua posizione. La stessa parte può comparire più volte: Vite<1>, Vite<2>. Sono copie della stessa parte: se modifichi la parte, cambiano tutte.'],
+    ['Assieme', 'Inserisci parte', ['inserire una parte'], 'Aggiunge un componente all\'assieme: una parte del progetto, oppure un file STEP, IGES, STL, OBJ o un progetto esportato, che viene copiato nel progetto.'],
+    ['Assieme', 'Nuova parte', ['aggiungi una parte', 'parti'], 'Crea una parte vuota in questo progetto e la apre. L\'elenco accanto al nome, in alto, passa da una parte all\'altra.'],
+    ['Assieme', 'Parte fissa', ['fissa', 'libera', '(f)', 'componente fisso'], 'Un componente che non si muove: gli altri si sistemano rispetto a lui. Nell\'albero ha (f) davanti al nome. La prima parte inserita è fissa; con il tasto destro si sceglie Fissa o Libera.'],
+    ['Assieme', 'Accoppiamento', ['accoppiamenti', 'mate', 'mates'], 'Un legame tra due elementi di due componenti (facce, spigoli o vertici). Ogni accoppiamento toglie gradi di libertà: il risolutore sposta i componenti liberi il meno possibile per rispettarli tutti.'],
+    ['Assieme', 'Tipo di accoppiamento', ['elementi da accoppiare'], 'Il modo in cui si legano i due elementi scelti: coincidente, concentrico, parallelo, perpendicolare, distanza o angolo. Sono attivi solo i tipi possibili con quegli elementi.'],
+    ['Assieme', 'Accoppiamento coincidente', [], 'Due elementi nello stesso posto: due facce sullo stesso piano, un vertice su una faccia, due spigoli sulla stessa retta, due vertici nello stesso punto. Due spigoli circolari: stesso centro e stesso piano.'],
+    ['Assieme', 'Accoppiamento concentrico', [], 'Due elementi rotondi sullo stesso asse: cilindri, coni, spigoli circolari. Tra due sfere: stesso centro. Con un vertice: il vertice sta sull\'asse.'],
+    ['Assieme', 'Accoppiamento parallelo', [], 'Due facce, due spigoli rettilinei o assi, o una faccia e uno spigolo, paralleli tra loro. Non fissa la distanza.'],
+    ['Assieme', 'Accoppiamento perpendicolare', [], 'Due facce o due spigoli a 90°, oppure uno spigolo perpendicolare a una faccia.'],
+    ['Assieme', 'Accoppiamento a distanza', [], 'Due elementi a una distanza data, in millimetri. Due facce restano anche parallele. Per due facce, Inverti lato sceglie da quale parte sta l\'altro elemento.'],
+    ['Assieme', 'Accoppiamento ad angolo', [], 'Due facce o due spigoli a un angolo dato: l\'angolo è misurato tra le normali uscenti delle facce e tra le direzioni degli spigoli. Tra uno spigolo e una faccia, 0° vuol dire spigolo parallelo alla faccia.'],
+    ['Assieme', 'Inverti allineamento', ['allineamento', 'inverti lato', 'inverti angolo'], 'Sceglie tra le due soluzioni dello stesso accoppiamento: due facce di fronte oppure rivolte dalla stessa parte, un perno girato da un verso o dall\'altro.'],
+    ['Assieme', 'Gradi di libertà dell\'assieme', ['sotto definita', '(-)', 'definita'], 'I movimenti che restano a un componente: al massimo 6 (3 spostamenti e 3 rotazioni). Nell\'albero (-) vuol dire che ne ha ancora; senza segno è definito, cioè non si muove più.'],
+    ['Assieme', 'Sposta parte', ['movimento', 'ruota componente', 'sposta componente', 'trascinare'], 'Muove un componente con il mouse o con il dito, solo nei gradi di libertà che gli restano. Con il mouse basta trascinarlo; il comando serve per ruotare e sul tablet.'],
     ['Valuta', 'Autoverifica', ['autotest', 'collaudo'], 'Ricostruisce i pezzi di prova e confronta volume, area, baricentro e ingombro con i valori calcolati a mano. Serve a controllare che il programma calcoli giusto (errore ammesso: 1 %).'],
     ['Valuta', 'Ingombro', ['ingombri'], 'Le dimensioni massime del pezzo lungo X, Y e Z: il parallelepipedo più piccolo che lo contiene.'],
 
@@ -14015,6 +15358,7 @@ const Model = isNode ? require(path.join(dir, 'model.js')) : root.Model;
 const Sketch = isNode ? require(path.join(dir, 'sketch.js')) : root.Sketch;
 const Geom = isNode ? require(path.join(dir, 'geom.js')) : root.Geom;
 const Export = isNode ? require(path.join(dir, 'export.js')) : root.Export;
+const Assembly = isNode ? require(path.join(dir, 'assembly.js')) : root.Assembly;
 const TOL = isNode ? +(process.env.TOL || 0.01) : 0.01;
 const PI = Math.PI;
 
@@ -15204,6 +16548,290 @@ SK.push(['Sfondo DXF nello schizzo: stessa origine e scala; geometria, stato e c
     an.dof === an0.dof && an.status === an0.status ? 1 : 0, b.s.bg === undefined ? 1 : 0, pr.regions.reduce((s, x) => s + x.area, 0), pr.regions.length === pr0.regions.length ? 1 : 0, back.bg.length === 2 * nBg ? 1 : 0] };
 }]);
 
+/* ---------- assiemi: posizioni e gradi di libertà calcolati a mano ---------- */
+const ASM = [];
+const asmSet = docs => { const infos = new Map(); for (const k in docs) infos.set(k, Assembly.partInfo(docs[k])); return infos; };
+const asmFace = (doc, n, w) => ({ k: 'face', name: face(doc, nearW(n, w)).name });
+const asmRev = (doc, i = 0) => { const st = Model.regen(doc); const ids = [...new Set(st.body.map(p => p.t))].filter(t => st.tags.get(t).kind === 'rev'); return { k: 'face', name: st.tags.get(ids[i]).name }; };
+const asmEdge = (doc, p, kind) => ({ k: 'edge', ...edge(doc, p, kind) });
+const asmPose = (p, q) => ({ p, q: q || [1, 0, 0, 0] });
+const rotY = a => Assembly.qexp([0, a, 0]), rotZ = a => Assembly.qexp([0, 0, a]);
+// mate: elementi A (di ia) e B (di ib); verso e lato si danno a mano, altrimenti quelli più vicini alla posizione attuale
+function asmMate(asm, infos, type, ia, ra, ib, rb, extra = {}) {
+  const a = { inst: ia.id, ...ra }, b = { inst: ib.id, ...rb };
+  const EA = Assembly.worldEnt(Assembly.entityOf(a, infos.get(ia.part)), ia.pose), EB = Assembly.worldEnt(Assembly.entityOf(b, infos.get(ib.part)), ib.pose);
+  const m = { id: Assembly.uid(asm, 'M'), type, a, b, ...Assembly.mateDefaults(type, EA, EB), ...extra };
+  asm.mates.push(m);
+  return m;
+}
+// ingombro vero di un componente: dai vertici della scena, non dalle equazioni del risolutore
+function asmBox(asm, infos, inst) {
+  const s = Assembly.scene(asm, infos), b = s.bodies.find(x => x.id === inst.id);
+  const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+  for (const p of b.polys) for (const v of p.v) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], v[k]); mx[k] = Math.max(mx[k], v[k]); }
+  return [...mn, ...mx];
+}
+const asmNormal = (asm, infos, inst, ref) => { const s = Assembly.scene(asm, infos); return s.tags.byName.get(inst.id + '/' + ref.name).n; };
+function plateHole(L, W, H, cx, cy, r) { const d = D0('piastra'); const b = SB(); b.rect(0, 0, L, W); b.circle(cx, cy, r); const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: H }); return d; }
+function pin(r, h) { const d = D0('perno'); const b = SB(); b.circle(0, 0, r); const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: h }); return d; }
+const eqs = (got, exp, tol = 1e-6) => ({ got, exp, tol });
+// due blocchi 80×50×10: A fermo, B libero in (200, 50, 30): x 200..280, y 50..60, z -20..30
+function twoBlocks(pose) {
+  const docs = { a: box(), b: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: pose || asmPose([200, 50, 30]) });
+  return { docs, infos, asm, A, B };
+}
+const UP = [0, 1, 0], DN = [0, -1, 0], XM = [-1, 0, 0], ZP = [0, 0, 1];
+ASM.push(['Coincidente faccia-faccia: B si appoggia su A e si muove solo in Y (y 10..20, x e z invariati); 3 gradi di libertà', () => {
+  const t = twoBlocks(); asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0));
+  const r = Assembly.solve(t.asm, t.infos);
+  return eqs([...asmBox(t.asm, t.infos, t.B), r.dof.total, r.dof.byInst.get(t.B.id), r.ok ? 1 : 0], [200, 10, -20, 280, 20, 30, 3, 3, 1]);
+}]);
+ASM.push(['Tre facce coincidenti in fila: 3 → 1 → 0 gradi di libertà (la seconda toglie uno spostamento e la rotazione); B esattamente sopra A (x 0..80, y 10..20, z -50..0)', () => {
+  const t = twoBlocks(), out = [];
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0)); out.push(Assembly.solve(t.asm, t.infos).dof.total);
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, XM, 0), t.B, asmFace(t.docs.b, XM, 0), { s: 1 }); out.push(Assembly.solve(t.asm, t.infos).dof.total);
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, ZP, 0), t.B, asmFace(t.docs.b, ZP, 0), { s: 1 }); out.push(Assembly.solve(t.asm, t.infos).dof.total);
+  return eqs([...out, ...asmBox(t.asm, t.infos, t.B)], [3, 1, 0, 0, 10, -50, 80, 20, 0]);
+}]);
+ASM.push(['Coincidente con il verso invertito: partendo dal punto morto B si capovolge (normale +Y, y 0..10)', () => {
+  const t = twoBlocks(); const fb = asmFace(t.docs.b, DN, 0);
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, fb, { s: 1 });
+  const r = Assembly.solve(t.asm, t.infos), b = asmBox(t.asm, t.infos, t.B);
+  return eqs([...asmNormal(t.asm, t.infos, t.B, fb), b[1], b[4], r.dof.total, r.ok ? 1 : 0], [0, 1, 0, 0, 10, 3, 1]);
+}]);
+ASM.push(['Concentrico: perno Ø20 nel foro Ø20 in (40, -25): 2 gradi di libertà; con la base su A 1 solo; y 10..40', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 0, 60]) });
+  asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b));
+  const d1 = Assembly.solve(asm, infos).dof.total, b1 = asmBox(asm, infos, B);
+  asmMate(asm, infos, 'coincident', A, asmFace(docs.a, UP, 10), B, asmFace(docs.b, DN, 0));
+  const d2 = Assembly.solve(asm, infos).dof.total, b2 = asmBox(asm, infos, B);
+  return eqs([d1, (b1[0] + b1[3]) / 2, (b1[2] + b1[5]) / 2, b1[1], b1[4], d2, b2[1], b2[4], (b2[0] + b2[3]) / 2, (b2[2] + b2[5]) / 2], [2, 40, -25, 0, 30, 1, 10, 40, 40, -25]);
+}]);
+ASM.push(['Concentrico con il verso invertito: il perno si gira (normale della base +Y) e resta sull\'asse', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([40, 0, -25]) }); const fb = asmFace(docs.b, DN, 0);
+  const m = asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b));
+  m.s = -m.s;
+  const r = Assembly.solve(asm, infos), bx = asmBox(asm, infos, B);
+  return eqs([...asmNormal(asm, infos, B, fb), (bx[0] + bx[3]) / 2, (bx[2] + bx[5]) / 2, r.dof.total], [0, 1, 0, 40, -25, 2]);
+}]);
+ASM.push(['Coincidente spigolo circolare-spigolo circolare: stesso centro e stesso piano (perno sul foro), 1 grado di libertà', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 7, 60]) });
+  asmMate(asm, infos, 'coincident', A, asmEdge(docs.a, [50, 10, -25], 'circle'), B, asmEdge(docs.b, [10, 0, 0], 'circle'));
+  const r = Assembly.solve(asm, infos), b = asmBox(asm, infos, B);
+  return eqs([(b[0] + b[3]) / 2, (b[2] + b[5]) / 2, b[1], b[4], r.dof.total], [40, -25, 10, 40, 1]);
+}]);
+ASM.push(['Spigolo tra un cono e un piano (smusso): il centro viene dai punti del bordo, sull\'asse del perno', () => {
+  const dp = pin(10, 30); feat(dp, { type: 'chamfer', d: 2, edges: [edge(dp, [10, 30, 0], 'circle')] });
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: dp }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 0, 60]) });
+  // lo spigolo tra il cono e la faccia in cima: edgeGeometry non lo conosce, quindi qui si cerca nei gruppi
+  const st0 = Model.regen(dp), g0 = [...Model.edgeGroups(st0, st0.topo).values()].find(g => g.segs.every(e => Math.abs(st0.topo.verts[e.a][1] - 30) < 1e-9 && Math.abs(Math.hypot(st0.topo.verts[e.a][0], st0.topo.verts[e.a][2]) - 8) < 1e-9));
+  const ed = { k: 'edge', a: st0.tags.get(g0.t1).name, b: st0.tags.get(g0.t2).name, p: [8, 30, 0] };
+  const E = Assembly.entityOf({ inst: B.id, ...ed }, infos.get('b'));
+  asmMate(asm, infos, 'coincident', A, asmEdge(docs.a, [50, 10, -25], 'circle'), B, ed);
+  const r = Assembly.solve(asm, infos), b = asmBox(asm, infos, B);
+  return eqs([E.R, E.o[0], E.o[1], E.o[2], (b[0] + b[3]) / 2, (b[2] + b[5]) / 2, b[1], r.ok ? 1 : 0], [8, 0, 30, 0, 40, -25, -20, 1]);
+}]);
+ASM.push(['Concentrico tra due sfere R10: centri uguali, 3 gradi di libertà', () => {
+  const sph = () => revDoc(b => { const c = b.pt(0, 0), a = b.pt(0, -10), e = b.pt(0, 10); b.arc(c, a, e); b.line(e, a); });
+  const docs = { a: sph(), b: sph() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([50, 20, -30]) });
+  const m = asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b));
+  const E = Assembly.entityOf(m.a, infos.get('a')), r = Assembly.solve(asm, infos), b = asmBox(asm, infos, B), a = asmBox(asm, infos, A);
+  return eqs([E.sphere ? 1 : 0, E.R, r.dof.total, (b[0] + b[3]) / 2 - (a[0] + a[3]) / 2, (b[1] + b[4]) / 2 - (a[1] + a[4]) / 2, (b[2] + b[5]) / 2 - (a[2] + a[5]) / 2], [1, 10, 3, 0, 0, 0], 1e-3);
+}]);
+ASM.push(['Parallelo: B ruotato di 30° attorno a Z torna con la faccia superiore +Y, senza spostare il centro; 4 gradi di libertà', () => {
+  const t = twoBlocks(asmPose([200, 50, 30], rotZ(PI / 6))); const fb = asmFace(t.docs.b, UP, 10);
+  const c0 = Assembly.toWorld(t.B.pose, t.infos.get('b').c);
+  asmMate(t.asm, t.infos, 'parallel', t.A, asmFace(t.docs.a, UP, 10), t.B, fb);
+  const r = Assembly.solve(t.asm, t.infos), c1 = Assembly.toWorld(t.B.pose, t.infos.get('b').c);
+  return eqs([...asmNormal(t.asm, t.infos, t.B, fb), ...c1, r.dof.total], [0, 1, 0, ...c0, 4]);
+}]);
+ASM.push(['Perpendicolare: da 30° a 90° (rotazione minima attorno a Z, normale −X), centro fermo; 5 gradi di libertà', () => {
+  const t = twoBlocks(asmPose([200, 50, 30], rotZ(PI / 6))); const fb = asmFace(t.docs.b, UP, 10);
+  const c0 = Assembly.toWorld(t.B.pose, t.infos.get('b').c);
+  asmMate(t.asm, t.infos, 'perpendicular', t.A, asmFace(t.docs.a, UP, 10), t.B, fb);
+  const r = Assembly.solve(t.asm, t.infos), c1 = Assembly.toWorld(t.B.pose, t.infos.get('b').c);
+  return eqs([...asmNormal(t.asm, t.infos, t.B, fb), ...c1, r.dof.total], [-1, 0, 0, ...c0, 5]);
+}]);
+ASM.push(['Distanza 25 tra due facce: y 35..45; con il lato invertito -15..-5; 3 gradi di libertà', () => {
+  const t = twoBlocks(), m = asmMate(t.asm, t.infos, 'distance', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0), { value: 25 });
+  const r1 = Assembly.solve(t.asm, t.infos), b1 = asmBox(t.asm, t.infos, t.B);
+  m.side = -m.side;
+  Assembly.solve(t.asm, t.infos); const b2 = asmBox(t.asm, t.infos, t.B);
+  return eqs([b1[1], b1[4], b2[1], b2[4], r1.dof.total], [35, 45, -15, -5, 3]);
+}]);
+ASM.push(['Distanza 25 tra due vertici e 60 tra due assi: misure rilette dalla scena', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const v0 = { k: 'vertex', p: [80, 10, 0] }, v1 = { k: 'vertex', p: [0, 0, 0] };
+  asmMate(t.asm, t.infos, 'distance', t.A, v0, t.B, v1, { value: 25 });
+  const r = Assembly.solve(t.asm, t.infos);
+  const d = Math.hypot(...[0, 1, 2].map(k => Assembly.toWorld(t.B.pose, v1.p)[k] - v0.p[k]));
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 0, 60]) });
+  asmMate(asm, infos, 'distance', A, asmRev(docs.a), B, asmRev(docs.b), { value: 60 });
+  const r2 = Assembly.solve(asm, infos), bb = asmBox(asm, infos, B);
+  const da = Math.hypot((bb[0] + bb[3]) / 2 - 40, (bb[2] + bb[5]) / 2 + 25);
+  return eqs([d, r.dof.total, da, r2.dof.total], [25, 5, 60, 3]);
+}]);
+ASM.push(['Cerniera: concentrico, facce a contatto e angolo 30°: estremo del braccio calcolato a mano; 0 gradi di libertà', () => {
+  const docs = { a: plateHole(120, 20, 10, 10, 10, 5), b: plateHole(120, 20, 10, 10, 10, 5) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a');
+  // posizione di partenza: 10° attorno a Y, attorno al centro del foro
+  const q = rotY(10 * PI / 180), h = [10, 0, -10], rh = Assembly.qrot(q, h);
+  const B = Assembly.addInst(asm, 'b', { pose: asmPose([h[0] - rh[0], 40 - rh[1], h[2] - rh[2]], q) });
+  asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b), { s: 1 });
+  asmMate(asm, infos, 'coincident', A, asmFace(docs.a, UP, 10), B, asmFace(docs.b, DN, 0), { s: -1 });
+  const d1 = Assembly.solve(asm, infos).dof.total;
+  asmMate(asm, infos, 'angle', A, asmFace(docs.a, ZP, 0), B, asmFace(docs.b, ZP, 0), { value: 30 });
+  const r = Assembly.solve(asm, infos);
+  // vertice (120, 10, 0): rispetto al foro (110, 10, 10); rotazione +30° attorno a Y: x' = x cos + z sin, z' = -x sin + z cos
+  const c = Math.cos(PI / 6), s = Math.sin(PI / 6), tip = Assembly.toWorld(B.pose, [120, 10, 0]);
+  return eqs([d1, r.dof.total, ...tip], [1, 0, 10 + 110 * c + 10 * s, 20, -10 - 110 * s + 10 * c]);
+}]);
+ASM.push(['Gradi di libertà di ogni coppia di elementi (tabella scritta a mano)', () => {
+  const v0 = { k: 'vertex', p: [80, 10, 0] }, v1 = { k: 'vertex', p: [0, 0, 0] };
+  const got = [], exp = [];
+  const row = (type, ra, rb, n, extra) => { const t = twoBlocks(asmPose([200, 50, 30], Assembly.qnorm(Assembly.qmul(rotY(0.2), rotZ(0.3))))); const fa = typeof ra === 'function' ? ra(t.docs.a) : ra, fb = typeof rb === 'function' ? rb(t.docs.b) : rb; asmMate(t.asm, t.infos, type, t.A, fa, t.B, fb, extra); const r = Assembly.solve(t.asm, t.infos); got.push(r.dof.total, r.ok ? 1 : 0); exp.push(n, 1); };
+  const fT = d => asmFace(d, UP, 10), fB = d => asmFace(d, DN, 0), eL = d => asmEdge(d, [40, 10, 0], 'line');
+  row('coincident', v0, v1, 3); row('coincident', fT, v1, 5); row('coincident', eL, eL, 2); row('coincident', fT, eL, 4); row('coincident', eL, v1, 4);
+  row('parallel', eL, eL, 4); row('perpendicular', eL, eL, 5); row('parallel', fT, eL, 5); row('perpendicular', fT, eL, 4);
+  row('distance', v0, v1, 5, { value: 25 }); row('distance', fT, v1, 5, { value: 25 }); row('distance', fT, eL, 4, { value: 25 }); row('distance', eL, eL, 3, { value: 25 }); row('distance', eL, v1, 5, { value: 25 });
+  row('angle', fT, fB, 5, { value: 40 }); row('angle', eL, eL, 5, { value: 40 }); row('angle', fT, eL, 5, { value: 40 });
+  // 0° e 180° tolgono 2 gradi come il parallelo
+  row('angle', fT, fB, 4, { value: 0 }); row('angle', fT, fB, 4, { value: 180 });
+  return eqs(got, exp);
+}]);
+ASM.push(['Accoppiamenti che si contraddicono: il secondo è segnato, il primo resta (y 10..20); parti ferme tutte e due: segnato', () => {
+  const t = twoBlocks();
+  const m1 = asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0));
+  const m2 = asmMate(t.asm, t.infos, 'distance', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0), { value: 5, side: 1 });
+  const r = Assembly.solve(t.asm, t.infos), b = asmBox(t.asm, t.infos, t.B);
+  const u = twoBlocks(); u.B.fixed = true;
+  asmMate(u.asm, u.infos, 'coincident', u.A, asmFace(u.docs.a, UP, 10), u.B, asmFace(u.docs.b, DN, 0));
+  const r2 = Assembly.solve(u.asm, u.infos);
+  return eqs([r.ok ? 1 : 0, r.status.get(m1.id).ok ? 1 : 0, r.status.get(m2.id).ok ? 1 : 0, b[1], b[4], r2.ok ? 1 : 0, r2.dof.total], [0, 1, 0, 10, 20, 0, 0]);
+}]);
+ASM.push(['Catena: A fermo, B su A, C su B: 6 gradi in tutto, 3 per B e 3 per C; senza accoppiamenti 6 e parte fissa 0', () => {
+  const docs = { a: box(), b: box(), c: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) }), C = Assembly.addInst(asm, 'c', { pose: asmPose([-100, 90, 10]) });
+  const r0 = Assembly.solve(asm, infos);
+  asmMate(asm, infos, 'coincident', A, asmFace(docs.a, UP, 10), B, asmFace(docs.b, DN, 0));
+  asmMate(asm, infos, 'coincident', B, asmFace(docs.b, UP, 10), C, asmFace(docs.c, DN, 0));
+  const r = Assembly.solve(asm, infos), cb = asmBox(asm, infos, C);
+  return eqs([r0.dof.byInst.get(A.id), r0.dof.byInst.get(B.id), r0.dof.total, r.dof.total, r.dof.byInst.get(A.id), r.dof.byInst.get(B.id), r.dof.byInst.get(C.id), cb[1], cb[4]], [0, 6, 12, 6, 0, 3, 3, 20, 30]);
+}]);
+ASM.push(['Copie: stessa parte due volte: volume 2·40000, spigoli doppi; una parte rimane ferma dove la si mette', () => {
+  const docs = { a: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'a', { pose: asmPose([100, 0, 0], rotZ(0.4)) });
+  const s = Assembly.scene(asm, infos), st = infos.get('a').st;
+  const p0 = JSON.stringify(B.pose); Assembly.solve(asm, infos);
+  return eqs([Geom.massProps(s.body, s.tags).volume, s.body.length, s.topo.edges.filter(e => e.sharp).length, A.n, B.n, p0 === JSON.stringify(B.pose) ? 1 : 0], [80000, 2 * st.body.length, 2 * st.topo.edges.filter(e => e.sharp).length, 1, 2, 1]);
+}]);
+ASM.push(['Parte modificata: A da 10 a 25 mm di altezza, B si riporta sulla faccia nuova (y 25..35)', () => {
+  const t = twoBlocks(); asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0));
+  Assembly.solve(t.asm, t.infos);
+  t.docs.a.features.find(f => f.type === 'extrude').depth = 25;
+  const infos = asmSet(t.docs); const r = Assembly.solve(t.asm, infos), b = asmBox(t.asm, infos, t.B);
+  return eqs([b[1], b[4], r.ok ? 1 : 0], [25, 35, 1]);
+}]);
+ASM.push(['Elemento perso: se il foro sparisce dalla parte, l\'accoppiamento è segnato e il programma non si ferma', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos0 = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 0, 60]) });
+  const m = asmMate(asm, infos0, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b));
+  Assembly.solve(asm, infos0);
+  const sk = docs.a.features[0].sk; sk.ents = sk.ents.filter(e => e.t !== 'ci');
+  const r = Assembly.solve(asm, asmSet(docs));
+  return eqs([r.ok ? 1 : 0, r.status.get(m.id).ok ? 1 : 0, /non esiste più/.test(r.status.get(m.id).err) ? 1 : 0, r.dof.total], [0, 0, 1, 6]);
+}]);
+ASM.push(['Trascinamento: sul piano si sposta senza girare (+30, +10), y resta 10; il blocco libero si sposta e basta', () => {
+  const t = twoBlocks(); asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0));
+  Assembly.solve(t.asm, t.infos);
+  const P = [40, 5, -25], w = Assembly.toWorld(t.B.pose, P);
+  const ok = Assembly.drag(t.asm, t.infos, { inst: t.B.id, local: P, target: [w[0] + 30, w[1] + 99, w[2] + 10], dirs: [[1, 0, 0], [0, 0, 1]] });
+  const b = asmBox(t.asm, t.infos, t.B);
+  const u = twoBlocks(); const P2 = [40, 5, -25], w2 = Assembly.toWorld(u.B.pose, P2);
+  Assembly.drag(u.asm, u.infos, { inst: u.B.id, local: P2, target: [w2[0] + 7, w2[1] - 3, w2[2]], dirs: [[1, 0, 0], [0, 1, 0]] });
+  return eqs([ok ? 1 : 0, b[0], b[1], b[2], b[3], b[4], b[5], ...t.B.pose.q, ...u.B.pose.p, ...u.B.pose.q], [1, 230, 10, -10, 310, 20, 40, 1, 0, 0, 0, 207, 47, 30, 1, 0, 0, 0]);
+}]);
+ASM.push(['Trascinamento di una cerniera: l\'estremo arriva a +20° lungo il cerchio, il foro resta fermo; un perno scorre lungo l\'asse', () => {
+  const docs = { a: plateHole(120, 20, 10, 10, 10, 5), b: plateHole(120, 20, 10, 10, 10, 5), c: pin(5, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([0, 10, 0]) });
+  asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b), { s: 1 });
+  asmMate(asm, infos, 'coincident', A, asmFace(docs.a, UP, 10), B, asmFace(docs.b, DN, 0), { s: -1 });
+  Assembly.solve(asm, infos);
+  const P = [120, 10, 0], c = Math.cos(PI / 9), s = Math.sin(PI / 9), target = [10 + 110 * c + 10 * s, 20, -10 - 110 * s + 10 * c];
+  for (let i = 0; i < 2; i++) Assembly.drag(asm, infos, { inst: B.id, local: P, target, dirs: [[1, 0, 0], [0, 0, 1]] });
+  const tip = Assembly.toWorld(B.pose, P), hole = Assembly.toWorld(B.pose, [10, 0, -10]);
+  const asm2 = Assembly.newAssembly(), A2 = Assembly.addInst(asm2, 'a'), C2 = Assembly.addInst(asm2, 'c', { pose: asmPose([10, 0, -10]) });
+  asmMate(asm2, infos, 'concentric', A2, asmRev(docs.a), C2, asmRev(docs.c), { s: 1 });
+  Assembly.solve(asm2, infos);
+  const Q = [0, 15, 0], wq = Assembly.toWorld(C2.pose, Q);
+  Assembly.drag(asm2, infos, { inst: C2.id, local: Q, target: [wq[0] + 3, wq[1] + 12, wq[2]], dirs: [[1, 0, 0], [0, 1, 0]] });
+  const cb = asmBox(asm2, infos, C2);
+  return eqs([...tip, ...hole, (cb[0] + cb[3]) / 2, cb[1], cb[4], (cb[2] + cb[5]) / 2], [...target, 10, 10, -10, 10, 12, 42, -10]);
+}]);
+ASM.push(['Ruota: il punto preso a 30 mm dal centro gira di 25° e il centro non si sposta; una parte fissa non si trascina', () => {
+  const t = twoBlocks(), c0 = Assembly.toWorld(t.B.pose, t.infos.get('b').c), a = 25 * PI / 180;
+  const P = [t.infos.get('b').c[0] + 30, t.infos.get('b').c[1], t.infos.get('b').c[2]];
+  // rotazione attorno a Y: (30, 0, 0) → (30 cos, 0, -30 sin)
+  const ok = Assembly.drag(t.asm, t.infos, { inst: t.B.id, local: P, rotate: true, target: [c0[0] + 30 * Math.cos(a), c0[1], c0[2] - 30 * Math.sin(a)], dirs: [[1, 0, 0], [0, 0, 1]] });
+  const c1 = Assembly.toWorld(t.B.pose, t.infos.get('b').c), n = Assembly.dirWorld(t.B.pose, [1, 0, 0]);
+  const res = Assembly.drag(t.asm, t.infos, { inst: t.A.id, local: [0, 0, 0], target: [5, 5, 5], dirs: [[1, 0, 0]] });
+  return eqs([ok ? 1 : 0, ...c1, ...n, res ? 1 : 0], [1, ...c0, Math.cos(a), 0, -Math.sin(a), 0]);
+}]);
+ASM.push(['Ruota su una cerniera lontana dal centro: gira attorno al foro, non al centro del pezzo (estremo a +20° calcolato a mano)', () => {
+  const docs = { a: plateHole(120, 20, 10, 10, 10, 5), b: plateHole(120, 20, 10, 10, 10, 5) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([0, 10, 0]) });
+  asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmRev(docs.b), { s: 1 });
+  asmMate(asm, infos, 'coincident', A, asmFace(docs.a, UP, 10), B, asmFace(docs.b, DN, 0), { s: -1 });
+  Assembly.solve(asm, infos);
+  const P = [120, 10, 0], c = Math.cos(PI / 9), s = Math.sin(PI / 9), target = [10 + 110 * c + 10 * s, 20, -10 - 110 * s + 10 * c];
+  for (let i = 0; i < 4; i++) Assembly.drag(asm, infos, { inst: B.id, local: P, rotate: true, target, dirs: [[1, 0, 0], [0, 0, 1]] });
+  return eqs([...Assembly.toWorld(B.pose, P), ...Assembly.toWorld(B.pose, [10, 0, -10])], [...target, 10, 10, -10]);
+}]);
+ASM.push(['Scena: facce, assi e vertici di un componente ruotato coincidono; salvando e rileggendo l\'assieme non si muove nulla', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  Assembly.addInst(asm, 'a'); const B = Assembly.addInst(asm, 'a', { pose: asmPose([11, 22, 33], Assembly.qnorm([0.8, 0.2, -0.3, 0.5])) });
+  const s = Assembly.scene(asm, infos);
+  let plane = 0, rev = 0;
+  for (const p of s.body) { const tg = s.tags.get(p.t); for (const v of p.v) { plane = Math.max(plane, Math.abs(p.p.n[0] * v[0] + p.p.n[1] * v[1] + p.p.n[2] * v[2] - p.p.w)); if (tg.kind === 'plane' && !tg.mesh) plane = Math.max(plane, Math.abs(tg.n[0] * v[0] + tg.n[1] * v[1] + tg.n[2] * v[2] - tg.w)); if (tg.kind === 'rev') { const r = [v[0] - tg.o[0], v[1] - tg.o[1], v[2] - tg.o[2]], t = r[0] * tg.d[0] + r[1] * tg.d[1] + r[2] * tg.d[2]; rev = Math.max(rev, Math.abs(Math.hypot(r[0] - t * tg.d[0], r[1] - t * tg.d[1], r[2] - t * tg.d[2]) - 10)); } } }
+  const copy = JSON.parse(JSON.stringify(asm)), before = JSON.stringify(copy.insts); Assembly.solve(copy, infos);
+  return eqs([plane, rev, before === JSON.stringify(copy.insts) ? 1 : 0, copy.insts[1].pose.p[0], B.pose.p[0]], [0, 0, 1, 11, 11], 1e-9);
+}]);
+ASM.push(['Valori di partenza: B sotto A: lato e distanza sono quelli attuali (lato -1, 40 mm) e B non si muove; angolo attuale 30°', () => {
+  const t = twoBlocks(asmPose([200, -30, 30]));
+  const m = asmMate(t.asm, t.infos, 'distance', t.A, asmFace(t.docs.a, UP, 10), t.B, asmFace(t.docs.b, DN, 0), { s: -1 });
+  const p0 = t.B.pose.p.slice(); Assembly.solve(t.asm, t.infos);
+  const u = twoBlocks(asmPose([200, 50, 30], rotZ(PI / 6)));
+  const a = asmMate(u.asm, u.infos, 'angle', u.A, asmFace(u.docs.a, UP, 10), u.B, asmFace(u.docs.b, UP, 10));
+  return eqs([m.side, m.value, ...t.B.pose.p, a.value], [-1, 40, ...p0, 30]);
+}]);
+ASM.push(['Faccia sparita: la cima del blocco è tolta tutta da un taglio: il nome c\'è ancora, ma l\'accoppiamento è segnato', () => {
+  const docs = { a: box(), b: box() }, infos0 = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  const top = asmFace(docs.a, UP, 10);
+  const m = asmMate(asm, infos0, 'coincident', A, top, B, asmFace(docs.b, DN, 0));
+  Assembly.solve(asm, infos0);
+  // taglio di tutta la pianta, profondo 2 mm dall'alto: rimane y 0..8
+  const b = SB(); b.rect(-5, -5, 85, 55);
+  const sk = feat(docs.a, { type: 'sketch', plane: { kind: 'face', ...face(docs.a, nearW(UP, 10)) }, sk: b.s });
+  feat(docs.a, { type: 'cut', sketch: sk, end: 'blind', depth: 2 });
+  const infos = asmSet(docs), inf = infos.get('a');
+  const r = Assembly.solve(asm, infos);
+  return eqs([Geom.massProps(inf.st.body, inf.st.tags).volume, inf.st.tags.byName.has(top.name) ? 1 : 0, r.status.get(m.id).ok ? 1 : 0, /non esiste più/.test(r.status.get(m.id).err || '') ? 1 : 0], [32000, 1, 0, 1], 1e-3);
+}]);
+ASM.push(['Accoppiamenti possibili: Concentrico solo tra elementi tondi; Angolo e Parallelo non tra vertici', () => {
+  const T = (a, b) => Assembly.allowedTypes(a, b);
+  const P = { t: 'plane' }, R = { t: 'axis', round: true }, Lx = { t: 'axis', round: false }, V = { t: 'point' }, S = { t: 'point', sphere: true };
+  const has = (l, t) => l.includes(t) ? 1 : 0;
+  return eqs([has(T(P, P), 'concentric'), has(T(R, R), 'concentric'), has(T(R, Lx), 'concentric'), has(T(R, V), 'concentric'), has(T(S, S), 'concentric'), has(T(V, V), 'concentric'), has(T(V, V), 'angle'), has(T(V, V), 'parallel'), has(T(P, V), 'perpendicular'), has(T(P, P), 'distance'), has(T(V, R), 'distance'), Assembly.suggest(R, R) === 'concentric' ? 1 : 0, Assembly.suggest(P, P) === 'coincident' ? 1 : 0], [0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1]);
+}]);
+
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
   const rows = [];
@@ -15236,6 +16864,17 @@ function run(tol = TOL) {
     catch (e) { ok = false; msg.push('ERRORE ' + e.message); }
     rows.push({ name: 'Schizzo · ' + name, ok, errs, msg });
   }
+  // assiemi: numeri esatti (scarto assoluto, in mm), non la tolleranza dell'1 %
+  for (const [name, fn] of ASM) {
+    let ok = true; const msg = [], errs = {};
+    try {
+      const r = fn(); let worst = 0;
+      r.exp.forEach((e, i) => { const q = Math.abs(r.got[i] - e); if (!(q <= r.tol)) { ok = false; msg.push('valore ' + i + ': ' + r.got[i] + ', atteso ' + e); } worst = Math.max(worst, q); });
+      if (r.got.length !== r.exp.length) { ok = false; msg.push('numero di valori diverso'); }
+      errs.S = worst;
+    } catch (e) { ok = false; msg.push('ERRORE ' + e.message); }
+    rows.push({ name: 'Assieme · ' + name, ok, errs, msg });
+  }
   return rows;
 }
 if (isNode) {
@@ -15246,7 +16885,7 @@ if (isNode) {
   console.log(`\n${rows.length - fail}/${rows.length} superati (tolleranza ${(TOL * 100).toFixed(1)}%)`);
   if (process.env.JSON) require('fs').writeFileSync(process.env.JSON, JSON.stringify(rows, null, 1));
   process.exit(fail ? 1 : 0);
-} else root.SelfTest = { run, count: () => CASES.length + SK.length };
+} else root.SelfTest = { run, count: () => CASES.length + SK.length + ASM.length };
 })(this);
 
 
@@ -15313,7 +16952,7 @@ if (isNode) {
       'Il lavoro si **salva da solo** in questo browser a ogni modifica (anche se chiudi la pagina).',
       'Per spostarlo: **Progetto › Esporta il progetto** e salva il file (o copia il testo).',
       'Su un altro computer: **Progetto › Importa un progetto** e scegli il file (o incolla il testo).',
-      '**Progetto › Nuova parte** svuota il banco: esporta prima se vuoi tenere la parte attuale.',
+      '**Progetto › Nuovo progetto** svuota il banco: esporta prima se vuoi tenere il lavoro fatto.',
       '**Progetto › Esporta STEP** salva il pezzo per aprirlo in un altro CAD (SolidWorks, Inventor, Fusion, FreeCAD…).',
       '**Progetto › Esporta STL** crea il file per la stampa 3D.',
       '**Progetto › Salva PDF** crea un PDF di quello che stai guardando: la tavola, lo schizzo aperto o la vista 3D.',
@@ -15729,6 +17368,34 @@ if (isNode) {
     cmd: { tab: 'evaluate', id: 'section' },
     steps: ['Premi **Vista in sezione** (anche dalla barretta della vista).', 'In basso scegli il piano e sposta il cursore per muovere il taglio; «Inverti» cambia la parte tolta.', '«Chiudi» toglie la sezione.'],
     terms: ['Vista in sezione'],
+  });
+  add('Assieme', 'assieme', 'Creare un assieme e inserire le parti', {
+    why: 'Montare più parti insieme, ognuna al suo posto. Tutto resta in un solo progetto, cioè in un solo file.',
+    cmd: { tab: 'assembly', id: 'insertPart' },
+    steps: ['Apri la scheda **Assieme**.', 'Premi **Inserisci parte** e scegli una parte del progetto, oppure un file (STEP, IGES, STL, OBJ o un progetto esportato). Il file viene copiato nel progetto.', 'La prima parte inserita è [[Parte fissa|fissa]]: nell\'albero ha (f) davanti al nome. Le altre sono libere e hanno (-) finché restano loro [[Gradi di libertà dell\'assieme|gradi di libertà]].', 'Per mettere un\'altra copia della stessa parte, inseriscila di nuovo oppure usa **Copia il componente** dal menu del tasto destro.'],
+    tips: ['Un file STEP con più corpi diventa una parte per ogni corpo, nelle posizioni del file.', 'Fissa o Libera un componente con il tasto destro. Se trascini un componente fisso, gira solo la vista.', 'Le copie sono la stessa parte: se modifichi la parte, cambiano tutte insieme.'],
+    terms: ['Assieme', 'Componente', 'Inserisci parte', 'Parte fissa'],
+  });
+  add('Assieme', 'parti', 'Più parti nello stesso progetto', {
+    why: 'Disegnare i pezzi di un assieme senza uscire dal progetto, e modificarli quando serve.',
+    cmd: { tab: 'assembly', id: 'addPart' },
+    steps: ['Premi **Nuova parte** nella scheda Assieme, oppure **Progetto › Aggiungi una parte**. La parte nuova si apre vuota: disegnala come al solito.', 'Per passare da una parte all\'altra usa l\'elenco accanto al nome, in alto.', 'Nell\'assieme, un doppio clic su un componente apre la sua parte. Quando torni nella scheda **Assieme**, i componenti si aggiornano e gli accoppiamenti si ricalcolano.'],
+    tips: ['Annulla lavora separatamente per ogni parte e per l\'assieme.', '**Progetto › Elimina questa parte** toglie anche i suoi componenti e non si può annullare.', '**Progetto › Nuovo progetto** ricomincia da zero: esporta prima se ti serve il lavoro fatto.', '**Progetto › Esporta il progetto** salva in un solo file tutte le parti e l\'assieme.'],
+    terms: ['Assieme', 'Nuova parte'],
+  });
+  add('Assieme', 'accoppiamenti', 'Accoppiare due componenti', {
+    why: 'Dire come stanno tra loro due componenti: per esempio un perno nel foro con la testa appoggiata alla piastra.',
+    cmd: { tab: 'assembly', id: 'mate' },
+    steps: ['Premi **Accoppiamento**.', 'Fai clic su due elementi di due componenti diversi: facce, spigoli o vertici. Il componente libero si sposta subito.', 'Controlla il [[Tipo di accoppiamento|tipo]]: [[Accoppiamento coincidente|Coincidente]], [[Accoppiamento concentrico|Concentrico]], [[Accoppiamento parallelo|Parallelo]], [[Accoppiamento perpendicolare|Perpendicolare]], [[Accoppiamento a distanza|Distanza]] o [[Accoppiamento ad angolo|Angolo]]. Sono attivi solo quelli possibili con gli elementi scelti.', 'Se il pezzo è girato dalla parte sbagliata premi **Inverti allineamento** (o **Inverti lato**, **Inverti angolo**).', 'Conferma con ✓. L\'accoppiamento compare nell\'albero: con il doppio clic lo modifichi, con il tasto destro lo sopprimi o lo elimini.'],
+    tips: ['Coincidente tra due spigoli circolari mette a contatto i due cerchi, con lo stesso centro: comodo per una vite in un foro.', 'Se due accoppiamenti si contraddicono, il messaggio è in rosso e ✓ non conferma. Un accoppiamento che diventa impossibile dopo una modifica resta nell\'albero con il punto esclamativo.', 'Delle facce curve di un file STEP si riconoscono i cilindri, non i coni né le sfere.'],
+    terms: ['Accoppiamento', 'Gradi di libertà dell\'assieme'],
+  });
+  add('Assieme', 'sposta', 'Spostare un componente', {
+    why: 'Provare il movimento del meccanismo o avvicinare i pezzi prima di accoppiarli.',
+    cmd: { tab: 'assembly', id: 'movepart' },
+    steps: ['Con il mouse: trascina il componente con il tasto sinistro. Si muove solo nei gradi di libertà che gli restano, e gli accoppiamenti restano veri.', 'Per ruotare, oppure su tablet: premi **Sposta parte**, scegli **Sposta** o **Ruota** e trascina il componente.', 'Per girare la vista nell\'assieme trascina nel vuoto o su un componente fisso, oppure tieni premuta la rotella.'],
+    tips: ['Annulla riporta il componente dov\'era.', 'Un componente legato ad altri li porta con sé, se possono seguirlo.'],
+    terms: ['Sposta parte', 'Gradi di libertà dell\'assieme'],
   });
   add('Valuta', 'autoverifica', 'Autoverifica del programma', {
     why: 'Controllare che i calcoli del programma siano giusti.',
