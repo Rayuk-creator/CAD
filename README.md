@@ -121,7 +121,9 @@ Linea, rettangolo e rettangolo centrale, cerchio, archi (centro-estremi, 3 punti
 - **Inserisci parte**: una parte del progetto, più copie della stessa parte, oppure un file STEP, IGES, STL, OBJ o un progetto esportato. Uno STEP con più corpi dà una parte per ogni corpo, nelle posizioni del file.
 - **Accoppiamenti**: coincidente, concentrico, parallelo, perpendicolare, distanza, angolo, tra facce, spigoli, vertici, piani e origine delle parti (anche coni e sfere dei file STEP); un vertice si ritrova da solo quando cambi le misure; parte fissa; gradi di libertà di ogni componente nell'albero; messaggio quando due accoppiamenti si contraddicono.
 - **Trascinamento** dei componenti nei gradi di libertà che restano, con il mouse o con il dito (**Sposta parte**). Se modifichi una parte, l'assieme si ricalcola.
-- **Più assiemi** nello stesso progetto e **sottoassiemi**.
+- **Più assiemi** nello stesso progetto e **sottoassiemi**, anche **flessibili** (i loro pezzi si muovono nell'assieme superiore).
+- **Tangente** tra piani, cilindri e sfere, anche sulle superfici libere degli STEP.
+- **Vite nel foro**: un clic sul foro inserisce la vite della misura giusta e la accoppia; smussi, filetti nelle sezioni, elica vera a richiesta; distinta base in CSV.
 - **Viti e bulloni**: viti ISO 4762, 10642, 4014 e 4017, dadi ISO 4032 e rondelle ISO 7089 da M3 a M20, con il filetto indicato come ISO 6410.
 - **Esporta STEP** dell'assieme: un solido per ogni componente. **Proprietà di massa**, **distinta base**, **verifica interferenze** (volume vero, sulle superfici esatte), **vista esplosa** e **tavola dell'assieme** con numeri di posizione e distinta base.
 

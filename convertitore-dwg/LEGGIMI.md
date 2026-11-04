@@ -36,7 +36,7 @@ Tutto quello che c'è in questa cartella (`index.html`, `incorpora-libredwg.js`,
 | `.wasm` incorporato (memoria iniziale 16 MB) | 10 810 695 byte, SHA-256 `b86785b295581aa279c6c62de172c44da06568f8957e65959577e157f6b82cd4` |
 | `libredwg-web.js` | SHA-256 `62deaef11c2d6cf8fd0a0ee83d29120ca40bdabc2cdd9baa1f7911410bf9d73f` |
 
-I **sorgenti** completi del lettore (C di LibreDWG, collegamenti Embind e istruzioni per compilarlo con Emscripten) sono nel repository libredwg-web, al tag `v0.8.2`.
+I **sorgenti** completi del lettore (C di LibreDWG, collegamenti Embind e istruzioni per compilarlo con Emscripten) sono nel repository libredwg-web, al tag `v0.8.2` (commit `45a2a217f4916daddd7bd598c900d6c698d141b6`), e nella copia sullo stesso sito del programma: <https://github.com/Rayuk-creator/libredwg-web/tree/45a2a217f4916daddd7bd598c900d6c698d141b6>. **Non premere «Sync fork»** su quella copia; il collegamento punta comunque al commit esatto.
 
 **Unica modifica** (dal 29 ottobre 2026): nel file `.wasm` la **memoria iniziale** scende da 1024 MB (16 384 pagine da 64 kB, come l'ha compilato libredwg-web) a **16 MB** (256 pagine). Il massimo resta 4 GB e la memoria cresce da sola quando serve: il modulo è compilato con la crescita della memoria. La modifica la fa `incorpora-libredwg.js` (funzione `lowerMemory`): cambia solo il numero delle pagine iniziali nella sezione «memory» del modulo, dopo aver controllato che 16 MB contengano i dati fissi del programma e lo stack (2,05 MB). Il codice JavaScript non è modificato. Verifica: i DXF dei sette DWG di prova sono identici, byte per byte, a quelli del lettore originale, anche con 300 MB di memoria già occupata (prova in `tests/dwg.test.js`). Per lasciare la memoria com'era: `--memoria-mb 0`.
 

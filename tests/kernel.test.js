@@ -1999,6 +1999,252 @@ ASM.push(['Sottoassieme: filetti di una vite dentro seguono le due trasformazion
   return eqs([...t.o, b.length, b[0].qty, b[1].solid ? 1 : 0, m.noSolid.length, m.comps.length, m.noMaterial.length, m.noMaterial[0] === 'n' ? 1 : 0], [26, 10, 100, 3, 1, 0, 0, 1, 1, 1]);
 }]);
 
+/* ---- sottoassieme flessibile, interferenze dentro, Tangente ---- */
+// slitta: base 100×10×40 fissa (x 0..100, y 0..10, z -40..0) e cursore 20×10×40 sopra (x 10..30, y 10..20): scorre solo lungo X
+const flexSet = (cursorX = 10) => {
+  const docs = { base: block(100, 40, 10), cur: block(20, 40, 10), wall: block(10, 40, 50) };
+  docs.base.material = 's235'; docs.cur.material = 's235'; docs.wall.material = 's235';
+  const infos = asmSet(docs);
+  const G = Assembly.newAssembly('Slitta'); G.id = 'A1';
+  const B = Assembly.addInst(G, 'base'), C = Assembly.addInst(G, 'cur', { pose: asmPose([cursorX, 10, 0]) });
+  asmMate(G, infos, 'coincident', B, asmFace(docs.base, UP, 10), C, asmFace(docs.cur, DN, 0));
+  asmMate(G, infos, 'coincident', B, asmFace(docs.base, ZP, 0), C, asmFace(docs.cur, ZP, 0), { s: 1 });
+  infos.set('A1', Assembly.subInfo(G, infos));
+  return { docs, infos, G, B, C };
+};
+const XP = [1, 0, 0];
+const subFace = (inner, ref) => ({ k: 'face', name: inner.id + '/' + ref.name });
+const flexBox = (asm, infos, S, innerId) => {
+  const b = Assembly.scene(asm, infos), mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+  const pre = S.id + '/' + innerId + '/';
+  for (const p of b.body) if (b.tags.get(p.t).name.startsWith(pre)) for (const v of p.v) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], v[k]); mx[k] = Math.max(mx[k], v[k]); }
+  return [...mn, ...mx];
+};
+ASM.push(['Sottoassieme flessibile: il cursore arriva al muro (x 170..190) e la base resta ferma; due copie con posizioni diverse; l\'assieme vero non cambia; massa e baricentro seguono; 0 gradi', () => {
+  const { docs, infos, G, B, C } = flexSet();
+  const top = Assembly.newAssembly('M'); top.id = 'A2';
+  const S = Assembly.addInst(top, 'A1', { fixed: true, flexible: true }), S2 = Assembly.addInst(top, 'A1', { fixed: true, flexible: true, pose: asmPose([0, 0, 100]) });
+  const W = Assembly.addInst(top, 'wall', { fixed: true, pose: asmPose([190, 0, 0]) });
+  const m1 = { id: 'M1', type: 'coincident', a: { inst: S.id, ...subFace(C, asmFace(docs.cur, XP, 20)) }, b: { inst: W.id, ...asmFace(docs.wall, XM, 0) }, s: -1, side: 1, value: 0 };
+  const m2 = { id: 'M2', type: 'distance', a: { inst: S2.id, ...subFace(C, asmFace(docs.cur, XP, 20)) }, b: { inst: W.id, ...asmFace(docs.wall, XM, 0) }, s: -1, side: 1, value: 60 };
+  top.mates.push(m1, m2);
+  const r = Assembly.solve(top, infos), c1 = flexBox(top, infos, S, C.id), c2 = flexBox(top, infos, S2, C.id), b1 = flexBox(top, infos, S, B.id);
+  const m = Assembly.massOf(top, infos);
+  const mb = 100 * 40 * 10 * 7.85e-3, mc = 20 * 40 * 10 * 7.85e-3, mw = 10 * 40 * 50 * 7.85e-3;
+  const cx = (2 * mb * 50 + mc * 180 + mc * 120 + mw * 195) / (2 * mb + 2 * mc + mw);
+  return eqs([r.ok ? 1 : 0, r.dof.total, r.dof.byInst.get(S.id), c1[0], c1[3], c1[1], c2[0], c2[3], c2[2], b1[0], b1[3], C.pose.p[0], S.pose.p[0], m.centroid[0]], [1, 0, 0, 170, 190, 10, 110, 130, 60, 0, 100, 10, 0, cx], 1e-5);
+}]);
+ASM.push(['Sottoassieme flessibile: rigido lo stesso accoppiamento è impossibile; togliendo «flessibile» torna la posizione dell\'assieme vero', () => {
+  const { docs, infos, C } = flexSet();
+  const top = Assembly.newAssembly('M'); top.id = 'A2';
+  const S = Assembly.addInst(top, 'A1', { fixed: true }), W = Assembly.addInst(top, 'wall', { fixed: true, pose: asmPose([190, 0, 0]) });
+  top.mates.push({ id: 'M1', type: 'coincident', a: { inst: S.id, ...subFace(C, asmFace(docs.cur, XP, 20)) }, b: { inst: W.id, ...asmFace(docs.wall, XM, 0) }, s: -1, side: 1, value: 0 });
+  const r0 = Assembly.solve(top, infos), x0 = flexBox(top, infos, S, C.id)[3];
+  S.flexible = true;
+  const r1 = Assembly.solve(top, infos), x1 = flexBox(top, infos, S, C.id)[3];
+  S.flexible = false;
+  const x2 = flexBox(top, infos, S, C.id)[3], kept = S.flex ? 1 : 0;
+  return eqs([r0.ok ? 1 : 0, x0, r1.ok ? 1 : 0, x1, x2, kept], [0, 30, 1, 190, 30, 1], 1e-5);
+}]);
+ASM.push(['Sottoassieme flessibile non fissato e girato di 90° attorno a Y: si muove tutto; i gradi contano anche quelli dei pezzi (6 + 1); origine e spigoli del sottoassieme seguono il pezzo giusto', () => {
+  const { docs, infos, C, B } = flexSet();
+  const top = Assembly.newAssembly('M'); top.id = 'A2';
+  const q = Assembly.qexp([0, PI / 2, 0]);
+  const S = Assembly.addInst(top, 'A1', { fixed: false, flexible: true, pose: asmPose([0, 0, 0], q) }), W = Assembly.addInst(top, 'wall', { fixed: true, pose: asmPose([500, 0, 0]) });
+  const r0 = Assembly.solve(top, infos);
+  // l'origine del sottoassieme va nel vertice del muro: la base (pezzo fisso) la segue, il cursore si muove con lei
+  top.mates.push({ id: 'M1', type: 'coincident', a: { inst: S.id, k: 'origin' }, b: { inst: W.id, k: 'vertex', p: [0, 0, 0] }, s: 1, side: 1, value: 0 });
+  const r1 = Assembly.solve(top, infos);
+  const c = Assembly.infoOf(S, infos).asm.insts.find(i => i.id === C.id).pose.p;
+  return eqs([r0.dof.total, r0.dof.byInst.get(S.id), r1.ok ? 1 : 0, r1.dof.total, ...S.pose.p, c[1], c[2]], [7, 7, 1, 4, 500, 0, 0, 10, 0], 1e-5);
+}]);
+ASM.push(['Sottoassieme flessibile: trascinando il cursore (pezzo dentro) scorre di 35 mm lungo X, la base no, gli accoppiamenti restano esatti', () => {
+  const { docs, infos, B, C } = flexSet();
+  const top = Assembly.newAssembly('M'); top.id = 'A2';
+  const S = Assembly.addInst(top, 'A1', { fixed: true, flexible: true });
+  const fn = subFace(C, asmFace(docs.cur, UP, 10)).name;
+  const ok = Assembly.drag(top, infos, { inst: S.id, face: fn, local: [20, 20, -20], target: [55, 20, -20], dirs: [[1, 0, 0], [0, 1, 0]] });
+  const c = flexBox(top, infos, S, C.id), r = Assembly.solveStatus(Assembly.flatten(top, infos).asm, infos);
+  // ricalcolando resta dov'è: la posizione è di questo componente
+  Assembly.solve(top, infos);
+  const c2 = flexBox(top, infos, S, C.id);
+  return eqs([ok ? 1 : 0, c[0], c[3], c[1], c[4], flexBox(top, infos, S, B.id)[0], S.pose.p[0], [...r.values()].every(x => x.ok) ? 1 : 0, c2[0], c2[3]], [1, 45, 65, 10, 20, 0, 0, 1, 45, 65], 1e-5);
+}]);
+ASM.push(['Sottoassieme flessibile libero con due pezzi fissi dentro: restano fermi tra loro anche quando il gruppo si sposta', () => {
+  const { docs, infos, G, C, B } = flexSet();
+  const F2 = Assembly.addInst(G, 'wall', { fixed: true, pose: asmPose([0, 30, 0]) });
+  infos.set('A1', Assembly.subInfo(G, infos));
+  const top = Assembly.newAssembly('M'); top.id = 'A2';
+  const S = Assembly.addInst(top, 'A1', { fixed: false, flexible: true }), W = Assembly.addInst(top, 'wall', { fixed: true, pose: asmPose([300, 0, 0]) });
+  top.mates.push({ id: 'M1', type: 'coincident', a: { inst: S.id, k: 'face', name: B.id + '/' + asmFace(docs.base, DN, 0).name }, b: { inst: W.id, ...asmFace(docs.wall, UP, 50) }, s: -1, side: 1, value: 0 });
+  const r = Assembly.solve(top, infos), bb = flexBox(top, infos, S, B.id), ff = flexBox(top, infos, S, F2.id);
+  return eqs([r.ok ? 1 : 0, bb[1], ff[1] - bb[1], ff[0] - bb[0], ff[2] - bb[2]], [1, 50, 30, 0, -0], 1e-5);
+}]);
+ASM.push(['Verifica interferenze dentro i sottoassiemi: i pezzi del gruppo si controllano tra loro (volume a mano) e con gli altri; senza «deep» resta un blocco', () => {
+  const { docs, infos, G, B, C } = flexSet();
+  // cursore affondato di 3 mm nella base: 20×40×3 = 2400 mm³. Accoppiamento coincidente tolto
+  G.mates.length = 0; C.pose = asmPose([10, 7, 0]);
+  infos.set('A1', Assembly.subInfo(G, infos));
+  const top = Assembly.newAssembly('M'); top.id = 'A2';
+  const S = Assembly.addInst(top, 'A1'), W = Assembly.addInst(top, 'wall', { pose: asmPose([95, 0, 0]) });
+  const deep = Assembly.interferences(top, infos, { deep: true });
+  C.pose = asmPose([10, 10, 0]); infos.set('A1', Assembly.subInfo(G, infos));
+  const flat = Assembly.interferences(top, infos);
+  const inner = deep.list.find(x => x.a === S.id + '/' + B.id && x.b === S.id + '/' + C.id), out = deep.list.find(x => x.b === W.id);
+  return eqs([deep.pairs, flat.pairs, deep.list.length, inner.volume, out.a === S.id + '/' + B.id ? 1 : 0, out.volume, flat.list.length, flat.list[0].volume], [3, 1, 2, 2400, 1, 5 * 40 * 10, 1, 5 * 40 * 10], 1e-5);
+}]);
+const sphereDoc = R => { const d = revDoc(b => { const c = b.pt(0, 0), a = b.pt(0, -R), e = b.pt(0, R); b.arc(c, a, e); b.line(e, a); }); return d; };
+ASM.push(['Tangente analitica: piano-cilindro (x 90, poi dentro x 70), cilindro-cilindro (15 fuori, 5 dentro), sfera-piano (y 10+R), sfera-sfera (R1+R2), sfera-cilindro; cono e spigolo rifiutati', () => {
+  const docs = { a: block(80, 50, 10), p: pin(10, 30), q: pin(5, 30), s: sphereDoc(7), t: sphereDoc(3) }, infos = asmSet(docs);
+  const go = (ia, ra, partB, rb, extra, pose = asmPose([150, 40, -25])) => {
+    const asm = Assembly.newAssembly(), A = Assembly.addInst(asm, ia), B = Assembly.addInst(asm, partB, { pose });
+    const m = asmMate(asm, infos, 'tangent', A, ra, B, rb, extra), r = Assembly.solve(asm, infos);
+    return { r, B, m, ok: r.ok ? 1 : 0, dof: r.dof.total };
+  };
+  const px = asmFace(docs.a, XP, 80), up = asmFace(docs.a, UP, 10), revP = asmRev(docs.p), revQ = asmRev(docs.q), sph = asmRev(docs.s), sp2 = asmRev(docs.t);
+  const a1 = go('a', px, 'p', revP), a2 = go('a', px, 'p', revP, { side: -1 });
+  const b1 = go('p', revP, 'q', revQ), b2 = go('p', revP, 'q', revQ, { side: -1 });
+  const c1 = go('a', up, 's', sph), c2 = go('a', up, 's', sph, { side: -1 }), d1 = go('s', sph, 't', sp2), d2 = go('s', sph, 't', sp2, { side: -1 }), e1 = go('p', revP, 's', sph);
+  const hyp = g => Math.hypot(g.B.pose.p[0], g.B.pose.p[2]), dist = g => Math.hypot(...g.B.pose.p);
+  const cone = { t: 'axis', o: [0, 0, 0], d: [0, 1, 0], round: true, cone: true, R: 3 }, circ = { t: 'axis', o: [0, 0, 0], d: [0, 1, 0], round: true, circle: true, R: 3 }, pl = { t: 'plane', c: [0, 0, 0], n: [0, 1, 0] };
+  return eqs([a1.ok, a1.B.pose.p[0], a1.dof, a2.ok, a2.B.pose.p[0], b1.ok, hyp(b1), b1.dof, b2.ok, hyp(b2), c1.ok, c1.B.pose.p[1], c1.dof, c2.B.pose.p[1], d1.ok, dist(d1), d1.dof, d2.ok, dist(d2), e1.ok, hyp(e1), Assembly.allowedTypes(cone, pl).includes('tangent') ? 1 : 0, Assembly.allowedTypes(circ, pl).includes('tangent') ? 1 : 0],
+    [1, 90, 4, 1, 70, 1, 15, 3, 1, 5, 1, 17, 5, 3, 1, 10, 5, 1, 4, 1, 17, 0, 0], 1e-5);
+}]);
+// paraboloide y = (x² + z²) / 100 su una griglia di passo 1 (r ≤ 30), una sola faccia vera: una superficie libera
+const paraDoc = (h = 1) => {
+  const R = 30, tri = [], y = (x, z) => (x * x + z * z) / 100;
+  for (let i = -R; i < R; i += h) for (let k = -R; k < R; k += h) {
+    const P = (a, b) => [a, y(a, b), b];
+    tri.push([P(i, k), P(i, k + h), P(i + h, k + h)], [P(i, k), P(i + h, k + h), P(i + h, k)]);
+  }
+  const d = D0('libera');
+  cadImp(d, [occtMesh([tri], 'libera')]);
+  return d;
+};
+ASM.push(['Tangente su superficie libera: paraboloide e piano inclinato (punto vero calcolato a mano, entro lo scostamento dei triangoli), e sfera; altri accoppiamenti rifiutati; il pezzo si risolve anche dopo un Newton con più vertici', () => {
+  const docs = { f: paraDoc(), a: block(40, 40, 5), s: sphereDoc(6) }, infos = asmSet(docs);
+  const inf = infos.get('f'), name = inf.st.tags.list.find(t => t.mesh).name, ref = { k: 'face', name }, E = Assembly.entityOf({ inst: 'x', ...ref }, inf);
+  const asm = Assembly.newAssembly(), F = Assembly.addInst(asm, 'f', { fixed: true });
+  const th = 0.2, q = Assembly.qexp([0, 0, th]);
+  const A = Assembly.addInst(asm, 'a', { pose: asmPose([0, -40, 0], q) });
+  // la faccia alta del blocco guarda in su (+Y girato): il paraboloide sta dalla sua parte
+  const m = asmMate(asm, infos, 'tangent', F, ref, A, asmFace(docs.a, UP, 5));
+  const r = Assembly.solve(asm, infos);
+  const n = Assembly.dirWorld(A.pose, [0, 1, 0]), c = Assembly.toWorld(A.pose, [0, 5, 0]);
+  // min di n·(v − c) sul paraboloide y = (x²+z²)/100: il punto dove la tangente è perpendicolare a n: x = -50 n_x / n_y
+  const x0 = -50 * n[0] / n[1], z0 = -50 * n[2] / n[1], d = n[0] * (x0 - c[0]) + n[1] * ((x0 * x0 + z0 * z0) / 100 - c[1]) + n[2] * (z0 - c[2]);
+  let lo = Infinity; for (const v of E.verts) lo = Math.min(lo, n[0] * (v[0] - c[0]) + n[1] * (v[1] - c[1]) + n[2] * (v[2] - c[2]));
+  const as2 = Assembly.newAssembly(), F2 = Assembly.addInst(as2, 'f', { fixed: true }), S = Assembly.addInst(as2, 's', { pose: asmPose([5, 30, 3]) });
+  asmMate(as2, infos, 'tangent', F2, ref, S, asmRev(docs.s));
+  const r2 = Assembly.solve(as2, infos), P = S.pose.p;
+  let dm = Infinity; for (let a = -30; a <= 30; a += 0.05) for (let b = -30; b <= 30; b += 0.05) { if (Math.abs(a - P[0]) > 8 || Math.abs(b - P[2]) > 8) continue; dm = Math.min(dm, Math.hypot(a - P[0], (a * a + b * b) / 100 - P[1], b - P[2])); }
+  // il lato opposto: la faccia del blocco guarda giù, il paraboloide sta dalla parte opposta alla normale
+  const as3 = Assembly.newAssembly(), F3 = Assembly.addInst(as3, 'f', { fixed: true }), A3 = Assembly.addInst(as3, 'a', { pose: asmPose([0, -40, 0], q) });
+  const m3 = asmMate(as3, infos, 'tangent', F3, ref, A3, asmFace(docs.a, DN, 0)), r3 = Assembly.solve(as3, infos);
+  const n3 = Assembly.dirWorld(A3.pose, [0, -1, 0]), c3 = Assembly.toWorld(A3.pose, [0, 0, 0]);
+  let lo3 = Infinity; for (const v of E.verts) lo3 = Math.min(lo3, -(n3[0] * (v[0] - c3[0]) + n3[1] * (v[1] - c3[1]) + n3[2] * (v[2] - c3[2])));
+  // griglia larga (passo 5): la distanza vera dai triangoli, non dai vertici; si conta a mano con i baricentri
+  const docs5 = { f: paraDoc(5), s: docs.s }, inf5 = asmSet(docs5), E5 = Assembly.entityOf({ inst: 'x', k: 'face', name: inf5.get('f').st.tags.list.find(t => t.mesh).name }, inf5.get('f'));
+  const as5 = Assembly.newAssembly(), F5 = Assembly.addInst(as5, 'f', { fixed: true }), S5 = Assembly.addInst(as5, 's', { pose: asmPose([7.3, 25, 4.1]) });
+  asmMate(as5, inf5, 'tangent', F5, { k: 'face', name: inf5.get('f').st.tags.list.find(t => t.mesh).name }, S5, asmRev(docs.s));
+  const r5 = Assembly.solve(as5, inf5), Q = S5.pose.p;
+  let dq = Infinity;
+  for (const t of E5.tris) { const [A0, B0, C0] = t.map(i => E5.verts[i]); if (Math.hypot(A0[0] - Q[0], A0[1] - Q[1], A0[2] - Q[2]) > 25) continue; for (let i = 0; i <= 60; i++) for (let k = 0; k <= 60 - i; k++) { const u = i / 60, w = k / 60, e = 1 - u - w; dq = Math.min(dq, Math.hypot(u * A0[0] + w * B0[0] + e * C0[0] - Q[0], u * A0[1] + w * B0[1] + e * C0[1] - Q[1], u * A0[2] + w * B0[2] + e * C0[2] - Q[2])); } }
+  const plane = { t: 'plane', c: [0, 0, 0], n: [0, 1, 0] }, axis = { t: 'axis', o: [0, 0, 0], d: [0, 1, 0], round: true, R: 3 };
+  return eqs([E.t === 'free' ? 1 : 0, r.ok ? 1 : 0, r.dof.total, Math.abs(d) < 0.01 ? 1 : 0, lo, m.side, r2.ok ? 1 : 0, r2.dof.total, Math.abs(dm - 6) < 0.01 ? 1 : 0, Assembly.allowedTypes(E, plane).join(), Assembly.allowedTypes(E, axis).length, m3.side, r3.ok ? 1 : 0, lo3, r5.ok ? 1 : 0, Math.abs(dq - 6) < 3e-3 ? 1 : 0].map(x => x === 'tangent' ? 1 : x), [1, 1, 5, 1, 0, 1, 1, 5, 1, 1, 0, -1, 1, 0, 1, 1], 1e-6);
+}]);
+
+/* ---- viteria: smussi, elica vera, vite nel foro, CSV ---- */
+// area dell'esagono di lato piatto s (apotema a = s/2) dentro il cerchio di raggio r: a mano, sei spicchi
+const hexCircleArea = (s, r) => {
+  const a = s / 2, e = s / Math.sqrt(3);
+  if (r <= a) return PI * r * r;
+  if (r >= e) return 2 * Math.sqrt(3) * a * a;
+  const th = Math.acos(a / r);
+  return PI * r * r - 6 * r * r * (th - Math.sin(th) * Math.cos(th));
+};
+// volume del dado ISO 4032 smussato su due lati: si integra in quota. A quota h dal piano il raggio del cono è 0,95 s/2 + h / tan 30°
+const chamferedHex = (s, m, faces) => { const N = 4000, r0 = 0.95 * s / 2; let V = 0; for (let i = 0; i < N; i++) { const y = (i + 0.5) * m / N; const rs = []; if (faces.includes('t')) rs.push(r0 + (m - y) / Math.tan(PI / 6)); if (faces.includes('b')) rs.push(r0 + y / Math.tan(PI / 6)); V += hexCircleArea(s, Math.min(...rs)) * m / N; } return V; };
+ASM.push(['Smussi della viteria: punta di una ISO 4762 M8×30 a 45° fino a d₃ (volume a mano); dado M10 e testa M10 a 30° (integrale in quota entro lo 0,1 %); il filetto indicato non cambia', () => {
+  const vol = sp => { const d = Model.fastenerDoc(sp), st = Model.regen(d); if (st.errors.size) throw new Error([...st.errors.values()].join()); return { v: Geom.massProps(st.body, st.tags).volume, T: Model.threadsOf(d, st)[0] }; };
+  const a0 = vol({ type: 'iso4762', size: 'M8', length: 30 }), a1 = vol({ type: 'iso4762', size: 'M8', length: 30, chamfer: true });
+  const d3 = 8 - 1.22687 * 1.25, c = (8 - d3) / 2, R = 4, r = R - c;
+  const cut = PI * R * R * c - PI * c / 3 * (R * R + R * r + r * r);
+  const n0 = Model.FAST.iso4032.M10, bore = Model.HOLE.TAPDRILL.M10 / 2;
+  const n1 = vol({ type: 'iso4032', size: 'M10', chamfer: true });
+  const expN = chamferedHex(n0.s, n0.m, 'tb') - PI * bore * bore * n0.m;
+  const h0 = Model.FAST.hex.M10, h1 = vol({ type: 'iso4017', size: 'M10', length: 40, chamfer: true }), h00 = vol({ type: 'iso4017', size: 'M10', length: 40 });
+  const hCut = 2 * Math.sqrt(3) * (h0.s / 2) ** 2 * h0.k - chamferedHex(h0.s, h0.k, 't');
+  const tip = h00.v - h1.v - hCut, d3b = 10 - 1.22687 * 1.5, cb = (10 - d3b) / 2, tipExp = PI * 25 * cb - PI * cb / 3 * (25 + 5 * (5 - cb) + (5 - cb) ** 2);
+  return eqs([a0.v - a1.v, n1.v / expN, tip / tipExp, a1.T.z1 - a1.T.z0, a1.T.rMinor], [cut, 1, 1, a0.T.z1 - a0.T.z0, a0.T.rMinor], 2e-3);
+}]);
+ASM.push(['Elica vera: solido chiuso (ogni lato in due triangoli), volume dell\'integrale del raggio al quadrato, destra (sale girando attorno a +Y), cresta e nocciolo giusti, indicato lo stesso nella tavola', () => {
+  const M = Model.helixMesh(0, 10, 1.25, 4, 3.23320625);
+  const seen = new Map(); for (const t of M.T) for (let k = 0; k < 3; k++) { const a = t[k], b = t[(k + 1) % 3], key = a + '>' + b; seen.set(key, (seen.get(key) || 0) + 1); }
+  let open = 0; for (const [k, v] of seen) { const [a, b] = k.split('>'); if (v !== 1 || seen.get(b + '>' + a) !== 1) open++; }
+  let V = 0; for (const t of M.T) { const [a, b, c] = t.map(i => M.V[i]); V += (a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6; }
+  // sezione poligonale a 32 lati: V = L · (32/2) · sin(2π/32) · media di r², dal profilo. r varia linearmente sui fianchi
+  const P = 1.25, ra = 4, rb = 3.23320625, fl = (ra - rb) * Math.tan(PI / 6) / P, flat = 1 / 8, root = 1 - flat - 2 * fl;
+  const r2 = flat * ra * ra + root * rb * rb + 2 * fl * (ra * ra + ra * rb + rb * rb) / 3;
+  const Vexp = 10 * 16 * Math.sin(2 * PI / 32) * r2;
+  const rs = M.V.map(v => Math.hypot(v[0], v[2]));
+  // destra: le righe di cresta. Il vertice di cresta vicino all'angolo 0 e quello un passo di 1/4 di giro più avanti (angolo verso -Z) è 1/4 di passo più in alto
+  const crest = (ang) => { const c = [Math.cos(ang), Math.sin(ang)]; let best = null, bd = Infinity; for (const v of M.V) if (Math.abs(Math.hypot(v[0], v[2]) - ra) < 1e-9 && v[1] > 3 && v[1] < 7) { const d = Math.hypot(v[0] / ra - c[0], -v[2] / ra - c[1]) + 1e-3 * Math.abs(v[1] - 5); if (d < bd) { bd = d; best = v; } } return best; };
+  const q0 = crest(0), q1 = crest(PI / 2), dz = ((q1[1] - q0[1]) % P + P) % P;
+  const d = Model.fastenerDoc({ type: 'iso4762', size: 'M8', length: 20, helix: true }), st = Model.regen(d), m = Geom.massProps(st.body, st.tags), T = Model.threadsOf(d, st)[0], s0 = Model.regen(Model.fastenerDoc({ type: 'iso4762', size: 'M8', length: 20 })), m0 = Geom.massProps(s0.body, s0.tags);
+  const screwLess = PI * 16 * (T.z1 - T.z0) - (T.z1 - T.z0) * 16 * Math.sin(2 * PI / 32) * r2;
+  const nut = Model.fastenerDoc({ type: 'iso4032', size: 'M8', helix: true }), sn = Model.regen(nut), mn = Geom.massProps(sn.body, sn.tags);
+  const Tn = Model.FAST.iso4032.M8, rc = 3.4;
+  const fn = (4 - rc) * Math.tan(PI / 6) / 1.25, r2n = (1 / 8) * 16 + (1 - 1 / 8 - 2 * fn) * rc * rc + 2 * fn * (16 + 4 * rc + rc * rc) / 3;
+  const Vn = 2 * Math.sqrt(3) * (Tn.s / 2) ** 2 * Tn.m - Tn.m * 16 * Math.sin(2 * PI / 32) * r2n;
+  return eqs([open, V / Vexp, Math.max(...rs), Math.min(...rs.filter(x => x > 1)), dz, st.errors.size, (m0.volume - m.volume) / screwLess, T.helix ? 1 : 0, T.ext ? 1 : 0, sn.errors.size, mn.volume / Vn], [0, 1, 4, rb, P / 4, 0, 1, 1, 1, 0, 1], 5e-3);
+}]);
+ASM.push(['Vite nel foro: clic sul foro Ø6,6 ISO di una piastra: M6, testa sopra la piastra, 2 accoppiamenti, la piastra non si muove, solo il giro sull\'asse libero; svasata a filo; dado sotto; rifiuta un cubo', () => {
+  const plate = plateHole(80, 50, 10, 40, 25, 3.3);
+  const docs = { p: plate, s: Model.fastenerDoc({ type: 'iso4762', size: 'M6', length: 20 }), l: Model.fastenerDoc({ type: 'iso10642', size: 'M6', length: 20 }), n: Model.fastenerDoc({ type: 'iso4032', size: 'M6' }), b: block(10, 10, 10) };
+  const infos = asmSet(docs), wall = asmRev(docs.p);
+  const run = (part, local) => {
+    const asm = Assembly.newAssembly(), H = Assembly.addInst(asm, 'p', { fixed: false, pose: asmPose([100, 0, 0]) }), V = Assembly.addInst(asm, part);
+    V.fixed = false;
+    const out = Assembly.mountInHole(asm, infos, H, wall, local, V), p0 = H.pose.p.slice(), r = Assembly.solve(asm, infos);
+    return { asm, H, V, out, r, moved: Math.hypot(H.pose.p[0] - p0[0], H.pose.p[1] - p0[1], H.pose.p[2] - p0[2]) };
+  };
+  const a = run('s', [43.3, 9, -25]), k = Model.FAST.iso4762.M6.k;
+  const axis = Assembly.toWorld(a.V.pose, [0, -5, 0]), up = Assembly.dirWorld(a.V.pose, [0, 1, 0]);
+  const b = run('s', [43.3, 1, -25]), upB = Assembly.dirWorld(b.V.pose, [0, 1, 0]);
+  const c = run('l', [43.3, 9, -25]), n = run('n', [43.3, 1, -25]);
+  const bad = Assembly.holeAt(infos.get('b'), asmFace(docs.b, UP, 10), [5, 10, -5]);
+  return eqs([a.out.hole.size === 'M6' ? 1 : 0, a.r.ok ? 1 : 0, a.moved, a.V.pose.p[1], axis[0], axis[2], up[1], a.r.dof.total, b.V.pose.p[1], upB[1], c.V.pose.p[1], c.r.ok ? 1 : 0, n.V.pose.p[1], Assembly.dirWorld(n.V.pose, [0, 1, 0])[1], n.r.ok ? 1 : 0, bad.err ? 1 : 0, a.asm.mates.length],
+    [1, 1, 0, 10 + k, 140, -25, 1, 7, -k, -1, 10, 1, 0, -1, 1, 1, 2], 1e-6);
+}]);
+ASM.push(['Vite nel foro, casi: foro cieco (il fondo non è un imbocco), foro filettato (la misura viene dal filetto), filetti dentro un sottoassieme: una vite nel dado resta «filetto» anche controllando i pezzi', () => {
+  const blind = block(40, 40, 20);
+  { const b = SB(); b.circle(20, 20, 3); const s = sketch(blind, STD('top'), b); feat(blind, { type: 'cut', sketch: s, end: 'blind', depth: 6, flip: true }); }
+  const docs = { h: blind, n: Model.fastenerDoc({ type: 'iso4032', size: 'M8' }), s: Model.fastenerDoc({ type: 'iso4017', size: 'M8', length: 30 }) };
+  const infos = asmSet(docs), inf = infos.get('h'), stb = inf.st, V = Geom.massProps(stb.body, stb.tags).volume, wall = asmRev(docs.h);
+  const H = Assembly.holeAt(inf, wall, [23, 5.5, -20]);
+  const tapRev = asmRev(docs.n), T = Assembly.holeAt(infos.get('n'), tapRev, [Model.HOLE.TAPDRILL.M8 / 2, 1, 0]);
+  const G = Assembly.newAssembly('Bullone'); G.id = 'A1';
+  const Sc = Assembly.addInst(G, 's', { pose: asmPose([0, 0, 0]) }), Nu = Assembly.addInst(G, 'n', { fixed: false, pose: asmPose([0, -20, 0]) });
+  infos.set('A1', Assembly.subInfo(G, infos));
+  const top = Assembly.newAssembly('M'); top.id = 'A2';
+  const X = Assembly.addInst(top, 'A1');
+  const deep = Assembly.interferences(top, infos, { deep: true });
+  // un livello in più: il bullone in un gruppo dentro un altro gruppo
+  infos.set('A2', Assembly.subInfo(top, infos));
+  const up = Assembly.newAssembly('N'); up.id = 'A3'; Assembly.addInst(up, 'A2');
+  const deep2 = Assembly.interferences(up, infos, { deep: true });
+  // testa esagonale nel foro: appoggia sotto la testa, non su un fianco che comincia alla stessa quota
+  const hexA = Assembly.newAssembly(), Hh = Assembly.addInst(hexA, 'h'), Vh = Assembly.addInst(hexA, 's', { fixed: false }), Mh = Assembly.mountInHole(hexA, infos, Hh, wall, [23, 1, -20], Vh), Rh = Assembly.solve(hexA, infos);
+  const kh = Model.FAST.hex.M8.k, up2 = Assembly.dirWorld(Vh.pose, [0, 1, 0]);
+  return eqs([V, H.err ? 1 : 0, H.rim.n[1], H.rim.p[1], H.depth, T.size === 'M8' ? 1 : 0, T.tapped ? 1 : 0, deep.list.length, deep.list[0].thread ? 1 : 0, deep2.list.length, deep2.list[0].thread ? 1 : 0, Rh.ok ? 1 : 0, Vh.pose.p[1], up2[1], Rh.dof.total], [40 * 40 * 20 - PI * 9 * 6, 0, -1, 0, 6, 1, 1, 1, 1, 1, 1, 1, -kh, -1, 1], 1e-6);
+}]);
+ASM.push(['Distinta base in CSV: intestazione, punto e virgola, virgola decimale, nomi con punto e virgola tra virgolette, totale', () => {
+  const rows = [{ item: 1, name: 'Vite; M6', solid: true, material: { name: 'Acciaio' }, qty: 4, unitMass: 12.5, mass: 50 }, { item: 2, name: 'Vuota', solid: false, material: null, qty: 1, unitMass: 0, mass: 0 }];
+  const L = Assembly.bomCSV(rows).split('\r\n');
+  return eqs([L[0] === 'N.;Parte;Materiale;Quantità;Massa cad. (g);Massa tot. (g)' ? 1 : 0, L[1] === '1;"Vite; M6";Acciaio;4;12,500;50,000' ? 1 : 0, L[2] === '2;Vuota;Senza solido;1;;' ? 1 : 0, L[3] === ';Totale;;5;;50,000' ? 1 : 0, L.length], [1, 1, 1, 1, 5]);
+}]);
+
 function run(tol = TOL) {
   const rel = (g, e, scale) => Math.abs(g - e) / Math.max(Math.abs(e), scale || 1e-9);
   const rows = [];

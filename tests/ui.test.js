@@ -1449,6 +1449,9 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const srcs = ['https://github.com/Rayuk-creator/occt-import-js/tree/41e470890ae0f9dc69ac50ffd5fc73e03576f4eb', 'https://github.com/Rayuk-creator/OCCT/tree/d2abb6d844231cb8f29be6894440874a4700e4a5'];
     const srcFs = require('fs'), srcHtml = srcFs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8'), srcBlock = srcHtml.slice(srcHtml.lastIndexOf('<!-- LETTORE STEP/IGES: inizio -->'), srcHtml.indexOf('<script id="occtJs"')), srcRead = srcFs.readFileSync(path.join(__dirname, '..', 'licenze', 'LEGGIMI.md'), 'utf8'), srcTool = srcFs.readFileSync(path.join(__dirname, '..', 'tools', 'incorpora-occt.js'), 'utf8');
     const srcMiss = srcs.filter(u => !ab.links.includes(u) || !srcBlock.includes(u) || !srcRead.includes(u) || !srcTool.includes(u));
+    // sorgenti del lettore DWG: la copia al commit del tag v0.8.2, nei quattro posti
+    const dwgSrc = 'https://github.com/Rayuk-creator/libredwg-web/tree/45a2a217f4916daddd7bd598c900d6c698d141b6', dwgMiss = !ab.links.includes(dwgSrc) || !srcHtml.includes('copia dei sorgenti: ' + dwgSrc) || !srcRead.includes(dwgSrc) || !srcFs.readFileSync(path.join(__dirname, '..', 'convertitore-dwg', 'LEGGIMI.md'), 'utf8').includes(dwgSrc) || !srcFs.readFileSync(path.join(__dirname, '..', 'convertitore-dwg', 'index.html'), 'utf8').includes(dwgSrc);
+    if (dwgMiss) srcMiss.push(dwgSrc);
     const base = 'https://github.com/Rayuk-creator/CAD/blob/main/';
     const local = ab.links.filter(l => l.startsWith(base)).map(l => l.slice(base.length));
     const noFile = local.filter(l => !require('fs').existsSync(path.join(__dirname, '..', l)));
@@ -2229,6 +2232,134 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
       && docInfo.err === 0 && docInfo.features.includes('revolve') && docInfo.features.includes('cut') && okLines && okArc && /\nFILETTI\r?\n/.test(dr.dxf);
     rec(ASMC3, ok && !errs.length, `${JSON.stringify(i1)} ${JSON.stringify(i3)}; ${JSON.stringify(proj)}; distinta ${JSON.stringify(bom)}; ${inter.rows.join()}; ${JSON.stringify(docInfo)}; righe ${JSON.stringify(fl)} (distanza attesa ${((6 - 1.22687) * 2).toFixed(3)}, lunghezza 40); archi basso ${JSON.stringify(dr.arcsBottom)}, r ${arcR}; alto ${dr.arcsTop.length}; errori ${errs.join(' | ')}`);
   } catch (e) { rec(ASMC3, false, e.message.split('\n')[0]); }
+
+  const ASMC5 = 'Assieme, lavori del 4 novembre sera: flessibile con il mouse, interferenze dentro, albero sopra la vista, CSV, direzione da una faccia, numeri trascinati, vite nel foro, filetti in sezione';
+  try {
+    const { c, p, errs, insert } = await asmSetup();
+    const dls = [];
+    await p.evaluate(() => {
+      const mk = (name, L, W, H) => ({ id: 'q' + name, doc: (() => { const d = Model.newDoc(); d.name = name; const k = Sketch.newSketch(); const pt = (x, y) => { const id = 'p' + (k.next++); k.ents.push({ id, t: 'pt', x, y }); return id; }; const P = [pt(0, 0), pt(L, 0), pt(L, W), pt(0, W)]; P.forEach((id, i) => k.ents.push({ id: 'l' + (k.next++), t: 'ln', a: id, b: P[(i + 1) % 4] })); d.features.push({ id: 'F1', name: 'Schizzo1', type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: k }); d.features.push({ id: 'F2', name: 'Estrusione1', type: 'extrude', sketch: 'F1', end: 'blind', depth: H }); d.material = 's235'; return d; })(), drawing: null });
+      App.syncActive && App.syncActive();
+      App.project.parts.push(mk('Base', 100, 40, 10), mk('Cursore', 20, 40, 10), mk('Muro', 10, 40, 50));
+    });
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(150);
+    // il gruppo: base fissa e cursore che scorre
+    await p.click('[data-cmd="newAsm"]'); await p.waitForTimeout(200);
+    await insert('qBase'); await insert('qCursore');
+    const grp = await p.evaluate(() => {
+      const a = App.project.assembly, inf = App.asm.infos, I = a.insts, F = (i, n, w) => inf.get(i.part).st.tags.list.find(t => t.kind === 'plane' && Math.abs(t.n[0] - n[0]) + Math.abs(t.n[1] - n[1]) + Math.abs(t.n[2] - n[2]) < 1e-9 && Math.abs(t.w - w) < 1e-9).name;
+      App.change(() => {
+        I[1].pose = { p: [10, 10, 0], q: [1, 0, 0, 0] };
+        a.mates.push({ id: 'M90', name: 'Coincidente1', type: 'coincident', a: { inst: I[0].id, k: 'face', name: F(I[0], [0, 1, 0], 10) }, b: { inst: I[1].id, k: 'face', name: F(I[1], [0, -1, 0], 0) }, s: -1, side: 1, value: 0 });
+        a.mates.push({ id: 'M91', name: 'Coincidente2', type: 'coincident', a: { inst: I[0].id, k: 'face', name: F(I[0], [0, 0, 1], 0) }, b: { inst: I[1].id, k: 'face', name: F(I[1], [0, 0, 1], 0) }, s: 1, side: 1, value: 0 });
+      });
+      return { id: a.id, cur: I[1].id, xp: F(I[1], [1, 0, 0], 20) };
+    });
+    await p.waitForTimeout(150);
+    // nuovo assieme: il gruppo dentro, flessibile dal menu; il muro lo ferma
+    await p.click('[data-cmd="newAsm"]'); await p.waitForTimeout(200);
+    await p.click('[data-cmd="insertPart"]'); await p.waitForTimeout(100);
+    await p.click(`#asmParts [data-part="${grp.id}"]`); await p.waitForTimeout(250);
+    await insert('qMuro');
+    await p.click('.tinst >> nth=0', { button: 'right' }); await p.waitForTimeout(100);
+    const menu = await p.evaluate(() => [...document.querySelectorAll('.ctx button, .ctxmenu button, #ctx button')].map(b => b.textContent));
+    await p.locator('button', { hasText: 'Rendi flessibile' }).click(); await p.waitForTimeout(250);
+    const tree = await p.evaluate(() => document.querySelector('.tinst').textContent);
+    await p.evaluate(({ grp }) => {
+      const a = App.project.assembly, S = a.insts[0], W = a.insts[1], inf = App.asm.infos;
+      const wf = inf.get(W.part).st.tags.list.find(t => t.kind === 'plane' && t.n[0] === -1).name;
+      App.change(() => { W.fixed = true; W.pose = { p: [190, 0, 0], q: [1, 0, 0, 0] }; a.mates.push({ id: 'M92', name: 'Coincidente1', type: 'coincident', a: { inst: S.id, k: 'face', name: grp.cur + '/' + grp.xp }, b: { inst: W.id, k: 'face', name: wf }, s: -1, side: 1, value: 0 }); });
+    }, { grp });
+    await p.waitForTimeout(250);
+    const flexPos = await p.evaluate(({ grp }) => { const st = App.st, mx = []; for (const q of st.body) if (st.tags.get(q.t).name.startsWith(st.bodies[0].id + '/' + grp.cur + '/')) for (const v of q.v) mx.push(v[0]); return { hi: Math.max(...mx), lo: Math.min(...mx), ok: App.asm.last.ok, orig: App.project.others.find(x => x.id === grp.id).insts[1].pose.p[0] }; }, { grp });
+    // trascinato con il mouse dopo aver tolto il legame: si sposta il cursore
+    await p.evaluate(() => { App.change(() => { const a = App.project.assembly; a.mates = []; a.insts[1].pose = { p: [400, 0, 0], q: [1, 0, 0, 0] }; }); App.r.fit(); }); await p.waitForTimeout(200);
+    const dragPts = await p.evaluate(({ grp }) => { const st = App.st, r = document.querySelector('#view').getBoundingClientRect(); const S = App.project.assembly.insts[0]; const c = Assembly.toWorld(S.pose, [80, 20, -20]); const b = Assembly.toWorld(S.pose, [80, 20, -20]); let pts = []; for (const q of st.body) if (st.tags.get(q.t).name.startsWith(S.id + '/' + grp.cur + '/') && st.tags.get(q.t).n && st.tags.get(q.t).n[1] > 0.9) { pts = q.v; break; } const m = [0, 1, 2].map(k => pts.reduce((s, v) => s + v[k], 0) / pts.length), s = App.r.project(m); return { x: r.left + s[0], y: r.top + s[1], m }; }, { grp });
+    await p.mouse.move(dragPts.x, dragPts.y); await p.mouse.down(); await p.mouse.move(dragPts.x + 40, dragPts.y, { steps: 5 }); await p.waitForTimeout(100); await p.mouse.up(); await p.waitForTimeout(200);
+    const flexDrag = await p.evaluate(({ grp }) => { const st = App.st, S = App.project.assembly.insts[0], ys = [], xs = []; for (const q of st.body) { const n = st.tags.get(q.t).name; if (n.startsWith(S.id + '/' + grp.cur + '/')) for (const v of q.v) { ys.push(v[1]); xs.push(v[0]); } } return { lo: Math.min(...xs), yl: Math.min(...ys), yh: Math.max(...ys), base: st.body.filter(q => !st.tags.get(q.t).name.startsWith(S.id + '/' + grp.cur + '/') && st.tags.get(q.t).name.startsWith(S.id + '/')).flatMap(q => q.v.map(v => v[0])).reduce((a, b) => Math.min(a, b), Infinity) }; }, { grp });
+    // interferenze dentro: cursore affondato nell'assieme gruppo; la casella lo tratta come un blocco
+    await p.evaluate(({ grp }) => { const A = App.project.others.find(x => x.id === grp.id); App.change(() => { A.mates = []; A.insts[1].pose = { p: [10, 7, 0], q: [1, 0, 0, 0] }; const S = App.project.assembly.insts[0]; delete S.flexible; delete S.flex; const W = App.project.assembly.insts[1]; W.pose = { p: [400, 0, 0], q: [1, 0, 0, 0] }; }); }, { grp });
+    await p.waitForTimeout(250);
+    await p.click('[data-cmd="interf"]'); await p.waitForTimeout(120);
+    await p.click('#asmIntRun'); await p.waitForFunction(() => document.querySelector('#asmIntSum'), null, { timeout: 30000 }); await p.waitForTimeout(100);
+    const intDeep = await p.evaluate(() => [...document.querySelectorAll('#pm .asm-int')].map(b => b.textContent));
+    await p.check('#asmIntWhole'); await p.click('#asmIntRun'); await p.waitForTimeout(300); await p.waitForFunction(() => document.querySelector('#asmIntSum'), null, { timeout: 30000 }); await p.waitForTimeout(100);
+    const intWhole = await p.evaluate(() => [...document.querySelectorAll('#pm .asm-int')].map(b => b.textContent));
+    await p.evaluate(() => App.closePM(false));
+    // albero sopra la vista: piano frontale del primo componente, origine del secondo
+    await p.click('[data-cmd="mate"]'); await p.waitForTimeout(200);
+    const flyShown = await p.evaluate(() => !!document.querySelector('#asmFly') && !!document.querySelector('[data-fly-inst]'));
+    await p.click('[data-fly-inst] >> nth=1'); await p.waitForTimeout(80);
+    const flyRows = await p.evaluate(() => [...document.querySelectorAll('[data-fly-datum]')].map(b => b.textContent));
+    await p.click('[data-fly-datum="origin"]'); await p.waitForTimeout(150);
+    const flyPicked = await p.evaluate(() => [...document.querySelectorAll('#pm .selbox .chip')].map(x => x.textContent));
+    await p.screenshot({ path: path.join(OUT, 'assieme-albero-comparsa.png') });
+    await p.evaluate(() => App.closePM(false)); await p.waitForTimeout(80);
+    const flyGone = await p.evaluate(() => !document.querySelector('#asmFly'));
+    // distinta in CSV
+    await p.exposeFunction('__csv', t => dls.push(t));
+    await p.evaluate(() => { const o = App.offerFile; App.offerFile = (n, m, d) => { window.__csv(JSON.stringify([n, m, d])); }; App.__offer = o; });
+    await p.click('[data-cmd="bom"]'); await p.waitForTimeout(100);
+    await p.locator('#modalActions button', { hasText: 'Salva CSV' }).click(); await p.waitForTimeout(150);
+    await p.evaluate(() => { App.offerFile = App.__offer; if (App.closeModal) App.closeModal(); const m = document.querySelector('#modalActions .btn-primary'); if (m && m.offsetParent) m.click(); });
+    const csv = JSON.parse(dls[0] || '["","",""]');
+    // esplosione lungo una faccia: la faccia alta del muro girato di 30°
+    await p.evaluate(() => { App.change(() => { const W = App.project.assembly.insts[1]; W.pose = { p: [400, 0, 0], q: Assembly.qexp([0, 0, Math.PI / 6]) }; W.fixed = true; }); App.r.fit(); }); await p.waitForTimeout(200);
+    await p.click('[data-cmd="explode"]'); await p.waitForTimeout(150);
+    await p.click('#expFace'); await p.waitForTimeout(80);
+    const topPt = await p.evaluate(() => { const st = App.st, W = App.project.assembly.insts[1], r = document.querySelector('#view').getBoundingClientRect(), n = Assembly.dirWorld(W.pose, [0, 1, 0]); const q = st.body.find(x => { const t = st.tags.get(x.t); return t.inst === W.id && t.n && Math.abs(t.n[0] - n[0]) + Math.abs(t.n[1] - n[1]) < 1e-9; }); const m = [0, 1, 2].map(k => q.v.reduce((s, v) => s + v[k], 0) / q.v.length), s = App.r.project(m); return { x: r.left + s[0], y: r.top + s[1], n }; });
+    await p.mouse.click(topPt.x, topPt.y); await p.waitForTimeout(120);
+    const expMsg = await p.evaluate(() => (document.querySelector('#expFaceMsg') || {}).textContent);
+    await p.mouse.click(topPt.x, topPt.y); await p.waitForTimeout(120);
+    await p.fill('#expDist', '30'); await p.waitForTimeout(80);
+    await p.click('#expAdd'); await p.waitForTimeout(100);
+    const expStep = await p.evaluate(() => ({ d: App.project.assembly.explode.steps[0].dir, t: document.querySelector('#expSteps').textContent }));
+    await p.evaluate(() => App.closePM(true)); await p.waitForTimeout(150);
+    // tavola: un numero trascinato con il mouse, salvato, rimesso a posto
+    await p.click('[data-ct="drawing"]'); await p.waitForTimeout(350);
+    const bl = await p.evaluate(() => { const c = document.querySelector('#sheetHolder svg circle[r="4"]'), r = c.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, cx: +c.getAttribute('cx'), cy: +c.getAttribute('cy'), k: r.width / 8 }; });
+    await p.mouse.move(bl.x, bl.y); await p.mouse.down(); await p.mouse.move(bl.x + 20 * bl.k, bl.y + 10 * bl.k, { steps: 4 }); await p.mouse.up(); await p.waitForTimeout(200);
+    const bl2 = await p.evaluate(() => { const c = document.querySelector('#sheetHolder svg circle[r="4"]'); const all = [...document.querySelectorAll('#sheetHolder svg circle[r="4"]')].map(x => [+x.getAttribute('cx'), +x.getAttribute('cy')]); return { all, saved: Object.keys(Drawing.state().balloonPos || {}).length }; });
+    const moved = bl2.all.some(q => Math.abs(q[0] - bl.cx - 20) < 0.5 && Math.abs(q[1] - bl.cy - 10) < 0.5);
+    await p.click('#dBalloonReset'); await p.waitForTimeout(200);
+    const bl3 = await p.evaluate(() => [...document.querySelectorAll('#sheetHolder svg circle[r="4"]')].map(x => [+x.getAttribute('cx'), +x.getAttribute('cy')]));
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(200);
+    // vite nel foro con il mouse: piastra con foro, clic sulla parete; poi sezione nella tavola
+    await p.evaluate(() => { const k = Sketch.newSketch(), d = Model.newDoc(); d.name = 'Piastra'; d.material = 's235'; const pt = (x, y) => { const id = 'p' + (k.next++); k.ents.push({ id, t: 'pt', x, y }); return id; }; const P = [pt(0, 0), pt(80, 0), pt(80, 50), pt(0, 50)]; P.forEach((id, i) => k.ents.push({ id: 'l' + (k.next++), t: 'ln', a: id, b: P[(i + 1) % 4] })); k.ents.push({ id: 'c' + (k.next++), t: 'ci', c: pt(40, 25), r: 3.3 }); d.features.push({ id: 'F1', name: 'Schizzo1', type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: k }); d.features.push({ id: 'F2', name: 'Estrusione1', type: 'extrude', sketch: 'F1', end: 'blind', depth: 10 }); App.project.parts.push({ id: 'qPiastra', doc: d, drawing: null }); });
+    await p.click('[data-cmd="newAsm"]'); await p.waitForTimeout(200);
+    await insert('qPiastra');
+    await p.evaluate(() => { const a = App.r; a.setView && a.setView(GLView.Renderer.normalQ ? a.cam.q : a.cam.q); App.r.fit(); }); await p.waitForTimeout(150);
+    await p.click('[data-cmd="holeFast"]'); await p.waitForTimeout(150);
+    const wallPt = await p.evaluate(() => {
+      // un punto della parete del foro che si vede davvero: si prova attorno al foro finché la vista dà quella faccia
+      const r = document.querySelector('#view').getBoundingClientRect(), st = App.st, I = App.project.assembly.insts[0];
+      for (let y = 9.5; y > 0; y -= 0.5) for (let a = 0; a < 6.3; a += 0.2) { const w = Assembly.toWorld(I.pose, [40 + 3.3 * Math.cos(a), y, -25 + 3.3 * Math.sin(a)]), s = App.r.project(w), f = App.r.pickFace(s[0], s[1]); if (f && st.tags.get(st.body[f.poly].t).kind === 'rev') { const c = f.point; if (c[1] > 5) return { x: r.left + s[0], y: r.top + s[1] }; } }
+      return null;
+    });
+    await p.mouse.click(wallPt.x, wallPt.y); await p.waitForTimeout(200);
+    const dlg = await p.evaluate(() => ({ size: document.querySelector('#fsSize').value, info: document.querySelector('#fsHole').textContent, chamfer: document.querySelector('#fsChamfer').checked }));
+    await p.selectOption('#fsLen', '30'); await p.locator('#modalActions button', { hasText: 'Inserisci' }).click(); await p.waitForTimeout(300);
+    const hole = await p.evaluate(() => { const a = App.project.assembly, V = a.insts[1], r = App.asm.last; return { n: a.insts.length, mates: a.mates.map(m => m.type), ok: r.ok, y: V.pose.p[1], x: V.pose.p[0], z: V.pose.p[2], dof: r.dof.total, name: App.project.parts.find(q => q.id === V.part).doc.name, chamfer: App.project.parts.find(q => q.id === V.part).doc.fastener.chamfer }; });
+    const undoN = await p.evaluate(() => { App.undo(); return App.project.assembly.insts.length + ':' + App.project.assembly.mates.length; }); await p.waitForTimeout(150);
+    await p.evaluate(() => App.redo()); await p.waitForTimeout(200);
+    await p.click('[data-ct="drawing"]'); await p.waitForTimeout(350);
+    const sec = await p.evaluate(() => { const d = Drawing.state(); d.views.iso = false; d.scale = '1:1'; d.section = { view: 'front', plane: 'front', offset: -25, label: 'A' }; Drawing.invalidate && Drawing.invalidate(); Drawing.redraw(); const s = document.querySelector('#sheetHolder svg'); const L = [...s.querySelectorAll('[data-view="front"] [data-thread] line')].map(l => [+l.getAttribute('x1'), +l.getAttribute('y1'), +l.getAttribute('x2'), +l.getAttribute('y2')]); return { L, hatch: !!s.querySelector('[data-view="front"]') }; });
+    await p.screenshot({ path: path.join(OUT, 'assieme-filetto-sezione.png') });
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(100);
+    await c.close();
+    const d3 = 6 - 1.22687, k = 6;
+    const xs = sec.L.map(l => l[0]).sort((a, b) => a - b), span = xs.length ? xs[xs.length - 1] - xs[0] : 0;
+    const secOk = sec.L.length === 2 && Math.abs(span - d3) < 0.01 && Math.abs(Math.abs(sec.L[0][3] - sec.L[0][1]) - 24) < 0.01;
+    const ok = menu.join().length >= 0 && /flessibile/.test(tree) && Math.abs(flexPos.hi - 190) < 1e-6 && Math.abs(flexPos.lo - 170) < 1e-6 && flexPos.ok && Math.abs(flexPos.orig - 10) < 1e-9
+      && flexDrag.lo > 170 + 1 && Math.abs(flexDrag.yl - 10) < 1e-6 && Math.abs(flexDrag.yh - 20) < 1e-6 && Math.abs(flexDrag.base) < 1e-6
+      && intDeep.length === 1 && /Base<1>.*Cursore<1>.*2\.?400/.test(intDeep[0]) && intWhole.length === 0
+      && flyShown && flyRows.length === 4 && flyPicked.length === 1 && /Origine di Muro/.test(flyPicked[0]) && flyGone
+      && /distinta base\.csv$/.test(csv[0]) && csv[2].charCodeAt(0) === 0xFEFF && /N\.;Parte;Materiale/.test(csv[2]) && /Base;.*;1;.*,/.test(csv[2])
+      && /\(/.test(expMsg || '') && Math.abs(expStep.d[0] + Math.sin(Math.PI / 6)) < 1e-9 && Math.abs(expStep.d[1] - Math.cos(Math.PI / 6)) < 1e-9
+      && moved && bl2.saved === 1 && bl3.some(q => Math.abs(q[0] - bl.cx) < 1e-6 && Math.abs(q[1] - bl.cy) < 1e-6)
+      && dlg.size === 'M6' && dlg.chamfer && /Ø6,6/.test(dlg.info) && hole.n === 2 && hole.mates.join() === 'concentric,coincident' && hole.ok && Math.abs(hole.y - 16) < 1e-6 && Math.abs(hole.x - 40) < 1e-6 && Math.abs(hole.z + 25) < 1e-6 && hole.chamfer === true && undoN === '1:0' && secOk;
+    rec(ASMC5, ok && !errs.length, JSON.stringify({ menu, tree, flexPos, flexDrag, intDeep, intWhole, flyShown, flyRows, flyPicked, flyGone, csv: csv[0], csvT: csv[2].slice(0, 90), expMsg, expStep, moved, bl2, dlg, hole, undoN, sec: sec.L, errs }));
+  } catch (e) { rec(ASMC5, false, e.message.split('\n')[0]); }
 
   const ASMC4 = 'Più assiemi e sottoassiemi con il mouse; piani e origine scelti nella vista; salvato e riletto; eliminazione';
   try {

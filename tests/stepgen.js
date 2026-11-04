@@ -99,6 +99,23 @@ function stepBox(a, b, c, opts = {}) {
   const W = writer();
   return W.finish(opts.name || 'blocco', [boxFaces(W, a, b, c, opts.at || [0, 0, 0])], opts.unit);
 }
+// blocco 60 × 60 con la faccia alta libera: una toppa di Bézier di grado 2, che è esattamente il paraboloide z = 40 - (x² + y²) / 100
+function stepFreeTop() {
+  const W = writer(), A = 30, zOf = (i, j) => 40 - ([9, -9, 9][i] + [9, -9, 9][j]);
+  const P = (i, j) => W.pt(-A + i * A, -A + j * A, zOf(i, j));
+  const rows = [0, 1, 2].map(i => '(' + [0, 1, 2].map(j => P(i, j)).join(',') + ')');
+  const surf = W.add(`B_SPLINE_SURFACE_WITH_KNOTS('',2,2,(${rows.join(',')}),.UNSPECIFIED.,.F.,.F.,.F.,(3,3),(3,3),(0.,1.),(0.,1.),.UNSPECIFIED.)`);
+  const curve = (a, m, b) => W.add(`B_SPLINE_CURVE_WITH_KNOTS('',2,(${P(...a)},${P(...m)},${P(...b)}),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.),.UNSPECIFIED.)`);
+  const C = [[0, 0], [2, 0], [2, 2], [0, 2]], xy = c => [-A + c[0] * A, -A + c[1] * A];
+  const B = C.map(c => W.vtx([...xy(c), 0])), T = C.map(c => W.vtx([...xy(c), zOf(c[0], c[1])]));
+  const eb = C.map((c, i) => { const n = (i + 1) % 4; return W.edge(B[i], B[n], W.line([...xy(c), 0], [...xy(C[n]), 0])); });
+  const et = C.map((c, i) => { const n = (i + 1) % 4, d = C[n]; return W.edge(T[i], T[n], curve(c, [(c[0] + d[0]) / 2, (c[1] + d[1]) / 2], d)); });
+  const ev = C.map((c, i) => W.edge(B[i], T[i], W.line([...xy(c), 0], [...xy(c), zOf(c[0], c[1])])));
+  const faces = [W.face([W.outer(W.loop(et.map(e => W.oe(e, true))))], surf, true), W.face([W.outer(W.loop([3, 2, 1, 0].map(i => W.oe(eb[i], false))))], W.plane([0, 0, 0], [0, 0, -1], [1, 0, 0]), true)];
+  const N = [[0, -1, 0], [1, 0, 0], [0, 1, 0], [-1, 0, 0]], X = [[1, 0, 0], [0, 1, 0], [-1, 0, 0], [0, -1, 0]];
+  C.forEach((c, i) => { const n = (i + 1) % 4; faces.push(W.face([W.outer(W.loop([W.oe(eb[i], true), W.oe(ev[n], true), W.oe(et[i], false), W.oe(ev[i], false)]))], W.plane([...xy(c), 0], N[i], X[i]), true)); });
+  return W.finish('libera', [faces]);
+}
 // cilindro di raggio r e altezza h, asse Z, base sul piano XY
 function stepCylinder(r, h, opts = {}) {
   const W = writer();
@@ -167,4 +184,4 @@ function stepDome(R, opts = {}) {
   return W.finish(opts.name || 'cupola', [[dome, flat]], opts.unit);
 }
 
-module.exports = { stepBox, stepCylinder, stepCone, stepSphere, stepDome, stepPlateHole, stepTwoBoxes, stepTwoBoxesColored };
+module.exports = { stepFreeTop, stepBox, stepCylinder, stepCone, stepSphere, stepDome, stepPlateHole, stepTwoBoxes, stepTwoBoxesColored };

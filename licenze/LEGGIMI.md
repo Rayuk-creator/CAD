@@ -33,7 +33,7 @@ Per ricompilare: scegliere in `occt-import-js` quel commit, mettere OCCT `V7_6_1
 
 ## Lettore DWG
 
-Dentro `index.html`, in fondo alla pagina (tra i commenti «LETTORE DWG: inizio» e «fine»), c'è **LibreDWG** del progetto GNU, <https://www.gnu.org/software/libredwg/>, compilato in WebAssembly da **libredwg-web** 0.8.2, <https://github.com/mlightcad/libredwg-web>. Licenza **GNU GPL 3**, la stessa del Banco CAD (testo in `../convertitore-dwg/COPYING`).
+Dentro `index.html`, in fondo alla pagina (tra i commenti «LETTORE DWG: inizio» e «fine»), c'è **LibreDWG** del progetto GNU, <https://www.gnu.org/software/libredwg/>, compilato in WebAssembly da **libredwg-web** 0.8.2, <https://github.com/mlightcad/libredwg-web>; copia dei sorgenti al commit esatto: <https://github.com/Rayuk-creator/libredwg-web/tree/45a2a217f4916daddd7bd598c900d6c698d141b6>. Licenza **GNU GPL 3**, la stessa del Banco CAD (testo in `../convertitore-dwg/COPYING`).
 
 È identico a quello del Convertitore DWG → DXF. Versione, impronte SHA-256, sorgenti e l'unica modifica (memoria iniziale 16 MB invece di 1 GB) sono in `../convertitore-dwg/LEGGIMI.md`. Per aggiornarlo: `node convertitore-dwg/incorpora-libredwg.js <cartella wasm>`, poi `node tools/copia-lettore-dwg.js`.
 

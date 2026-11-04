@@ -65,7 +65,7 @@ let html = fs.readFileSync(page, 'utf8');
 const START = '<!-- LETTORE DWG: inizio -->', END = '<!-- LETTORE DWG: fine -->';
 const block = START + '\n' +
   '<!-- LibreDWG (https://www.gnu.org/software/libredwg/) compilato in WebAssembly da libredwg-web\n' +
-  '     (https://github.com/mlightcad/libredwg-web), licenza GNU GPL 3: testo in COPYING, sorgenti e versione in LEGGIMI.md.\n' +
+  '     (https://github.com/mlightcad/libredwg-web; copia dei sorgenti: https://github.com/Rayuk-creator/libredwg-web/tree/45a2a217f4916daddd7bd598c900d6c698d141b6), licenza GNU GPL 3: testo in COPYING, sorgenti e versione in LEGGIMI.md.\n' +
   '     wasm originale sha256 ' + sha(wasm0) + ', js sha256 ' + sha(Buffer.from(js)) + '\n' +
   '     memoria iniziale ridotta da ' + low.before * 64 / 1024 + ' MB a ' + low.after * 64 / 1024 + ' MB (cresce da sola fino a ' + low.max * 64 / 1024 + ' MB): wasm incorporato sha256 ' + sha(wasm) + ' -->\n' +
   '<script id="dwgJs" type="text/plain">' + js + '</script>\n' +
