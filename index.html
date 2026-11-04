@@ -6750,7 +6750,13 @@ self.postMessage({ hello: true });`;
     for (const p of st.body) for (const v of p.v) for (let k = 0; k < 3; k++) { if (v[k] < mn[k]) mn[k] = v[k]; if (v[k] > mx[k]) mx[k] = v[k]; }
     const empty = !st.body.length;
     if (empty) { mn = [0, 0, 0]; mx = [0, 0, 0]; }
-    return { st, bbox: { mn, mx }, c: mul(add(mn, mx), 0.5), r: len(sub(mx, mn)) / 2, empty, ents: new Map(), used: new Set(st.body.map(p => p.t)) };
+    // piani creati nella parte (quelli che esistono davvero a questo punto dell'albero), con il loro nome
+    const planes = doc.features.filter(f => f.type === 'plane' && st.planes.has(f.id)).map(f => ({ id: f.id, name: f.name }));
+    return { st, planes, bbox: { mn, mx }, c: mul(add(mn, mx), 0.5), r: len(sub(mx, mn)) / 2, empty, ents: new Map(), used: new Set(st.body.map(p => p.t)) };
+  }
+  // piani e origine di una parte, che si possono usare negli accoppiamenti
+  function datumsOf(info) {
+    return [...Object.keys(Model.STD_PLANES).map(id => ({ k: 'plane', id, name: Model.STD_PLANES[id].name })), ...info.planes.map(p => ({ k: 'plane', id: p.id, name: p.name })), { k: 'origin', name: 'Origine' }];
   }
 
   /* ---------------- elementi geometrici ---------------- */
@@ -6807,9 +6813,148 @@ self.postMessage({ hello: true });`;
     const E = eig3(M), tr = E[0].val + E[1].val + E[2].val;
     if (!(tr > 0) || E[0].val / tr > 1e-4) return null;
     const d = norm(E[0].vec);
-    const c = circleFit(pts, d, 2e-3);
+    // i vertici stanno esattamente sulla superficie: uno scarto più grande vuol dire un'altra superficie (un cono con poco sformo)
+    const c = circleFit(pts, d, 1e-4);
     if (!c) return null;
     return { t: 'axis', o: c.c, d, round: true, R: c.R };
+  }
+  // sistema lineare n×n (eliminazione con il pivot più grande); null se è singolare
+  function solveLinear(A, b) {
+    const n = b.length, M = A.map((r, i) => [...r, b[i]]);
+    let big = 0; for (const r of A) for (const v of r) big = Math.max(big, Math.abs(v));
+    for (let i = 0; i < n; i++) {
+      let pv = i; for (let k = i + 1; k < n; k++) if (Math.abs(M[k][i]) > Math.abs(M[pv][i])) pv = k;
+      [M[i], M[pv]] = [M[pv], M[i]];
+      if (!(Math.abs(M[i][i]) > 1e-14 * big)) return null;
+      for (let k = 0; k < n; k++) if (k !== i) { const f = M[k][i] / M[i][i]; if (f) for (let j = i; j <= n; j++) M[k][j] -= f * M[i][j]; }
+    }
+    return M.map((r, i) => r[n] / r[i]);
+  }
+  // i vertici diversi dei triangoli di una faccia
+  function facePoints(polys) {
+    const seen = new Map();
+    for (const p of polys) for (const v of p.v) { const k = v[0] + ',' + v[1] + ',' + v[2]; if (!seen.has(k)) seen.set(k, v); }
+    return [...seen.values()];
+  }
+  const polyArea = p => { let A = 0; for (let i = 1; i < p.v.length - 1; i++) A += len(cross(sub(p.v[i], p.v[0]), sub(p.v[i + 1], p.v[0]))); return A / 2; };
+  // scarto massimo ammesso tra i vertici e la superficie riconosciuta, rispetto alla sua dimensione: i vertici di uno STEP stanno
+  // sulla superficie vera, quindi basta poco; una superficie diversa (toro, spline) resta fuori
+  const FIT_TOL = 2e-5;
+  /* faccia di un file STEP o IGES in cui le normali dei triangoli non sono tutte uguali: può essere piana lo stesso, se è di traverso
+     (le coordinate sono arrotondate e le normali dei triangoli piccoli sbagliano di più di quanto serve a dire «curva»). Decidono i vertici */
+  function fitPlane(polys) {
+    const pts = facePoints(polys);
+    let g = [0, 0, 0]; for (const p of pts) g = add(g, p); g = mul(g, 1 / pts.length);
+    const S = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    let size = 0;
+    for (const p of pts) { const r = sub(p, g); size = Math.max(size, len(r)); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) S[i][j] += r[i] * r[j]; }
+    let n = norm(eig3(S)[0].vec);
+    for (const p of pts) if (Math.abs(dot(n, sub(p, g))) > FIT_TOL * size) return null;
+    let avg = [0, 0, 0]; for (const p of polys) avg = add(avg, mul(p.p.n, polyArea(p)));
+    if (dot(avg, n) < 0) n = mul(n, -1);
+    return { t: 'plane', c: g, n };
+  }
+  /* faccia curva di un file STEP o IGES: è una sfera? Minimi quadrati sui vertici: x²+y²+z² = 2·c·p + e. Attenzione: i vertici di due
+     cerchi stanno sempre su una sfera, quindi cilindri e coni vanno provati prima */
+  function fitSphere(polys) {
+    const pts = facePoints(polys);
+    if (pts.length < 5) return null;
+    let g = [0, 0, 0]; for (const p of pts) g = add(g, p); g = mul(g, 1 / pts.length);
+    const N = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], b = [0, 0, 0, 0];
+    const S = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (const p of pts) {
+      const r = sub(p, g), row = [2 * r[0], 2 * r[1], 2 * r[2], 1], q = dot(r, r);
+      for (let i = 0; i < 4; i++) { for (let j = 0; j < 4; j++) N[i][j] += row[i] * row[j]; b[i] += row[i] * q; }
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) S[i][j] += r[i] * r[j];
+    }
+    const x = solveLinear(N, b);
+    if (!x) return null;
+    const c0 = [x[0], x[1], x[2]], R = Math.sqrt(Math.max(0, x[3] + dot(c0, c0)));
+    if (!(R > 0)) return null;
+    // tutti i punti quasi su un piano: il centro non sarebbe determinato
+    if (Math.sqrt(Math.max(eig3(S)[0].val, 0) / pts.length) < 1e-3 * R) return null;
+    for (const p of pts) if (Math.abs(len(sub(sub(p, g), c0)) - R) > FIT_TOL * R) return null;
+    return { t: 'point', p: add(g, c0), sphere: true, R };
+  }
+  /* faccia curva di un file STEP o IGES: è un cono? L'asse iniziale viene dalle normali (stanno su un cerchio attorno all'asse), il suo
+     punto dalle rette delle normali (lo incontrano tutte). Poi Gauss-Newton sui vertici: raggio = r0 + k·altezza, con 6 incognite
+     (2 del punto, 2 della direzione, r0, k). Verso dell'asse: il raggio cresce lungo d. tan = tangente del semiangolo */
+  function fitCone(polys) {
+    const pts = facePoints(polys);
+    if (pts.length < 6) return null;
+    let gn = [0, 0, 0], W = 0, gp = [0, 0, 0];
+    const ar = polys.map(polyArea);
+    polys.forEach((p, i) => { gn = add(gn, mul(p.p.n, ar[i])); W += ar[i]; });
+    if (!(W > 0)) return null;
+    gn = mul(gn, 1 / W);
+    const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    polys.forEach((p, k) => { const r = sub(p.p.n, gn); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M[i][j] += ar[k] * r[i] * r[j]; });
+    const E = eig3(M), tr = E[0].val + E[1].val + E[2].val;
+    if (!(tr > 0)) return null;
+    let d = norm(E[0].vec);
+    const [u0, v0] = perpBasis(d);
+    for (const p of pts) gp = add(gp, p);
+    gp = mul(gp, 1 / pts.length);
+    // scala: tutto in unità della dimensione della faccia, così le 6 incognite sono confrontabili
+    let size = 0; for (const p of pts) size = Math.max(size, len(sub(p, gp)));
+    if (!(size > 0)) return null;
+    const Q = pts.map(p => mul(sub(p, gp), 1 / size));
+    let a11 = 0, a12 = 0, a22 = 0, b1 = 0, b2 = 0;
+    polys.forEach((p, k) => {
+      let c = [0, 0, 0]; for (const v of p.v) c = add(c, v); c = mul(sub(mul(c, 1 / p.v.length), gp), 1 / size);
+      let tu = dot(p.p.n, u0), tv = dot(p.p.n, v0); const tl = Math.hypot(tu, tv);
+      if (!(tl > 1e-9)) return;
+      tu /= tl; tv /= tl;
+      const x = dot(c, u0), y = dot(c, v0), w = ar[k];
+      a11 += w * (1 - tu * tu); a12 += w * (-tu * tv); a22 += w * (1 - tv * tv);
+      b1 += w * ((1 - tu * tu) * x - tu * tv * y); b2 += w * (-tu * tv * x + (1 - tv * tv) * y);
+    });
+    const x0 = solveLinear([[a11, a12], [a12, a22]], [b1, b2]);
+    if (!x0) return null;
+    const dirOf6 = x => norm(add(d, add(mul(u0, x[2]), mul(v0, x[3]))));
+    const residual = x => {
+      const dd = dirOf6(x), o = add(mul(u0, x[0]), mul(v0, x[1]));
+      return Q.map(p => { const q = sub(p, o), h = dot(q, dd); return len(sub(q, mul(dd, h))) - (x[4] + x[5] * h); });
+    };
+    // r0 e k iniziali: retta dei raggi rispetto all'altezza
+    const x = [x0[0], x0[1], 0, 0, 0, 0];
+    {
+      const o = add(mul(u0, x[0]), mul(v0, x[1]));
+      let sh = 0, sr = 0, shh = 0, shr = 0;
+      for (const p of Q) { const q = sub(p, o), h = dot(q, d), r = len(sub(q, mul(d, h))); sh += h; sr += r; shh += h * h; shr += h * r; }
+      const n = Q.length, den = n * shh - sh * sh;
+      if (!(den > 1e-12)) return null;
+      x[5] = (n * shr - sh * sr) / den; x[4] = (sr - x[5] * sh) / n;
+    }
+    const sum = r => r.reduce((a, v) => a + v * v, 0);
+    let r0 = residual(x), e0 = sum(r0);
+    for (let it = 0; it < 30 && e0 > 1e-26 * Q.length; it++) {
+      const J = [];
+      for (let k = 0; k < 6; k++) {
+        const hk = 1e-6, xp = x.slice(), xm = x.slice(); xp[k] += hk; xm[k] -= hk;
+        const rp = residual(xp), rm = residual(xm);
+        J.push(rp.map((v, i) => (v - rm[i]) / (2 * hk)));
+      }
+      const A = J.map(a => J.map(b => { let c = 0; for (let i = 0; i < a.length; i++) c += a[i] * b[i]; return c; }));
+      const g = J.map(a => { let c = 0; for (let i = 0; i < a.length; i++) c -= a[i] * r0[i]; return c; });
+      const st = solveLinear(A, g);
+      if (!st) return null;
+      let done = false;
+      for (let al = 1, t = 0; t < 12; al *= 0.5, t++) {
+        const y = x.map((v, i) => v + al * st[i]), ry = residual(y), ey = sum(ry);
+        if (ey < e0) { for (let i = 0; i < 6; i++) x[i] = y[i]; r0 = ry; e0 = ey; done = true; break; }
+      }
+      if (!done) break;
+    }
+    let dd = dirOf6(x), k = x[5];
+    const oL = add(mul(u0, x[0]), mul(v0, x[1]));
+    let mx = 0; for (const p of Q) { const q = sub(p, oL), h = dot(q, dd); mx = Math.max(mx, len(sub(q, mul(dd, h)))); }
+    for (const v of r0) if (Math.abs(v) > FIT_TOL * mx) return null;
+    // punto dell'asse vicino alla faccia, apice dove il raggio si annulla
+    if (!(Math.abs(k) > 1e-9)) return null;
+    const o = add(gp, mul(oL, size)), apex = add(o, mul(dd, -x[4] / k * size));
+    if (k < 0) { dd = mul(dd, -1); k = -k; }
+    return { t: 'axis', o, d: dd, round: true, cone: true, tan: k, apex };
   }
   function distPtSeg(p, a, b) {
     const ab = sub(b, a), L2 = dot(ab, ab);
@@ -6873,25 +7018,28 @@ self.postMessage({ hello: true });`;
   }
   /* elemento nelle coordinate della parte:
      { t: 'plane', c, n }                    faccia piana (punto e normale uscente)
-     { t: 'axis', o, d, round, circle, R }   asse di una faccia di rivoluzione, cerchio (circle) oppure spigolo rettilineo (round falso)
-     { t: 'point', p, sphere }               vertice, oppure centro di una sfera
+     { t: 'axis', o, d, round, circle, R }   asse di una faccia di rivoluzione (cone se è un cono), cerchio (circle) oppure spigolo rettilineo (round falso)
+     { t: 'point', p, sphere, origin }       vertice, centro di una sfera, oppure origine della parte
+     Un piano della parte ha anche datum, name, x, y: il suo nome e le sue direzioni.
      { err }                                 elemento perso o senza geometria utile */
   function computeEntity(ref, info) {
     const st = info.st;
     if (info.empty) return { err: 'La parte non ha un solido.' };
-    if (ref.k === 'vertex') {
-      let best = Infinity;
-      for (const v of st.topo.verts) { const d = len(sub(v, ref.p)); if (d < best) best = d; }
-      if (best > 1e-4) return { err: 'Il vertice scelto non esiste più nella parte.' };
-      return { t: 'point', p: ref.p.slice() };
+    if (ref.k === 'origin') return { t: 'point', p: [0, 0, 0], origin: true };
+    if (ref.k === 'plane') {
+      const std = Model.STD_PLANES[ref.id], F = std ? std.F : st.planes.get(ref.id);
+      if (!F) return { err: 'Il piano scelto non esiste più nella parte.' };
+      return { t: 'plane', c: F.o.slice(), n: F.z.slice(), x: F.x.slice(), y: F.y.slice(), datum: true, name: std ? std.name : (info.planes.find(p => p.id === ref.id) || {}).name || 'Piano' };
     }
+    if (ref.k === 'vertex') return vertexEntity(ref, info);
     if (ref.k === 'edge') return edgeEntity(ref, info);
     const tg = st.tags.byName.get(ref.name);
     if (!tg || !info.used.has(tg.id)) return { err: 'La faccia scelta non esiste più nella parte.' };
     if (tg.kind === 'rev') {
       const d = norm(tg.d);
       if (tg.prof && tg.prof.pt === 'arc' && Math.abs(tg.prof.rc) < 1e-9) return { t: 'point', p: add(tg.o, mul(d, tg.prof.zc)), sphere: true, R: tg.prof.a };
-      return { t: 'axis', o: tg.o.slice(), d, round: true, R: tg.R };
+      const cone = !!tg.prof && tg.prof.pt === 'line' && Math.abs(tg.prof.r1 - tg.prof.r0) > 1e-9;
+      return { t: 'axis', o: tg.o.slice(), d, round: true, R: tg.R, cone };
     }
     if (tg.kind !== 'plane') return { err: 'Questa faccia non si può usare in un accoppiamento.' };
     if (tg.mesh && tg.bf !== undefined) {
@@ -6899,21 +7047,57 @@ self.postMessage({ hello: true });`;
       const polys = st.body.filter(p => { const t = st.tags.get(p.t); return t.bf === tg.bf && t.feature === tg.feature; });
       const n0 = polys[0].p.n;
       if (polys.some(p => len(cross(p.p.n, n0)) > 1e-6)) {
-        return fitCylinder(polys) || { err: 'Questa faccia curva non è un cilindro: per l\'accoppiamento usa una faccia piana, un cilindro, un vertice o uno spigolo.' };
+        return fitPlane(polys) || fitCylinder(polys) || fitCone(polys) || fitSphere(polys) || { err: 'Questa faccia curva non è un cilindro, un cono o una sfera: per l\'accoppiamento usa un altro elemento della parte.' };
       }
     }
     return { t: 'plane', c: mul(tg.n, tg.w), n: tg.n.slice() };
+  }
+  /* vertice: si riconosce dalle facce che ci si incontrano (nomi delle facce, che restano quando cambiano le misure). Tra i vertici che
+     hanno tutte quelle facce vince chi ha proprio quelle, poi il più vicino all'ultima posizione conosciuta. Se le facce non si trovano più
+     (o il riferimento è di un progetto vecchio, senza facce) vale la posizione. Le facce di un corpo importato non si seguono: il corpo non cambia */
+  function vertexFaces(info) {
+    if (info.vfaces) return info.vfaces;
+    const st = info.st, out = st.topo.verts.map(() => new Set());
+    st.topo.polyVerts.forEach((pv, i) => {
+      const tg = st.tags.get(st.body[i].t);
+      for (const v of pv) out[v].add(tg.mesh ? null : tg.name);
+    });
+    info.vfaces = out;
+    return out;
+  }
+  function vertexEntity(ref, info) {
+    const V = info.st.topo.verts, F = vertexFaces(info);
+    let best = -1, rank = Infinity, bd = Infinity;
+    if (ref.faces && ref.faces.length) {
+      for (let i = 0; i < V.length; i++) {
+        if (!ref.faces.every(n => F[i].has(n))) continue;
+        const rk = F[i].size === ref.faces.length ? 0 : 1, d = len(sub(V[i], ref.p));
+        if (rk < rank || (rk === rank && d < bd)) { best = i; rank = rk; bd = d; }
+      }
+    }
+    if (best < 0) {
+      for (let i = 0; i < V.length; i++) { const d = len(sub(V[i], ref.p)); if (d < bd) { bd = d; best = i; } }
+      if (best < 0 || bd > 1e-4) return { err: 'Il vertice scelto non esiste più nella parte.' };
+    }
+    const names = [...F[best]];
+    return { t: 'point', p: V[best].slice(), faces: names.length >= 2 && !names.includes(null) ? names.sort() : null };
   }
   function entityOf(ref, info) {
     if (!info) return { err: 'La parte di questo componente non esiste più.' };
     const key = JSON.stringify(ref);
     let e = info.ents.get(key);
     if (!e) { const { inst, ...plain } = ref; e = computeEntity(plain, info); info.ents.set(key, e); }
+    // il vertice ritrovato aggiorna il riferimento: posizione e facce sono quelle di adesso
+    if (ref.k === 'vertex' && !e.err) {
+      ref.p = e.p.slice();
+      if (e.faces) ref.faces = e.faces.slice(); else delete ref.faces;
+      info.ents.set(JSON.stringify(ref), e);
+    }
     return e;
   }
   function worldEnt(E, pose) {
     if (E.t === 'plane') return { t: 'plane', c: toWorld(pose, E.c), n: dirWorld(pose, E.n) };
-    if (E.t === 'axis') return { t: 'axis', o: toWorld(pose, E.o), d: dirWorld(pose, E.d), round: E.round, circle: E.circle, R: E.R };
+    if (E.t === 'axis') return { t: 'axis', o: toWorld(pose, E.o), d: dirWorld(pose, E.d), round: E.round, circle: E.circle, R: E.R, cone: E.cone };
     return { t: 'point', p: toWorld(pose, E.p), sphere: E.sphere, R: E.R };
   }
 
@@ -6935,6 +7119,7 @@ self.postMessage({ hello: true });`;
   function suggest(A, B) {
     if (A.t === 'axis' && B.t === 'axis' && A.round && B.round) return 'concentric';
     if (A.sphere && B.sphere) return 'concentric';
+    if ((A.sphere && B.t === 'axis' && B.round) || (B.sphere && A.t === 'axis' && A.round)) return 'concentric';
     return 'coincident';
   }
   const dirOf = E => E.t === 'plane' ? E.n : E.d;
@@ -7325,7 +7510,7 @@ self.postMessage({ hello: true });`;
     return { body, bodies, bodySeq: bodies.length, tags, topo, frames: new Map(), errors: new Map(), warn: new Map(), info: new Map(), holes: [], tools: new Map(), isAssembly: true };
   }
 
-  const api = { newAssembly, addInst, uid, instLabel, partInfo, identity, toWorld, toLocal, dirWorld, entityOf, worldEnt, MATE_TYPES, MATE_LABEL, allowedTypes, suggest, mateDefaults, mateRows, solve, solveStatus, drag, scene, qexp, qmul, qnorm, qrot, moved, fitCylinder };
+  const api = { newAssembly, addInst, uid, instLabel, partInfo, datumsOf, identity, toWorld, toLocal, dirWorld, entityOf, worldEnt, MATE_TYPES, MATE_LABEL, allowedTypes, suggest, mateDefaults, mateRows, solve, solveStatus, drag, scene, qexp, qmul, qnorm, qrot, moved, fitCylinder, fitCone, fitSphere };
   if (isNode) module.exports = api; else root.Assembly = api;
 })(this);
 
@@ -10334,7 +10519,7 @@ self.postMessage({ hello: true });`;
       const st = App.st;
       return { inst: inst.id, k: 'edge', a: st.tags.byName.get(it.ref.a).src, b: st.tags.byName.get(it.ref.b).src, p: Assembly.toLocal(pose, it.ref.p) };
     }
-    const ITEM_LABEL = E => E.t === 'plane' ? 'Faccia piana' : E.t === 'point' ? (E.sphere ? 'Sfera' : 'Vertice') : !E.round ? 'Spigolo rettilineo' : E.circle ? 'Spigolo circolare' : 'Faccia cilindrica';
+    const ITEM_LABEL = E => E.datum ? E.name : E.origin ? 'Origine' : E.t === 'plane' ? 'Faccia piana' : E.t === 'point' ? (E.sphere ? 'Sfera' : 'Vertice') : !E.round ? 'Spigolo rettilineo' : E.circle ? 'Spigolo circolare' : E.cone ? 'Faccia conica' : 'Faccia cilindrica';
     function openMate(edit) {
       const real = asm();
       if (real.insts.length < 2) { toast('Servono almeno due componenti: premi Inserisci parte.'); return; }
@@ -10344,6 +10529,18 @@ self.postMessage({ hello: true });`;
       const ent = (r, a) => { const i = a.insts.find(x => x.id === r.inst); return { L: Assembly.entityOf(r, infos.get(i.part)), W: null, i }; };
       const world = r => { const e = ent(r, real); return Assembly.worldEnt(e.L, e.i.pose); };
       const setDefaults = () => { const d = Assembly.mateDefaults(S.type, world(S.a), world(S.b)); S.s = d.s; S.side = d.side; S.value = Math.round(d.value * 1e6) / 1e6; };
+      // un elemento scelto, nella vista (it) o tra i piani e l'origine del pannello
+      function addRef(ref, it) {
+        const inst = real.insts.find(i => i.id === ref.inst);
+        const E = Assembly.entityOf(ref, infos.get(inst.part));
+        if (E.err) { toast(E.err); return; }
+        const keep = S.a || S.b;
+        if (keep && keep.inst === ref.inst) { toast('Scegli un elemento di un altro componente: questo è nello stesso.'); return; }
+        if (!S.a) { S.a = ref; S.ia = it; }
+        else { S.b = ref; S.ib = it; }
+        update(true);
+        App.recolor();
+      }
       function update(resetDefaults) {
         S.ok = false; S.msg = ''; S.tmp = null;
         if (!S.a || !S.b) { show(base()); App.refreshPM(); return; }
@@ -10365,7 +10562,7 @@ self.postMessage({ hello: true });`;
         App.refreshPM();
       }
       const pm = {
-        title: 'Accoppiamento', icon: 'mate', hint: 'Fai clic su due elementi di due componenti diversi: facce, spigoli o vertici.',
+        title: 'Accoppiamento', icon: 'mate', hint: 'Fai clic su due elementi di due componenti diversi: facce, spigoli o vertici. I piani e l\'origine si scelgono nel pannello.',
         filter: ['vertex', 'edge', 'face'],
         build(b) {
           const box = el('div', { class: 'selbox active' });
@@ -10376,6 +10573,25 @@ self.postMessage({ hello: true });`;
             box.append(el('span', { class: 'chip' }, (L.err ? 'Elemento' : ITEM_LABEL(L)) + ' di ' + label(i), el('button', { type: 'button', 'aria-label': 'Togli', onclick: () => { S[k] = null; S['i' + k] = null; update(); App.recolor(); } }, '×')));
           }
           b.append(el('div', { class: 'grp' }, el('h3', {}, 'Elementi da accoppiare'), box));
+          // piani e origine: non si vedono nella vista, si scelgono da qui
+          const taken = (S.a || S.b || {}).inst;
+          const cands = real.insts.filter(i => { const inf = infos.get(i.part); return inf && !inf.empty && i.id !== taken; });
+          if (cands.length) {
+            if (!cands.some(i => i.id === S.datum)) S.datum = cands[0].id;
+            const pickI = cands.find(i => i.id === S.datum);
+            const sel = el('select', { id: 'asmDatumInst', 'aria-label': 'Componente' }, ...cands.map(i => el('option', { value: i.id }, label(i))));
+            sel.value = S.datum;
+            sel.addEventListener('change', () => { S.datum = sel.value; S.hov = null; App.refreshPM(); App.redraw(); });
+            const dr = el('div', { class: 'btnrow asm-datums' });
+            for (const d of Assembly.datumsOf(infos.get(pickI.part))) {
+              const ref = d.k === 'origin' ? { inst: pickI.id, k: 'origin' } : { inst: pickI.id, k: 'plane', id: d.id };
+              const bt = el('button', { class: 'relbtn', type: 'button', 'data-datum': d.k === 'origin' ? 'origin' : d.id, onclick: () => { S.hov = null; addRef(ref, null); } }, d.name);
+              bt.addEventListener('mouseenter', () => { S.hov = ref; App.redraw(); });
+              bt.addEventListener('mouseleave', () => { S.hov = null; App.redraw(); });
+              dr.append(bt);
+            }
+            b.append(el('div', { class: 'grp', id: 'asmDatums' }, el('h3', {}, 'Piani e origine'), sel, dr));
+          }
           const both = S.a && S.b, A = both && ent(S.a, real).L, B = both && ent(S.b, real).L;
           const allowed = both && !A.err && !B.err ? Assembly.allowedTypes(A, B) : [];
           const g = el('div', { class: 'grp' }, el('h3', {}, 'Tipo'));
@@ -10407,15 +10623,7 @@ self.postMessage({ hello: true });`;
         pick(it) {
           if (!it) return;
           const inst = instOfItem(it); if (!inst) return;
-          const ref = refOf(it, shown || real);
-          const E = Assembly.entityOf(ref, infos.get(inst.part));
-          if (E.err) { toast(E.err); return; }
-          const other = !S.a ? null : S.a.inst === ref.inst ? 'a' : 'b';
-          if (!S.a) { S.a = ref; S.ia = it; }
-          else if (other === 'a') { toast('Scegli un elemento di un altro componente: questo è nello stesso.'); return; }
-          else { S.b = ref; S.ib = it; }
-          update(true);
-          App.recolor();
+          addRef(refOf(it, shown || real), it);
         },
         highlight() { return [S.ia, S.ib, ...(edit ? faceItems({ a: S.a || { k: 'x' }, b: S.b || { k: 'x' } }) : [])].filter(x => x && x.kind !== 'vertex'); },
         overlay(c) {
@@ -10423,6 +10631,17 @@ self.postMessage({ hello: true });`;
           if (App.hover && App.hover.kind === 'vertex') dot2(App.hover.p, '#f39c12');
           const a = shown || real;
           for (const r of [S.a, S.b]) if (r && (r.k === 'vertex' || r.k === 'edge')) { const i = a.insts.find(x => x.id === r.inst); if (i) dot2(Assembly.toWorld(i.pose, r.p), '#2e78e0'); }
+          // piani e origine: si disegnano quando sono scelti e quando il mouse è sul loro pulsante
+          const drawDatum = (r, col) => {
+            const i = a.insts.find(x => x.id === r.inst), info = i && infos.get(i.part), L = info && Assembly.entityOf(r, info);
+            if (!L || L.err) return;
+            if (r.k === 'origin') { dot2(Assembly.toWorld(i.pose, [0, 0, 0]), col); return; }
+            const h = Math.max(info.r * 1.15, 10), off = sub(sub(info.c, mul(L.n, dot(L.n, sub(info.c, L.c)))), L.c);
+            const q = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => App.r.project(Assembly.toWorld(i.pose, add(L.c, add(off, add(mul(L.x, u * h), mul(L.y, v * h)))))));
+            c.beginPath(); q.forEach((w, k) => (k ? c.lineTo(w[0], w[1]) : c.moveTo(w[0], w[1]))); c.closePath();
+            c.save(); c.globalAlpha = 0.16; c.fillStyle = col; c.fill(); c.globalAlpha = 1; c.strokeStyle = col; c.lineWidth = 1.5; c.stroke(); c.restore();
+          };
+          for (const r of [S.a, S.b, S.hov]) if (r && (r.k === 'plane' || r.k === 'origin')) drawDatum(r, r === S.hov ? '#f39c12' : '#2e78e0');
         },
         ok() {
           if (!S.a || !S.b) { toast('Scegli due elementi, oppure premi la X per uscire.'); return false; }
@@ -15147,6 +15366,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Assieme', 'Parte fissa', ['fissa', 'libera', '(f)', 'componente fisso'], 'Un componente che non si muove: gli altri si sistemano rispetto a lui. Nell\'albero ha (f) davanti al nome. La prima parte inserita è fissa; con il tasto destro si sceglie Fissa o Libera.'],
     ['Assieme', 'Accoppiamento', ['accoppiamenti', 'mate', 'mates'], 'Un legame tra due elementi di due componenti (facce, spigoli o vertici). Ogni accoppiamento toglie gradi di libertà: il risolutore sposta i componenti liberi il meno possibile per rispettarli tutti.'],
     ['Assieme', 'Tipo di accoppiamento', ['elementi da accoppiare'], 'Il modo in cui si legano i due elementi scelti: coincidente, concentrico, parallelo, perpendicolare, distanza o angolo. Sono attivi solo i tipi possibili con quegli elementi.'],
+    ['Assieme', 'Piani e origine', ['piano del componente', 'origine del componente', 'piani della parte'], 'I tre piani standard della parte (frontale, superiore, destro), i piani che hai creato e la sua origine, usati in un accoppiamento. Non si vedono nella vista: si scelgono nel pannello Accoppiamento, e il piano si disegna quando il mouse è sul suo pulsante. Un piano si comporta come una faccia, ma non ha un lato «fuori»: Inverti allineamento lo gira. L\'origine si comporta come un vertice.'],
+    ['Assieme', 'Vertice dell\'accoppiamento', ['vertice ritrovato', 'punto esclamativo'], 'Un vertice scelto in un accoppiamento è ricordato con le facce che si incontrano lì. Se cambiano le misure della parte, il programma cerca il vertice con quelle facce, il più vicino a dov\'era. Se quel vertice non c\'è più, per esempio dopo uno smusso proprio lì, l\'accoppiamento ha il punto esclamativo. In un corpo importato vale la posizione, perché il corpo non cambia.'],
     ['Assieme', 'Accoppiamento coincidente', [], 'Due elementi nello stesso posto: due facce sullo stesso piano, un vertice su una faccia, due spigoli sulla stessa retta, due vertici nello stesso punto. Due spigoli circolari: stesso centro e stesso piano.'],
     ['Assieme', 'Accoppiamento concentrico', [], 'Due elementi rotondi sullo stesso asse: cilindri, coni, spigoli circolari. Tra due sfere: stesso centro. Con un vertice: il vertice sta sull\'asse.'],
     ['Assieme', 'Accoppiamento parallelo', [], 'Due facce, due spigoli rettilinei o assi, o una faccia e uno spigolo, paralleli tra loro. Non fissa la distanza.'],
@@ -16825,6 +17046,198 @@ ASM.push(['Faccia sparita: la cima del blocco è tolta tutta da un taglio: il no
   const r = Assembly.solve(asm, infos);
   return eqs([Geom.massProps(inf.st.body, inf.st.tags).volume, inf.st.tags.byName.has(top.name) ? 1 : 0, r.status.get(m.id).ok ? 1 : 0, /non esiste più/.test(r.status.get(m.id).err || '') ? 1 : 0], [32000, 1, 0, 1], 1e-3);
 }]);
+// piani e origine delle parti: blocco 80×50×10 (x 0..80, y 0..10, z -50..0), origine in un suo angolo
+const asmPl = id => ({ k: 'plane', id }), asmOr = { k: 'origin' };
+ASM.push(['Piano frontale su piano frontale: B resta parallelo a Z = 0 (z -50..0), x e y non cambiano; 3 gradi di libertà', () => {
+  const t = twoBlocks(); asmMate(t.asm, t.infos, 'coincident', t.A, asmPl('front'), t.B, asmPl('front'));
+  const r = Assembly.solve(t.asm, t.infos);
+  return eqs([...asmBox(t.asm, t.infos, t.B), r.dof.total, r.ok ? 1 : 0], [200, 50, -50, 280, 60, 0, 3, 1]);
+}]);
+ASM.push(['I tre piani coincidenti: B esattamente sopra A con la posizione di A (fermo in 10, 20, 30 e girato di 30° attorno a Y): 0 gradi di libertà', () => {
+  const docs = { a: box(), b: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const qa = rotY(Math.PI / 6);
+  const A = Assembly.addInst(asm, 'a', { pose: asmPose([10, 20, 30], qa) }), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  for (const id of ['front', 'top', 'right']) asmMate(asm, infos, 'coincident', A, asmPl(id), B, asmPl(id), { s: 1 });
+  const r = Assembly.solve(asm, infos);
+  // angolo x = 80 della parte: x' = 10 + 80·cos30, z' = 30 − 80·sin30 (rotazione attorno a Y)
+  const P = Assembly.toWorld(B.pose, [80, 0, 0]), c = Math.cos(Math.PI / 6);
+  return eqs([...P, r.dof.total, r.ok ? 1 : 0], [10 + 80 * c, 20, 30 - 40, 0, 1]);
+}]);
+ASM.push(['Origine su origine: origine di B nel punto (10, 20, 30) di A fermo, B può solo girare: 3 gradi di libertà', () => {
+  const docs = { a: box(), b: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a', { pose: asmPose([10, 20, 30]) }), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  asmMate(asm, infos, 'coincident', A, asmOr, B, asmOr);
+  const r = Assembly.solve(asm, infos), O = Assembly.toWorld(B.pose, [0, 0, 0]);
+  return eqs([...O, r.dof.total, r.ok ? 1 : 0], [10, 20, 30, 3, 1]);
+}]);
+ASM.push(['Origine su una faccia e su un piano: faccia in alto di A (y = 10) e piano destro di A (x = 0): origine di B in x = 0, y = 10; 4 gradi di libertà', () => {
+  const t = twoBlocks();
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmOr);
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmPl('right'), t.B, asmOr);
+  const r = Assembly.solve(t.asm, t.infos), O = Assembly.toWorld(t.B.pose, [0, 0, 0]);
+  return eqs([O[0], O[1], r.dof.total, r.ok ? 1 : 0], [0, 10, 4, 1]);
+}]);
+ASM.push(['Origine sull\'asse del foro: l\'origine del perno va sull\'asse (x 40, z -25); 4 gradi di libertà', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 7, 60]) });
+  asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmOr);
+  const r = Assembly.solve(asm, infos), O = Assembly.toWorld(B.pose, [0, 0, 0]);
+  return eqs([O[0], O[2], r.dof.total, r.ok ? 1 : 0], [40, -25, 4, 1]);
+}]);
+ASM.push(['Distanza 35 tra piano superiore di A e faccia di base di B: y di B 35..45; col lato invertito -35..-25', () => {
+  const t = twoBlocks();
+  const m = asmMate(t.asm, t.infos, 'distance', t.A, asmPl('top'), t.B, asmFace(t.docs.b, DN, 0), { value: 35, s: -1, side: 1 });
+  Assembly.solve(t.asm, t.infos); const b1 = asmBox(t.asm, t.infos, t.B);
+  m.side = -1; const r = Assembly.solve(t.asm, t.infos), b2 = asmBox(t.asm, t.infos, t.B);
+  return eqs([b1[1], b1[4], b2[1], b2[4], r.ok ? 1 : 0, r.dof.total], [35, 45, -35, -25, 1, 3]);
+}]);
+ASM.push(['Angolo di 30° tra il piano destro di A e il piano destro di B, con il piano superiore coincidente: x di B = (cos30, 0, ±sin30)', () => {
+  const t = twoBlocks();
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmPl('top'), t.B, asmPl('top'), { s: 1 });
+  asmMate(t.asm, t.infos, 'angle', t.A, asmPl('right'), t.B, asmPl('right'), { value: 30, s: 1 });
+  const r = Assembly.solve(t.asm, t.infos);
+  const nx = Assembly.dirWorld(t.B.pose, [1, 0, 0]), ny = Assembly.dirWorld(t.B.pose, [0, 1, 0]);
+  return eqs([nx[0], nx[1], Math.abs(nx[2]), ny[1], r.dof.total, r.ok ? 1 : 0], [Math.cos(Math.PI / 6), 0, 0.5, 1, 2, 1]);
+}]);
+ASM.push(['Perpendicolare e parallelo con i piani: piano frontale di B perpendicolare al piano superiore di A, parallelo al piano destro di A: la normale di B è ±X', () => {
+  const t = twoBlocks();
+  asmMate(t.asm, t.infos, 'parallel', t.A, asmPl('right'), t.B, asmPl('front'), { s: 1 });
+  const r1 = Assembly.solve(t.asm, t.infos), n = Assembly.dirWorld(t.B.pose, [0, 0, 1]);
+  const t2 = twoBlocks();
+  asmMate(t2.asm, t2.infos, 'perpendicular', t2.A, asmPl('top'), t2.B, asmPl('top'));
+  const r2 = Assembly.solve(t2.asm, t2.infos), n2 = Assembly.dirWorld(t2.B.pose, [0, 1, 0]);
+  return eqs([n[0], n[1], n[2], r1.dof.total, n2[1], r2.dof.total], [1, 0, 0, 4, 0, 5]);
+}]);
+ASM.push(['Inverti allineamento tra due piani: piano frontale di B girato (normale -Z), sempre su z = 0', () => {
+  const t = twoBlocks();
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmPl('front'), t.B, asmPl('front'), { s: -1 });
+  const r = Assembly.solve(t.asm, t.infos), n = Assembly.dirWorld(t.B.pose, [0, 0, 1]), O = Assembly.toWorld(t.B.pose, [0, 0, 0]);
+  return eqs([n[0], n[1], n[2], O[2], r.dof.total, r.ok ? 1 : 0], [0, 0, -1, 0, 3, 1]);
+}]);
+ASM.push(['Piano creato nella parte (25 mm sopra il piano superiore): faccia di base di B su quel piano (y 25..35); poi si cambia l\'offset a 40 (y 40..50)', () => {
+  const docs = { a: box(), b: box() };
+  const pid = feat(docs.a, { type: 'plane', base: STD('top'), offset: 25 });
+  const infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  const E = Assembly.entityOf({ k: 'plane', id: pid }, infos.get('a'));
+  asmMate(asm, infos, 'coincident', A, asmPl(pid), B, asmFace(docs.b, DN, 0), { s: -1 });
+  Assembly.solve(asm, infos); const b1 = asmBox(asm, infos, B);
+  docs.a.features.find(f => f.id === pid).offset = 40;
+  const r = Assembly.solve(asm, asmSet(docs)); const b2 = asmBox(asm, asmSet(docs), B);
+  return eqs([E.datum ? 1 : 0, E.name === docs.a.features.find(f => f.id === pid).name ? 1 : 0, E.c[1], b1[1], b1[4], b2[1], b2[4], r.ok ? 1 : 0], [1, 1, 25, 25, 35, 40, 50, 1]);
+}]);
+ASM.push(['Piano perso: se il piano creato viene cancellato dalla parte l\'accoppiamento è segnato; piani standard e origine restano; l\'elenco di una parte ha i 3 piani, quello creato e l\'origine', () => {
+  const docs = { a: box(), b: box() };
+  const pid = feat(docs.a, { type: 'plane', base: STD('top'), offset: 25 });
+  const infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  const list = Assembly.datumsOf(infos.get('a')).map(d => d.id || d.k).join();
+  const m1 = asmMate(asm, infos, 'coincident', A, asmPl(pid), B, asmPl('top'));
+  const m2 = asmMate(asm, infos, 'coincident', A, asmOr, B, asmOr);
+  docs.a.features = docs.a.features.filter(f => f.id !== pid);
+  const r = Assembly.solve(asm, asmSet(docs));
+  return eqs([list === 'front,top,right,' + pid + ',origin' ? 1 : 0, r.status.get(m1.id).ok ? 1 : 0, /piano scelto non esiste più/.test(r.status.get(m1.id).err) ? 1 : 0, r.status.get(m2.id).ok ? 1 : 0, ...Assembly.toWorld(B.pose, [0, 0, 0])], [1, 0, 1, 1, 0, 0, 0]);
+}]);
+ASM.push(['Accoppiamenti possibili con piani e origine: il piano va come una faccia, l\'origine come un vertice', () => {
+  const docs = { a: box() }, infos = asmSet(docs), E = r => Assembly.entityOf(r, infos.get('a'));
+  const T = (a, b) => Assembly.allowedTypes(a, b).join();
+  const P = E(asmPl('front')), O = E(asmOr), F = E(asmFace(docs.a, UP, 10));
+  return eqs([T(P, P) === T(F, F) ? 1 : 0, T(P, O), T(O, O), O.origin ? 1 : 0, P.n[2], P.c[0]].map(v => v === 'coincident,distance' ? 1 : v), [1, 1, 1, 1, 1, 0]);
+}]);
+// il vertice si ritrova quando cambia la parte. Blocco di twoBlocks: l'angolo (80, 10, 0) è dove si incontrano la faccia in cima, quella a destra e quella davanti
+const moveX = (doc, x) => { for (const e of doc.features[0].sk.ents) if (e.t === 'pt' && e.x === 80) e.x = x; };
+ASM.push(['Vertice che si sposta: A da 80 a 110 mm: il vertice si ritrova in (110, 10, 0) e B lo segue di +30; niente «!»', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  Assembly.solve(t.asm, t.infos);
+  const O1 = Assembly.toWorld(t.B.pose, [0, 0, 0]);
+  moveX(t.docs.a, 110);
+  const infos = asmSet(t.docs), r = Assembly.solve(t.asm, infos), O2 = Assembly.toWorld(t.B.pose, [0, 0, 0]);
+  return eqs([...O1, ...O2, r.ok ? 1 : 0, r.status.get(m.id).ok ? 1 : 0, ...m.a.p], [80, 10, 0, 110, 10, 0, 1, 1, 110, 10, 0]);
+}]);
+ASM.push(['Vertice che si sposta molto, a passi, e torna indietro: 80 → 200 → 300 → 80; sempre lo stesso angolo della parte', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  Assembly.solve(t.asm, t.infos);
+  const out = [];
+  let cur = 80;
+  for (const x of [200, 300, 80]) { for (const e of t.docs.a.features[0].sk.ents) if (e.t === 'pt' && e.x === cur) e.x = x; cur = x; const r = Assembly.solve(t.asm, asmSet(t.docs)); out.push(Assembly.toWorld(t.B.pose, [0, 0, 0])[0], r.ok ? 1 : 0); }
+  return eqs(out, [200, 1, 300, 1, 80, 1]);
+}]);
+ASM.push(['Vertice e altezza: A da 10 a 25 mm di altezza: l\'angolo in alto si ritrova in (80, 25, 0)', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  Assembly.solve(t.asm, t.infos);
+  t.docs.a.features.find(f => f.type === 'extrude').depth = 25;
+  const r = Assembly.solve(t.asm, asmSet(t.docs));
+  return eqs([...Assembly.toWorld(t.B.pose, [0, 0, 0]), r.ok ? 1 : 0], [80, 25, 0, 1]);
+}]);
+ASM.push(['Vertice che sparisce davvero: uno smusso sullo spigolo che ci arriva lo toglie: «!» con il messaggio, gli altri accoppiamenti restano', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  const m2 = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [0, 0, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] }, { suppressed: true });
+  Assembly.solve(t.asm, t.infos);
+  feat(t.docs.a, { type: 'chamfer', d: 2, edges: [edge(t.docs.a, [80, 10, -25], 'line')] });
+  const infos = asmSet(t.docs), r = Assembly.solve(t.asm, infos), s = r.status.get(m.id);
+  const V = infos.get('a').st.topo.verts, gone = V.every(v => Math.hypot(v[0] - 80, v[1] - 10, v[2]) > 1e-3);
+  return eqs([gone ? 1 : 0, s.ok ? 1 : 0, /vertice scelto non esiste più/.test(s.err) ? 1 : 0, r.status.get(m2.id).ok ? 1 : 0], [1, 0, 1, 1]);
+}]);
+ASM.push(['Vertice e funzione che non lo tocca: un foro in mezzo alla piastra aggiunge facce, il vertice resta quello', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  Assembly.solve(t.asm, t.infos);
+  const f0 = m.a.faces.slice();
+  const b = SB(); b.circle(40, 25, 5); const sk = feat(t.docs.a, { type: 'sketch', plane: { kind: 'face', ...face(t.docs.a, nearW(UP, 10)) }, sk: b.s });
+  feat(t.docs.a, { type: 'cut', sketch: sk, end: 'through' });
+  const r = Assembly.solve(t.asm, asmSet(t.docs));
+  return eqs([...Assembly.toWorld(t.B.pose, [0, 0, 0]), r.ok ? 1 : 0, f0.length, m.a.faces.join() === f0.join() ? 1 : 0], [80, 10, 0, 1, 3, 1]);
+}]);
+ASM.push(['Vertice di un progetto vecchio (solo la posizione): al primo calcolo impara le facce, poi segue la parte come gli altri', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  const copy = JSON.parse(JSON.stringify(t.asm));
+  const mm = copy.mates[0]; delete mm.a.faces; delete mm.b.faces; mm.a.p = [80, 10, 0];
+  t.asm = copy;
+  const A = copy.insts[0], B = copy.insts[1];
+  Assembly.solve(copy, t.infos);
+  const learned = (mm.a.faces || []).length;
+  moveX(t.docs.a, 95);
+  const r = Assembly.solve(copy, asmSet(t.docs));
+  return eqs([learned, ...Assembly.toWorld(B.pose, [0, 0, 0]), r.ok ? 1 : 0], [3, 95, 10, 0, 1]);
+}]);
+ASM.push(['Vertice di un progetto vecchio già perso (posizione non più nella parte e nessuna faccia): resta «!»; un vertice nuovo non si inventa', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  moveX(t.docs.a, 95);
+  delete m.a.faces; m.a.p = [80, 10, 0];
+  const r = Assembly.solve(t.asm, asmSet(t.docs));
+  return eqs([r.status.get(m.id).ok ? 1 : 0, /vertice scelto non esiste più/.test(r.status.get(m.id).err) ? 1 : 0], [0, 1]);
+}]);
+ASM.push(['Vertice su una tacca: spostando la tacca (x 60 → 70) il vertice la segue e non salta su quello simmetrico (x 40)', () => {
+  const d = D0('tacca'); const b = SB(); b.poly([[0, 0], [100, 0], [100, 20], [60, 20], [60, 10], [40, 10], [40, 20], [0, 20]]);
+  const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 10 });
+  const docs = { a: d, b: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  asmMate(asm, infos, 'coincident', A, { k: 'vertex', p: [60, 10, -20] }, B, { k: 'vertex', p: [0, 0, 0] });
+  Assembly.solve(asm, infos);
+  const O0 = Assembly.toWorld(B.pose, [0, 0, 0]);
+  for (const e of d.features[0].sk.ents) if (e.t === 'pt' && e.x === 60) e.x = 70;
+  const r = Assembly.solve(asm, asmSet(docs)), O = Assembly.toWorld(B.pose, [0, 0, 0]);
+  return eqs([...O0, ...O, r.ok ? 1 : 0], [60, 10, -20, 70, 10, -20, 1]);
+}]);
+ASM.push(['Vertici con le stesse due facce (i punti di un cerchio): raggio da 10 a 15: resta sullo stesso angolo, il più vicino, (15, 30, 0); in un punto a 90° invece (0, 30, 15)', () => {
+  const run = (p, r2) => {
+    const docs = { a: pin(10, 30), b: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+    const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+    const m = asmMate(asm, infos, 'coincident', A, { k: 'vertex', p }, B, { k: 'vertex', p: [0, 0, 0] });
+    Assembly.solve(asm, infos);
+    const nf = m.a.faces.length;
+    docs.a.features[0].sk.ents.find(e => e.t === 'ci').r = r2;
+    const r = Assembly.solve(asm, asmSet(docs));
+    return [nf, ...Assembly.toWorld(B.pose, [0, 0, 0]), r.ok ? 1 : 0];
+  };
+  return eqs([...run([10, 30, 0], 15), ...run([0, 30, 10], 15)], [2, 15, 30, 0, 1, 2, 0, 30, 15, 1], 1e-6);
+}]);
 ASM.push(['Accoppiamenti possibili: Concentrico solo tra elementi tondi; Angolo e Parallelo non tra vertici', () => {
   const T = (a, b) => Assembly.allowedTypes(a, b);
   const P = { t: 'plane' }, R = { t: 'axis', round: true }, Lx = { t: 'axis', round: false }, V = { t: 'point' }, S = { t: 'point', sphere: true };
@@ -17387,8 +17800,8 @@ if (isNode) {
     why: 'Dire come stanno tra loro due componenti: per esempio un perno nel foro con la testa appoggiata alla piastra.',
     cmd: { tab: 'assembly', id: 'mate' },
     steps: ['Premi **Accoppiamento**.', 'Fai clic su due elementi di due componenti diversi: facce, spigoli o vertici. Il componente libero si sposta subito.', 'Controlla il [[Tipo di accoppiamento|tipo]]: [[Accoppiamento coincidente|Coincidente]], [[Accoppiamento concentrico|Concentrico]], [[Accoppiamento parallelo|Parallelo]], [[Accoppiamento perpendicolare|Perpendicolare]], [[Accoppiamento a distanza|Distanza]] o [[Accoppiamento ad angolo|Angolo]]. Sono attivi solo quelli possibili con gli elementi scelti.', 'Se il pezzo è girato dalla parte sbagliata premi **Inverti allineamento** (o **Inverti lato**, **Inverti angolo**).', 'Conferma con ✓. L\'accoppiamento compare nell\'albero: con il doppio clic lo modifichi, con il tasto destro lo sopprimi o lo elimini.'],
-    tips: ['Coincidente tra due spigoli circolari mette a contatto i due cerchi, con lo stesso centro: comodo per una vite in un foro.', 'Se due accoppiamenti si contraddicono, il messaggio è in rosso e ✓ non conferma. Un accoppiamento che diventa impossibile dopo una modifica resta nell\'albero con il punto esclamativo.', 'Delle facce curve di un file STEP si riconoscono i cilindri, non i coni né le sfere.'],
-    terms: ['Accoppiamento', 'Gradi di libertà dell\'assieme'],
+    tips: ['Coincidente tra due spigoli circolari mette a contatto i due cerchi, con lo stesso centro: comodo per una vite in un foro.', 'Se due accoppiamenti si contraddicono, il messaggio è in rosso e ✓ non conferma. Un accoppiamento che diventa impossibile dopo una modifica resta nell\'albero con il punto esclamativo.', '[[Piani e origine]]: nel pannello scegli il componente e premi il piano o **Origine**. Non servono facce: un pezzo si può mettere sul piano di un altro.', 'Quando cambi le misure di una parte, un [[Vertice dell\'accoppiamento|vertice]] scelto si ritrova da solo. Il punto esclamativo resta solo se sparisce davvero, per esempio dopo uno smusso proprio su quel vertice.', 'Delle facce curve di un file STEP si riconoscono cilindri, coni e sfere. Le altre (un toro, una superficie libera) non si possono usare: scegli uno spigolo o un vertice.'],
+    terms: ['Accoppiamento', 'Piani e origine', 'Vertice dell\'accoppiamento', 'Gradi di libertà dell\'assieme'],
   });
   add('Assieme', 'sposta', 'Spostare un componente', {
     why: 'Provare il movimento del meccanismo o avvicinare i pezzi prima di accoppiarli.',

@@ -121,7 +121,7 @@ Line, corner and centre rectangle, circle, arcs (centre-ends, 3-point, tangent),
 
 - Several parts **in the same project** (and the same file): **Nuova parte** (New part), part list at the top, double-click a component to open its part.
 - **Inserisci parte** (Insert part): a part of the project, several copies of it, or a STEP, IGES, STL, OBJ file or an exported project. A STEP file with several bodies gives one part per body, at the positions in the file.
-- **Mates**: coincident, concentric, parallel, perpendicular, distance, angle, between faces, edges and vertices; fixed part; degrees of freedom of each component in the tree; a message when two mates contradict each other.
+- **Mates**: coincident, concentric, parallel, perpendicular, distance, angle, between faces, edges, vertices, and the planes and origin of parts (including cones and spheres from STEP files); a vertex is found again by itself when you change the dimensions; fixed part; degrees of freedom of each component in the tree; a message when two mates contradict each other.
 - **Dragging** components within their remaining degrees of freedom, by mouse or finger (**Sposta parte**, Move part). If you edit a part, the assembly is solved again.
 - **Export STEP** of the assembly: one solid per component. Interference checks, exploded views, bills of materials and assembly drawings are not there yet.
 

@@ -1476,6 +1476,198 @@ ASM.push(['Faccia sparita: la cima del blocco è tolta tutta da un taglio: il no
   const r = Assembly.solve(asm, infos);
   return eqs([Geom.massProps(inf.st.body, inf.st.tags).volume, inf.st.tags.byName.has(top.name) ? 1 : 0, r.status.get(m.id).ok ? 1 : 0, /non esiste più/.test(r.status.get(m.id).err || '') ? 1 : 0], [32000, 1, 0, 1], 1e-3);
 }]);
+// piani e origine delle parti: blocco 80×50×10 (x 0..80, y 0..10, z -50..0), origine in un suo angolo
+const asmPl = id => ({ k: 'plane', id }), asmOr = { k: 'origin' };
+ASM.push(['Piano frontale su piano frontale: B resta parallelo a Z = 0 (z -50..0), x e y non cambiano; 3 gradi di libertà', () => {
+  const t = twoBlocks(); asmMate(t.asm, t.infos, 'coincident', t.A, asmPl('front'), t.B, asmPl('front'));
+  const r = Assembly.solve(t.asm, t.infos);
+  return eqs([...asmBox(t.asm, t.infos, t.B), r.dof.total, r.ok ? 1 : 0], [200, 50, -50, 280, 60, 0, 3, 1]);
+}]);
+ASM.push(['I tre piani coincidenti: B esattamente sopra A con la posizione di A (fermo in 10, 20, 30 e girato di 30° attorno a Y): 0 gradi di libertà', () => {
+  const docs = { a: box(), b: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const qa = rotY(Math.PI / 6);
+  const A = Assembly.addInst(asm, 'a', { pose: asmPose([10, 20, 30], qa) }), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  for (const id of ['front', 'top', 'right']) asmMate(asm, infos, 'coincident', A, asmPl(id), B, asmPl(id), { s: 1 });
+  const r = Assembly.solve(asm, infos);
+  // angolo x = 80 della parte: x' = 10 + 80·cos30, z' = 30 − 80·sin30 (rotazione attorno a Y)
+  const P = Assembly.toWorld(B.pose, [80, 0, 0]), c = Math.cos(Math.PI / 6);
+  return eqs([...P, r.dof.total, r.ok ? 1 : 0], [10 + 80 * c, 20, 30 - 40, 0, 1]);
+}]);
+ASM.push(['Origine su origine: origine di B nel punto (10, 20, 30) di A fermo, B può solo girare: 3 gradi di libertà', () => {
+  const docs = { a: box(), b: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a', { pose: asmPose([10, 20, 30]) }), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  asmMate(asm, infos, 'coincident', A, asmOr, B, asmOr);
+  const r = Assembly.solve(asm, infos), O = Assembly.toWorld(B.pose, [0, 0, 0]);
+  return eqs([...O, r.dof.total, r.ok ? 1 : 0], [10, 20, 30, 3, 1]);
+}]);
+ASM.push(['Origine su una faccia e su un piano: faccia in alto di A (y = 10) e piano destro di A (x = 0): origine di B in x = 0, y = 10; 4 gradi di libertà', () => {
+  const t = twoBlocks();
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmFace(t.docs.a, UP, 10), t.B, asmOr);
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmPl('right'), t.B, asmOr);
+  const r = Assembly.solve(t.asm, t.infos), O = Assembly.toWorld(t.B.pose, [0, 0, 0]);
+  return eqs([O[0], O[1], r.dof.total, r.ok ? 1 : 0], [0, 10, 4, 1]);
+}]);
+ASM.push(['Origine sull\'asse del foro: l\'origine del perno va sull\'asse (x 40, z -25); 4 gradi di libertà', () => {
+  const docs = { a: plateHole(80, 50, 10, 40, 25, 10), b: pin(10, 30) }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([150, 7, 60]) });
+  asmMate(asm, infos, 'concentric', A, asmRev(docs.a), B, asmOr);
+  const r = Assembly.solve(asm, infos), O = Assembly.toWorld(B.pose, [0, 0, 0]);
+  return eqs([O[0], O[2], r.dof.total, r.ok ? 1 : 0], [40, -25, 4, 1]);
+}]);
+ASM.push(['Distanza 35 tra piano superiore di A e faccia di base di B: y di B 35..45; col lato invertito -35..-25', () => {
+  const t = twoBlocks();
+  const m = asmMate(t.asm, t.infos, 'distance', t.A, asmPl('top'), t.B, asmFace(t.docs.b, DN, 0), { value: 35, s: -1, side: 1 });
+  Assembly.solve(t.asm, t.infos); const b1 = asmBox(t.asm, t.infos, t.B);
+  m.side = -1; const r = Assembly.solve(t.asm, t.infos), b2 = asmBox(t.asm, t.infos, t.B);
+  return eqs([b1[1], b1[4], b2[1], b2[4], r.ok ? 1 : 0, r.dof.total], [35, 45, -35, -25, 1, 3]);
+}]);
+ASM.push(['Angolo di 30° tra il piano destro di A e il piano destro di B, con il piano superiore coincidente: x di B = (cos30, 0, ±sin30)', () => {
+  const t = twoBlocks();
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmPl('top'), t.B, asmPl('top'), { s: 1 });
+  asmMate(t.asm, t.infos, 'angle', t.A, asmPl('right'), t.B, asmPl('right'), { value: 30, s: 1 });
+  const r = Assembly.solve(t.asm, t.infos);
+  const nx = Assembly.dirWorld(t.B.pose, [1, 0, 0]), ny = Assembly.dirWorld(t.B.pose, [0, 1, 0]);
+  return eqs([nx[0], nx[1], Math.abs(nx[2]), ny[1], r.dof.total, r.ok ? 1 : 0], [Math.cos(Math.PI / 6), 0, 0.5, 1, 2, 1]);
+}]);
+ASM.push(['Perpendicolare e parallelo con i piani: piano frontale di B perpendicolare al piano superiore di A, parallelo al piano destro di A: la normale di B è ±X', () => {
+  const t = twoBlocks();
+  asmMate(t.asm, t.infos, 'parallel', t.A, asmPl('right'), t.B, asmPl('front'), { s: 1 });
+  const r1 = Assembly.solve(t.asm, t.infos), n = Assembly.dirWorld(t.B.pose, [0, 0, 1]);
+  const t2 = twoBlocks();
+  asmMate(t2.asm, t2.infos, 'perpendicular', t2.A, asmPl('top'), t2.B, asmPl('top'));
+  const r2 = Assembly.solve(t2.asm, t2.infos), n2 = Assembly.dirWorld(t2.B.pose, [0, 1, 0]);
+  return eqs([n[0], n[1], n[2], r1.dof.total, n2[1], r2.dof.total], [1, 0, 0, 4, 0, 5]);
+}]);
+ASM.push(['Inverti allineamento tra due piani: piano frontale di B girato (normale -Z), sempre su z = 0', () => {
+  const t = twoBlocks();
+  asmMate(t.asm, t.infos, 'coincident', t.A, asmPl('front'), t.B, asmPl('front'), { s: -1 });
+  const r = Assembly.solve(t.asm, t.infos), n = Assembly.dirWorld(t.B.pose, [0, 0, 1]), O = Assembly.toWorld(t.B.pose, [0, 0, 0]);
+  return eqs([n[0], n[1], n[2], O[2], r.dof.total, r.ok ? 1 : 0], [0, 0, -1, 0, 3, 1]);
+}]);
+ASM.push(['Piano creato nella parte (25 mm sopra il piano superiore): faccia di base di B su quel piano (y 25..35); poi si cambia l\'offset a 40 (y 40..50)', () => {
+  const docs = { a: box(), b: box() };
+  const pid = feat(docs.a, { type: 'plane', base: STD('top'), offset: 25 });
+  const infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  const E = Assembly.entityOf({ k: 'plane', id: pid }, infos.get('a'));
+  asmMate(asm, infos, 'coincident', A, asmPl(pid), B, asmFace(docs.b, DN, 0), { s: -1 });
+  Assembly.solve(asm, infos); const b1 = asmBox(asm, infos, B);
+  docs.a.features.find(f => f.id === pid).offset = 40;
+  const r = Assembly.solve(asm, asmSet(docs)); const b2 = asmBox(asm, asmSet(docs), B);
+  return eqs([E.datum ? 1 : 0, E.name === docs.a.features.find(f => f.id === pid).name ? 1 : 0, E.c[1], b1[1], b1[4], b2[1], b2[4], r.ok ? 1 : 0], [1, 1, 25, 25, 35, 40, 50, 1]);
+}]);
+ASM.push(['Piano perso: se il piano creato viene cancellato dalla parte l\'accoppiamento è segnato; piani standard e origine restano; l\'elenco di una parte ha i 3 piani, quello creato e l\'origine', () => {
+  const docs = { a: box(), b: box() };
+  const pid = feat(docs.a, { type: 'plane', base: STD('top'), offset: 25 });
+  const infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  const list = Assembly.datumsOf(infos.get('a')).map(d => d.id || d.k).join();
+  const m1 = asmMate(asm, infos, 'coincident', A, asmPl(pid), B, asmPl('top'));
+  const m2 = asmMate(asm, infos, 'coincident', A, asmOr, B, asmOr);
+  docs.a.features = docs.a.features.filter(f => f.id !== pid);
+  const r = Assembly.solve(asm, asmSet(docs));
+  return eqs([list === 'front,top,right,' + pid + ',origin' ? 1 : 0, r.status.get(m1.id).ok ? 1 : 0, /piano scelto non esiste più/.test(r.status.get(m1.id).err) ? 1 : 0, r.status.get(m2.id).ok ? 1 : 0, ...Assembly.toWorld(B.pose, [0, 0, 0])], [1, 0, 1, 1, 0, 0, 0]);
+}]);
+ASM.push(['Accoppiamenti possibili con piani e origine: il piano va come una faccia, l\'origine come un vertice', () => {
+  const docs = { a: box() }, infos = asmSet(docs), E = r => Assembly.entityOf(r, infos.get('a'));
+  const T = (a, b) => Assembly.allowedTypes(a, b).join();
+  const P = E(asmPl('front')), O = E(asmOr), F = E(asmFace(docs.a, UP, 10));
+  return eqs([T(P, P) === T(F, F) ? 1 : 0, T(P, O), T(O, O), O.origin ? 1 : 0, P.n[2], P.c[0]].map(v => v === 'coincident,distance' ? 1 : v), [1, 1, 1, 1, 1, 0]);
+}]);
+// il vertice si ritrova quando cambia la parte. Blocco di twoBlocks: l'angolo (80, 10, 0) è dove si incontrano la faccia in cima, quella a destra e quella davanti
+const moveX = (doc, x) => { for (const e of doc.features[0].sk.ents) if (e.t === 'pt' && e.x === 80) e.x = x; };
+ASM.push(['Vertice che si sposta: A da 80 a 110 mm: il vertice si ritrova in (110, 10, 0) e B lo segue di +30; niente «!»', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  Assembly.solve(t.asm, t.infos);
+  const O1 = Assembly.toWorld(t.B.pose, [0, 0, 0]);
+  moveX(t.docs.a, 110);
+  const infos = asmSet(t.docs), r = Assembly.solve(t.asm, infos), O2 = Assembly.toWorld(t.B.pose, [0, 0, 0]);
+  return eqs([...O1, ...O2, r.ok ? 1 : 0, r.status.get(m.id).ok ? 1 : 0, ...m.a.p], [80, 10, 0, 110, 10, 0, 1, 1, 110, 10, 0]);
+}]);
+ASM.push(['Vertice che si sposta molto, a passi, e torna indietro: 80 → 200 → 300 → 80; sempre lo stesso angolo della parte', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  Assembly.solve(t.asm, t.infos);
+  const out = [];
+  let cur = 80;
+  for (const x of [200, 300, 80]) { for (const e of t.docs.a.features[0].sk.ents) if (e.t === 'pt' && e.x === cur) e.x = x; cur = x; const r = Assembly.solve(t.asm, asmSet(t.docs)); out.push(Assembly.toWorld(t.B.pose, [0, 0, 0])[0], r.ok ? 1 : 0); }
+  return eqs(out, [200, 1, 300, 1, 80, 1]);
+}]);
+ASM.push(['Vertice e altezza: A da 10 a 25 mm di altezza: l\'angolo in alto si ritrova in (80, 25, 0)', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  Assembly.solve(t.asm, t.infos);
+  t.docs.a.features.find(f => f.type === 'extrude').depth = 25;
+  const r = Assembly.solve(t.asm, asmSet(t.docs));
+  return eqs([...Assembly.toWorld(t.B.pose, [0, 0, 0]), r.ok ? 1 : 0], [80, 25, 0, 1]);
+}]);
+ASM.push(['Vertice che sparisce davvero: uno smusso sullo spigolo che ci arriva lo toglie: «!» con il messaggio, gli altri accoppiamenti restano', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  const m2 = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [0, 0, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] }, { suppressed: true });
+  Assembly.solve(t.asm, t.infos);
+  feat(t.docs.a, { type: 'chamfer', d: 2, edges: [edge(t.docs.a, [80, 10, -25], 'line')] });
+  const infos = asmSet(t.docs), r = Assembly.solve(t.asm, infos), s = r.status.get(m.id);
+  const V = infos.get('a').st.topo.verts, gone = V.every(v => Math.hypot(v[0] - 80, v[1] - 10, v[2]) > 1e-3);
+  return eqs([gone ? 1 : 0, s.ok ? 1 : 0, /vertice scelto non esiste più/.test(s.err) ? 1 : 0, r.status.get(m2.id).ok ? 1 : 0], [1, 0, 1, 1]);
+}]);
+ASM.push(['Vertice e funzione che non lo tocca: un foro in mezzo alla piastra aggiunge facce, il vertice resta quello', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  Assembly.solve(t.asm, t.infos);
+  const f0 = m.a.faces.slice();
+  const b = SB(); b.circle(40, 25, 5); const sk = feat(t.docs.a, { type: 'sketch', plane: { kind: 'face', ...face(t.docs.a, nearW(UP, 10)) }, sk: b.s });
+  feat(t.docs.a, { type: 'cut', sketch: sk, end: 'through' });
+  const r = Assembly.solve(t.asm, asmSet(t.docs));
+  return eqs([...Assembly.toWorld(t.B.pose, [0, 0, 0]), r.ok ? 1 : 0, f0.length, m.a.faces.join() === f0.join() ? 1 : 0], [80, 10, 0, 1, 3, 1]);
+}]);
+ASM.push(['Vertice di un progetto vecchio (solo la posizione): al primo calcolo impara le facce, poi segue la parte come gli altri', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  const copy = JSON.parse(JSON.stringify(t.asm));
+  const mm = copy.mates[0]; delete mm.a.faces; delete mm.b.faces; mm.a.p = [80, 10, 0];
+  t.asm = copy;
+  const A = copy.insts[0], B = copy.insts[1];
+  Assembly.solve(copy, t.infos);
+  const learned = (mm.a.faces || []).length;
+  moveX(t.docs.a, 95);
+  const r = Assembly.solve(copy, asmSet(t.docs));
+  return eqs([learned, ...Assembly.toWorld(B.pose, [0, 0, 0]), r.ok ? 1 : 0], [3, 95, 10, 0, 1]);
+}]);
+ASM.push(['Vertice di un progetto vecchio già perso (posizione non più nella parte e nessuna faccia): resta «!»; un vertice nuovo non si inventa', () => {
+  const t = twoBlocks(asmPose([200, 50, 30]));
+  const m = asmMate(t.asm, t.infos, 'coincident', t.A, { k: 'vertex', p: [80, 10, 0] }, t.B, { k: 'vertex', p: [0, 0, 0] });
+  moveX(t.docs.a, 95);
+  delete m.a.faces; m.a.p = [80, 10, 0];
+  const r = Assembly.solve(t.asm, asmSet(t.docs));
+  return eqs([r.status.get(m.id).ok ? 1 : 0, /vertice scelto non esiste più/.test(r.status.get(m.id).err) ? 1 : 0], [0, 1]);
+}]);
+ASM.push(['Vertice su una tacca: spostando la tacca (x 60 → 70) il vertice la segue e non salta su quello simmetrico (x 40)', () => {
+  const d = D0('tacca'); const b = SB(); b.poly([[0, 0], [100, 0], [100, 20], [60, 20], [60, 10], [40, 10], [40, 20], [0, 20]]);
+  const s = sketch(d, STD('top'), b); feat(d, { type: 'extrude', sketch: s, end: 'blind', depth: 10 });
+  const docs = { a: d, b: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+  const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+  asmMate(asm, infos, 'coincident', A, { k: 'vertex', p: [60, 10, -20] }, B, { k: 'vertex', p: [0, 0, 0] });
+  Assembly.solve(asm, infos);
+  const O0 = Assembly.toWorld(B.pose, [0, 0, 0]);
+  for (const e of d.features[0].sk.ents) if (e.t === 'pt' && e.x === 60) e.x = 70;
+  const r = Assembly.solve(asm, asmSet(docs)), O = Assembly.toWorld(B.pose, [0, 0, 0]);
+  return eqs([...O0, ...O, r.ok ? 1 : 0], [60, 10, -20, 70, 10, -20, 1]);
+}]);
+ASM.push(['Vertici con le stesse due facce (i punti di un cerchio): raggio da 10 a 15: resta sullo stesso angolo, il più vicino, (15, 30, 0); in un punto a 90° invece (0, 30, 15)', () => {
+  const run = (p, r2) => {
+    const docs = { a: pin(10, 30), b: box() }, infos = asmSet(docs), asm = Assembly.newAssembly();
+    const A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: asmPose([200, 50, 30]) });
+    const m = asmMate(asm, infos, 'coincident', A, { k: 'vertex', p }, B, { k: 'vertex', p: [0, 0, 0] });
+    Assembly.solve(asm, infos);
+    const nf = m.a.faces.length;
+    docs.a.features[0].sk.ents.find(e => e.t === 'ci').r = r2;
+    const r = Assembly.solve(asm, asmSet(docs));
+    return [nf, ...Assembly.toWorld(B.pose, [0, 0, 0]), r.ok ? 1 : 0];
+  };
+  return eqs([...run([10, 30, 0], 15), ...run([0, 30, 10], 15)], [2, 15, 30, 0, 1, 2, 0, 30, 15, 1], 1e-6);
+}]);
 ASM.push(['Accoppiamenti possibili: Concentrico solo tra elementi tondi; Angolo e Parallelo non tra vertici', () => {
   const T = (a, b) => Assembly.allowedTypes(a, b);
   const P = { t: 'plane' }, R = { t: 'axis', round: true }, Lx = { t: 'axis', round: false }, V = { t: 'point' }, S = { t: 'point', sphere: true };

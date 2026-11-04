@@ -129,4 +129,42 @@ function stepTwoBoxesColored(a, gap, opts = {}) {
   return W.finish(opts.name || 'colori', [b1, b2], opts.unit, [{ solid: 0, rgb: [0, 0, 1] }, { face: b1[0], rgb: [1, 0, 0] }]);
 }
 
-module.exports = { stepBox, stepCylinder, stepPlateHole, stepTwoBoxes, stepTwoBoxesColored };
+// tronco di cono: raggio r0 in o, raggio r1 (più grande: r1 > r0) in o + h·z; asse e origine qualsiasi (z e x unitari e perpendicolari)
+function stepCone(r0, r1, h, opts = {}) {
+  const W = writer();
+  const o = opts.o || [0, 0, 0], z = opts.z || [0, 0, 1], x = opts.x || [1, 0, 0];
+  const at = (r, t) => [0, 1, 2].map(k => o[k] + x[k] * r + z[k] * t);
+  const O1 = [0, 1, 2].map(k => o[k] + z[k] * h);
+  const M = k => z.map(v => v * k);
+  const c0 = W.add(`CIRCLE('',${W.ax(o, z, x)},${W.n(r0)})`), c1 = W.add(`CIRCLE('',${W.ax(O1, z, x)},${W.n(r1)})`);
+  const v0 = W.vtx(at(r0, 0)), v1 = W.vtx(at(r1, h));
+  const e0 = W.edge(v0, v0, c0), e1 = W.edge(v1, v1, c1), seam = W.edge(v0, v1, W.line(at(r0, 0), at(r1, h)));
+  const bot = W.face([W.outer(W.loop([W.oe(e0, false)]))], W.plane(o, M(-1), x), true);
+  const top = W.face([W.outer(W.loop([W.oe(e1, true)]))], W.plane(O1, z, x), true);
+  const surf = W.add(`CONICAL_SURFACE('',${W.ax(o, z, x)},${W.n(r0)},${W.n(Math.atan2(r1 - r0, h))})`);
+  const side = W.face([W.outer(W.loop([W.oe(e0, true), W.oe(seam, true), W.oe(e1, false), W.oe(seam, false)]))], surf, true);
+  return W.finish(opts.name || 'cono', [[bot, top, side]], opts.unit);
+}
+// sfera di raggio R e centro c, fatta di due metà con l'equatore in comune (perpendicolare a z)
+function stepSphere(R, opts = {}) {
+  const W = writer();
+  const c = opts.c || [0, 0, 0], z = opts.z || [0, 0, 1], x = opts.x || [1, 0, 0];
+  const v = W.vtx([0, 1, 2].map(k => c[k] + x[k] * R));
+  const e = W.edge(v, v, W.add(`CIRCLE('',${W.ax(c, z, x)},${W.n(R)})`));
+  const surf = () => W.add(`SPHERICAL_SURFACE('',${W.ax(c, z, x)},${W.n(R)})`);
+  const up = W.face([W.outer(W.loop([W.oe(e, true)]))], surf(), true);
+  const dn = W.face([W.outer(W.loop([W.oe(e, false)]))], surf(), true);
+  return W.finish(opts.name || 'sfera', [[up, dn]], opts.unit);
+}
+// semisfera di raggio R, centro c, cupola verso +z: una faccia sferica e una piana
+function stepDome(R, opts = {}) {
+  const W = writer();
+  const c = opts.c || [0, 0, 0], z = opts.z || [0, 0, 1], x = opts.x || [1, 0, 0];
+  const v = W.vtx([0, 1, 2].map(k => c[k] + x[k] * R));
+  const e = W.edge(v, v, W.add(`CIRCLE('',${W.ax(c, z, x)},${W.n(R)})`));
+  const dome = W.face([W.outer(W.loop([W.oe(e, true)]))], W.add(`SPHERICAL_SURFACE('',${W.ax(c, z, x)},${W.n(R)})`), true);
+  const flat = W.face([W.outer(W.loop([W.oe(e, false)]))], W.plane(c, z.map(k => -k), x), true);
+  return W.finish(opts.name || 'cupola', [[dome, flat]], opts.unit);
+}
+
+module.exports = { stepBox, stepCylinder, stepCone, stepSphere, stepDome, stepPlateHole, stepTwoBoxes, stepTwoBoxesColored };

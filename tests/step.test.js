@@ -7,7 +7,7 @@ const dir = path.resolve(process.argv[3] || path.join(__dirname, 'core'));
 const Model = require(path.join(dir, 'model.js'));
 const IM = Model.Import;
 const Sketch = require(path.join(dir, 'sketch.js')), Geom = require(path.join(dir, 'geom.js')), Export = require(path.join(dir, 'export.js'));
-const { stepBox, stepCylinder, stepPlateHole, stepTwoBoxes, stepTwoBoxesColored } = require('./stepgen.js');
+const { stepBox, stepCylinder, stepCone, stepSphere, stepDome, stepPlateHole, stepTwoBoxes, stepTwoBoxesColored } = require('./stepgen.js');
 const { igesBox } = require('./igesgen.js');
 const TOL = +(process.env.TOL || 0.01), PI = Math.PI;
 const html = fs.readFileSync(page, 'utf8');
@@ -279,6 +279,106 @@ const CASES = [
       if (m.length) fail++;
       console.log((m.length ? 'NO  ' : 'OK  ') + 'Assieme: perno e piastra da STEP accoppiati (centro 30, 20, base a z = 10), poi esportati e riletti con OpenCascade: 2 solidi\n      ' + (m.join('; ') || 'posizioni e volume giusti'));
     }
+    // coni e sfere: tronco r 5 → 15 alto 20 = semiangolo con tangente 10/20, apice 10 mm sotto la base piccola
+    const U3 = 1 / Math.sqrt(3), AX = [U3, U3, U3], XP = [1 / Math.sqrt(2), -1 / Math.sqrt(2), 0], O3 = [3, -7, 11];
+    const ents = doc => { const info = Assembly.partInfo(doc); return { info, es: entOf(info.st).map(name => ({ name, E: Assembly.entityOf({ inst: 'I', k: 'face', name }, info) })) }; };
+    const vec = (m, lab, g, e, tol = 1e-5) => [0, 1, 2].forEach(k => eqn(m, lab + ' ' + 'xyz'[k], g[k], e[k], tol));
+    const test = (title, fn) => { n++; const m = []; let note = ''; try { note = fn(m) || ''; } catch (e) { m.push('ERRORE ' + e.message); } if (m.length) fail++; console.log((m.length ? 'NO  ' : 'OK  ') + title + '\n      ' + (m.join('; ') || note || 'scarti sotto la tolleranza')); };
+    test('Assieme: cono di uno STEP, asse Z: faccia conica (non cilindro, non sfera), asse, tangente 0,5 e apice calcolati a mano; le due basi restano piane', m => {
+      const { es } = ents(asmDoc(stepCone(5, 15, 20)).doc);
+      const c = es.filter(e => e.E.cone), pl = es.filter(e => e.E.t === 'plane');
+      eqn(m, 'facce', es.length, 3); eqn(m, 'coni', c.length, 1); eqn(m, 'piani', pl.length, 2);
+      const E = c[0].E; eqn(m, 'tipo asse', E.t === 'axis' && E.round ? 1 : 0, 1); eqn(m, 'non è un cerchio', E.circle ? 1 : 0, 0);
+      eqn(m, 'tangente', E.tan, 0.5, 1e-6); vec(m, 'apice', E.apex, [0, 0, -10]); vec(m, 'asse', E.d, [0, 0, 1], 1e-6); eqn(m, 'asse x', E.o[0], 0); eqn(m, 'asse y', E.o[1], 0);
+    });
+    test('Assieme: cono di uno STEP di traverso (asse (1,1,1), base in (3,-7,11)): asse e apice giusti, e le due basi di traverso sono facce piane, non cilindri enormi', m => {
+      const { es } = ents(asmDoc(stepCone(5, 15, 20, { o: O3, z: AX, x: XP })).doc);
+      const c = es.filter(e => e.E.cone), pl = es.filter(e => e.E.t === 'plane');
+      eqn(m, 'coni', c.length, 1); eqn(m, 'piani', pl.length, 2);
+      const E = c[0].E, dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      vec(m, 'asse', E.d, AX, 1e-6); eqn(m, 'tangente', E.tan, 0.5, 1e-6); vec(m, 'apice', E.apex, O3.map((v, k) => v - 10 * AX[k]));
+      const up = pl.find(e => dot3(e.E.n, AX) > 0), dn = pl.find(e => dot3(e.E.n, AX) < 0);
+      vec(m, 'normale in alto', up.E.n, AX, 1e-6); vec(m, 'normale in basso', dn.E.n, AX.map(v => -v), 1e-6);
+      eqn(m, 'piano in alto: distanza da O', dot3(AX, up.E.c.map((v, k) => v - O3[k])), 20); eqn(m, 'piano in basso: distanza da O', dot3(AX, dn.E.c.map((v, k) => v - O3[k])), 0);
+    });
+    test('Assieme: cono con poco sformo (0,5°, alto 5, R 10): è un cono con la tangente giusta, non un cilindro', m => {
+      const t = Math.tan(0.5 * PI / 180), { es } = ents(asmDoc(stepCone(10, 10 + 5 * t, 5)).doc), c = es.filter(e => e.E.t === 'axis');
+      eqn(m, 'elementi con asse', c.length, 1); eqn(m, 'è un cono', c[0].E.cone ? 1 : 0, 1); eqn(m, 'tangente', c[0].E.tan, t, 1e-6); vec(m, 'asse', c[0].E.d, [0, 0, 1], 1e-6);
+    });
+    test('Assieme: cono piccolo e cono grande lontani dall\'origine: la precisione non dipende dalle misure', m => {
+      const P = [100, 200, -50];
+      const s = ents(asmDoc(stepCone(1, 1 + 2 * Math.tan(PI / 6), 2, { o: P, z: AX, x: XP })).doc).es.find(e => e.E.cone).E;
+      const b = ents(asmDoc(stepCone(500, 900, 300, { o: P, z: AX, x: XP })).doc).es.find(e => e.E.cone).E;
+      eqn(m, 'tangente del piccolo', s.tan, Math.tan(PI / 6), 1e-6); vec(m, 'apice del piccolo', s.apex, P.map((v, k) => v - Math.sqrt(3) * AX[k]));
+      eqn(m, 'tangente del grande', b.tan, 4 / 3, 1e-6); vec(m, 'apice del grande', b.apex, P.map((v, k) => v - 375 * AX[k]), 1e-4);
+    });
+    test('Assieme: sfera di uno STEP: due metà, tutte e due sfera con centro (1, 2, 3) e R 10; niente assi', m => {
+      const { es } = ents(asmDoc(stepSphere(10, { c: [1, 2, 3] })).doc);
+      eqn(m, 'facce', es.length, 2);
+      for (const e of es) { eqn(m, 'sfera', e.E.sphere ? 1 : 0, 1); vec(m, 'centro', e.E.p, [1, 2, 3]); eqn(m, 'raggio', e.E.R, 10, 1e-5); }
+    });
+    test('Assieme: semisfera di traverso: cupola = sfera, base = piano di normale -(1,1,1), tutti e due nel posto giusto', m => {
+      const C = [1, 2, 3], { es } = ents(asmDoc(stepDome(10, { c: C, z: AX, x: XP })).doc);
+      const sp = es.find(e => e.E.sphere), pl = es.find(e => e.E.t === 'plane');
+      eqn(m, 'una sfera', sp ? 1 : 0, 1); eqn(m, 'un piano', pl ? 1 : 0, 1);
+      vec(m, 'centro', sp.E.p, C); eqn(m, 'raggio', sp.E.R, 10, 1e-5); vec(m, 'normale', pl.E.n, AX.map(v => -v), 1e-6); eqn(m, 'piano per il centro', pl.E.n[0] * (pl.E.c[0] - 1) + pl.E.n[1] * (pl.E.c[1] - 2) + pl.E.n[2] * (pl.E.c[2] - 3), 0);
+    });
+    // pezzi fatti nel programma, esportati con le superfici vere e riletti
+    const reread = d => { const st = Model.regen(d); if (st.errors.size || !st.body.length) throw new Error('pezzo non costruito'); const ex = Export.toSTEP(st.body, Geom.topology(st.body, st.tags), { name: 'p', color: [0.66, 0.7, 0.74], tags: st.tags }); return asmDoc(ex.text).doc; };
+    const revTri = angle => { const d = D0('cono'); const b = SB(); b.center(0, -100, 0, 100); const o = b.pt(0, 0), r = b.pt(10, 0), t = b.pt(0, 20); b.line(o, r); b.line(r, t); b.line(t, o); feat(d, { type: 'revolve', sketch: skf(d, 'front', b), angle }); return d; };
+    const revArc = angle => { const d = D0('sfera'); const b = SB(); b.center(0, -100, 0, 100); const c = b.pt(0, 0), a = b.pt(0, -10), e = b.pt(0, 10); b.arc(c, a, e); b.line(e, a); feat(d, { type: 'revolve', sketch: skf(d, 'front', b), angle }); return d; };
+    test('Assieme: cono con la punta riletto (R 10, alto 20): apice (0, 20, 0), tangente 0,5', m => {
+      const E = ents(reread(revTri(360))).es.find(e => e.E.cone).E; eqn(m, 'tangente', E.tan, 0.5, 1e-6); vec(m, 'apice', E.apex, [0, 20, 0]); vec(m, 'asse', E.d, [0, -1, 0], 1e-6);
+    });
+    test('Assieme: un quarto di cono riletto (solo 90° di superficie): stesso asse, stesso apice; un quarto di sfera: stesso centro', m => {
+      const c = ents(reread(revTri(90))).es.filter(e => e.E.cone); eqn(m, 'coni', c.length, 1);
+      if (c[0]) { eqn(m, 'tangente', c[0].E.tan, 0.5, 1e-5); vec(m, 'apice', c[0].E.apex, [0, 20, 0], 1e-4); }
+      const s = ents(reread(revArc(90))).es.filter(e => e.E.sphere); eqn(m, 'sfere', s.length, 1);
+      if (s[0]) { vec(m, 'centro', s[0].E.p, [0, 0, 0]); eqn(m, 'raggio', s[0].E.R, 10, 1e-5); }
+    });
+    test('Assieme: un toro riletto non è né cilindro, né cono, né sfera: messaggio chiaro', m => {
+      const d = D0('toro'); const b = SB(); b.center(0, -100, 0, 100); b.circle(20, 0, 5); feat(d, { type: 'revolve', sketch: skf(d, 'front', b), angle: 360 });
+      const { es } = ents(reread(d));
+      eqn(m, 'facce rifiutate', es.filter(e => e.E.err).length, es.length); if (!es.length) m.push('nessuna faccia');
+      if (!es.every(e => /non è un cilindro, un cono o una sfera/.test(e.E.err || ''))) m.push('messaggio sbagliato');
+    });
+    test('Assieme: cono nel foro: cono di traverso nel foro della piastra (concentrico) con la base piccola sulla faccia in alto: punto (3,-7,11) del cono in (30, 20, 10)', m => {
+      const docs = { a: asmDoc(stepPlateHole(60, 40, 10, 15)).doc, b: asmDoc(stepCone(5, 15, 20, { o: O3, z: AX, x: XP })).doc };
+      const infos = new Map(Object.entries(docs).map(([k, d]) => [k, Assembly.partInfo(d)]));
+      const asm = Assembly.newAssembly(), A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: { p: [200, 100, 50], q: [1, 0, 0, 0] } });
+      const face = (k, pred) => { const st = infos.get(k).st; for (const name of entOf(st)) { const e = Assembly.entityOf({ inst: 'I', k: 'face', name }, infos.get(k)); if (pred(e)) return { k: 'face', name }; } throw new Error('faccia non trovata'); };
+      asm.mates.push({ id: 'M1', type: 'concentric', a: { inst: A.id, ...face('a', e => e.t === 'axis') }, b: { inst: B.id, ...face('b', e => e.cone) }, s: 1, side: 1, value: 0 });
+      asm.mates.push({ id: 'M2', type: 'coincident', a: { inst: A.id, ...face('a', e => e.t === 'plane' && e.n[2] > 0.9) }, b: { inst: B.id, ...face('b', e => e.t === 'plane' && e.n[0] + e.n[1] + e.n[2] < 0) }, s: -1, side: 1, value: 0 });
+      const r = Assembly.solve(asm, infos);
+      eqn(m, 'tutto giusto', r.ok ? 1 : 0, 1); eqn(m, 'gradi di libertà', r.dof.total, 1);
+      vec(m, 'centro della base', Assembly.toWorld(B.pose, O3), [30, 20, 10]);
+      vec(m, 'asse del cono nel mondo', Assembly.dirWorld(B.pose, AX), [0, 0, 1], 1e-5);
+    });
+    test('Assieme: sfera con sfera (centri uguali, 3 gradi di libertà) e centro della sfera sull\'asse del cilindro (4 gradi di libertà), con facce di STEP', m => {
+      const docs = { a: asmDoc(stepSphere(10, { c: [1, 2, 3] })).doc, b: asmDoc(stepSphere(7, { c: [-4, 5, 6] })).doc, c: asmDoc(stepCylinder(15, 40)).doc };
+      const infos = new Map(Object.entries(docs).map(([k, d]) => [k, Assembly.partInfo(d)]));
+      const asm = Assembly.newAssembly(), A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: { p: [200, 100, 50], q: [1, 0, 0, 0] } });
+      const name = k => entOf(infos.get(k).st)[0];
+      asm.mates.push({ id: 'M1', type: 'concentric', a: { inst: A.id, k: 'face', name: name('a') }, b: { inst: B.id, k: 'face', name: name('b') }, s: 1, side: 1, value: 0 });
+      const r = Assembly.solve(asm, infos);
+      eqn(m, 'tutto giusto', r.ok ? 1 : 0, 1); eqn(m, 'gradi di libertà', r.dof.total, 3); vec(m, 'centro di B', Assembly.toWorld(B.pose, [-4, 5, 6]), [1, 2, 3]);
+      const as2 = Assembly.newAssembly(), C = Assembly.addInst(as2, 'c'), S = Assembly.addInst(as2, 'a', { pose: { p: [200, 100, 50], q: [1, 0, 0, 0] } });
+      const axisF = entOf(infos.get('c').st).find(n => Assembly.entityOf({ inst: 'I', k: 'face', name: n }, infos.get('c')).t === 'axis');
+      as2.mates.push({ id: 'M1', type: 'concentric', a: { inst: C.id, k: 'face', name: axisF }, b: { inst: S.id, k: 'face', name: name('a') }, s: 1, side: 1, value: 0 });
+      const r2 = Assembly.solve(as2, infos), W = Assembly.toWorld(S.pose, [1, 2, 3]);
+      eqn(m, 'tutto giusto 2', r2.ok ? 1 : 0, 1); eqn(m, 'gradi di libertà 2', r2.dof.total, 4); eqn(m, 'x', W[0], 0); eqn(m, 'y', W[1], 0);
+    });
+    test('Assieme: vertice di uno STEP: resta legato alla posizione (il corpo importato non cambia), niente facce salvate; se il corpo cambia, «!»', m => {
+      const docs = { a: asmDoc(stepBox(80, 50, 10)).doc, b: asmDoc(stepBox(10, 10, 10)).doc };
+      const infos = new Map(Object.entries(docs).map(([k, d]) => [k, Assembly.partInfo(d)]));
+      const asm = Assembly.newAssembly(), A = Assembly.addInst(asm, 'a'), B = Assembly.addInst(asm, 'b', { pose: { p: [200, 100, 50], q: [1, 0, 0, 0] } });
+      asm.mates.push({ id: 'M1', type: 'coincident', a: { inst: A.id, k: 'vertex', p: [80, 50, 10] }, b: { inst: B.id, k: 'vertex', p: [0, 0, 0] }, s: 1, side: 1, value: 0 });
+      const r = Assembly.solve(asm, infos);
+      eqn(m, 'tutto giusto', r.ok ? 1 : 0, 1); vec(m, 'origine di B', B.pose.p, [80, 50, 10]); eqn(m, 'facce salvate', asm.mates[0].a.faces ? 1 : 0, 0);
+      const infos2 = new Map(infos); infos2.set('a', Assembly.partInfo(asmDoc(stepBox(90, 50, 10)).doc));
+      const r2 = Assembly.solve(asm, infos2);
+      eqn(m, 'segnato', r2.status.get('M1').ok ? 1 : 0, 0); if (!/vertice scelto non esiste più/.test(r2.status.get('M1').err || '')) m.push('messaggio sbagliato');
+    });
   }
   console.log(`\n${n - fail}/${n} superati (tolleranza ${(TOL * 100).toFixed(1)}%)`);
   process.exit(fail ? 1 : 0);

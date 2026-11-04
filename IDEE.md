@@ -40,8 +40,12 @@ Chiesto dall'utente il 28 ottobre 2026. **La base è fatta il 4 novembre 2026** 
 
 **Ancora da fare, in una chat nuova:**
 
-- Interferenze (parti che si compenetrano), vista esplosa, distinta base e tavola dell'assieme, proprietà di massa dell'assieme.
-- Più assiemi per progetto e sottoassiemi; accoppiamenti con i piani e l'origine delle parti; coni e sfere nelle facce curve degli STEP.
+- **Calcoli sull'assieme** (prima): proprietà di massa dell'assieme, distinta base, interferenze (parti che si compenetrano, e per quale volume).
+- **Presentazione** (dopo): vista esplosa e tavola dell'assieme.
+- Più assiemi per progetto e sottoassiemi.
+- Tori e superfici libere nelle facce curve degli STEP; scegliere piani e origine anche nella vista.
+
+**Fatti il 4 novembre:** accoppiamenti con i piani e l'origine delle parti; coni e sfere nelle facce curve degli STEP; vertici che si ritrovano quando cambia la parte.
 - Se servirà: parti collegate a file separati (scartate per ora: funzionerebbero solo in Chrome ed Edge).
 
 ## Viti, bulloni e filettature (lavoro successivo, chiesto il 4 novembre 2026)
@@ -61,7 +65,7 @@ L'utente vuole inserire il Banco CAD su **AlternativeTo**. Controllo fatto su tu
 Cose ancora da fare:
 
 5. **Sorgenti di occt-import-js «nello stesso posto»** (LGPL 2.1, punto 6d): **fatto** il 4 novembre con due fork (`Rayuk-creator/occt-import-js` e `Rayuk-creator/OCCT`, vedi `licenze/LEGGIMI.md`). Facoltativo lo stesso per libredwg-web 0.8.2 (la GPL 3 permette già i sorgenti su un altro server): chiesto il 4 novembre, il fork lo deve fare l'utente (vedi `RIPARTENZA.md`).
-9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 50 argomenti, Glossario 197 termini), da decidere con l'utente.
+9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 54 argomenti, Glossario 199 termini), da decidere con l'utente.
 
 ## Tutela del nome e dell'autore (4 novembre 2026)
 

@@ -119,7 +119,7 @@ Linea, rettangolo e rettangolo centrale, cerchio, archi (centro-estremi, 3 punti
 
 - Più parti **nello stesso progetto** (e nello stesso file): **Nuova parte**, elenco delle parti in alto, doppio clic su un componente per aprire la sua parte.
 - **Inserisci parte**: una parte del progetto, più copie della stessa parte, oppure un file STEP, IGES, STL, OBJ o un progetto esportato. Uno STEP con più corpi dà una parte per ogni corpo, nelle posizioni del file.
-- **Accoppiamenti**: coincidente, concentrico, parallelo, perpendicolare, distanza, angolo, tra facce, spigoli e vertici; parte fissa; gradi di libertà di ogni componente nell'albero; messaggio quando due accoppiamenti si contraddicono.
+- **Accoppiamenti**: coincidente, concentrico, parallelo, perpendicolare, distanza, angolo, tra facce, spigoli, vertici, piani e origine delle parti (anche coni e sfere dei file STEP); un vertice si ritrova da solo quando cambi le misure; parte fissa; gradi di libertà di ogni componente nell'albero; messaggio quando due accoppiamenti si contraddicono.
 - **Trascinamento** dei componenti nei gradi di libertà che restano, con il mouse o con il dito (**Sposta parte**). Se modifichi una parte, l'assieme si ricalcola.
 - **Esporta STEP** dell'assieme: un solido per ogni componente. Non ci sono ancora interferenze, vista esplosa, distinta base e tavola dell'assieme.
 

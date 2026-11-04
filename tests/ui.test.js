@@ -1905,6 +1905,122 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     rec(ASM8, ok, `tavola ${JSON.stringify(dr)}; ritorno ${JSON.stringify(back)}; sezione ${sec}; file ${JSON.stringify(files)}; DXF «${dxf.t}»; selezione ${JSON.stringify(hl)}; dopo Canc ${s1.insts.length}; ${errs.join(' / ')}`);
   } catch (e) { rec(ASM8, false, e.message.split('\n')[0]); }
 
+  const ASM9 = 'Assieme: piani, origine e vertici: piano creato e origine scelti nel pannello, vertice scelto col mouse che segue la parte, «!» se sparisce; cono e sfera di uno STEP scelti con il mouse';
+  try {
+    const { stepCone, stepSphere } = require('./stepgen.js');
+    const { c, p, errs, clickW, insert, st } = await asmSetup();
+    // piano creato nella Piastra: 25 mm sopra il piano superiore
+    await p.evaluate(() => App.change(() => { const d = App.doc; d.features.push({ id: Model.uid(d, 'F'), type: 'plane', name: 'Piano25', base: { kind: 'std', id: 'top' }, offset: 25 }); }));
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(200);
+    await insert('p1'); await insert('p2');
+    const s0 = await st(), piastra = s0.insts[0], perno = s0.insts[1];
+    await p.click('[data-cmd="mate"]'); await p.waitForTimeout(100);
+    const opts0 = await p.evaluate(() => [...document.querySelectorAll('#asmDatumInst option')].map(o => o.textContent));
+    const btn0 = await p.evaluate(() => [...document.querySelectorAll('#asmDatums [data-datum]')].map(b => b.textContent));
+    await p.selectOption('#asmDatumInst', piastra.id); await p.waitForTimeout(50);
+    const plId = await p.evaluate(() => App.project.parts[0].doc.features.find(f => f.type === 'plane').id);
+    await p.click(`#asmDatums [data-datum="${plId}"]`); await p.waitForTimeout(100);
+    const chips1 = await p.evaluate(() => document.querySelector('#pm .selbox').innerText);
+    // il pannello non offre più i piani dello stesso componente
+    const opts1 = await p.evaluate(() => [...document.querySelectorAll('#asmDatumInst option')].map(o => o.textContent));
+    await p.hover('#asmDatums [data-datum="top"]'); await p.waitForTimeout(80);
+    await p.screenshot({ path: path.join(OUT, 'assieme-piano.png') });
+    await p.click('#asmDatums [data-datum="top"]'); await p.waitForTimeout(150);
+    const pressed = await p.evaluate(() => document.querySelector('[data-mate="coincident"]').getAttribute('aria-pressed'));
+    const msg1 = await p.evaluate(() => document.querySelector('#asmMsg').textContent);
+    await p.click('.pm-ok'); await p.waitForTimeout(150);
+    const b1 = await p.evaluate(id => __asm.box(id), perno.id), s1 = await st();
+    // perno Ø20 alto 30: y 25..55 sul piano a 25 mm
+    const plOk = near([b1[1], b1[4]], [25, 55]) && s1.dof === 3 && s1.ok;
+    // origine del perno sul piano destro della piastra: x -10..10
+    await p.click('[data-cmd="mate"]'); await p.waitForTimeout(100);
+    await p.selectOption('#asmDatumInst', perno.id); await p.waitForTimeout(50);
+    await p.click('#asmDatums [data-datum="origin"]'); await p.waitForTimeout(50);
+    await p.click('#asmDatums [data-datum="right"]'); await p.waitForTimeout(150);
+    const chips2 = await p.evaluate(() => document.querySelector('#pm .selbox').innerText);
+    await p.click('.pm-ok'); await p.waitForTimeout(150);
+    const b2 = await p.evaluate(id => __asm.box(id), perno.id), s2 = await st();
+    const orOk = near([b2[0], b2[3], b2[1], b2[4]], [-10, 10, 25, 55]) && s2.dof === 2 && s2.ok && /Origine di Perno<1>/.test(chips2) && /Piano destro di Piastra<1>/.test(chips2);
+    // origine su origine: contraddice il piano a 25 mm: ✓ non conferma
+    await p.click('[data-cmd="mate"]'); await p.waitForTimeout(100);
+    await p.selectOption('#asmDatumInst', perno.id); await p.waitForTimeout(50);
+    await p.click('#asmDatums [data-datum="origin"]'); await p.waitForTimeout(50);
+    await p.click('#asmDatums [data-datum="origin"]'); await p.waitForTimeout(200);
+    const bad = await p.evaluate(() => ({ msg: document.querySelector('#asmMsg').textContent, cls: document.querySelector('#asmMsg').className }));
+    await p.click('.pm-ok'); await p.waitForTimeout(100);
+    const stillOpen = await p.evaluate(() => !!App.pm); await p.keyboard.press('Escape'); await p.waitForTimeout(100);
+    if (await p.evaluate(() => !!App.pm)) { await p.evaluate(() => App.closePM(false)); await p.waitForTimeout(100); }
+    const s3 = await st(), b3 = await p.evaluate(id => __asm.box(id), perno.id);
+    const refuse = /non si può soddisfare/.test(bad.msg) && /asm-err/.test(bad.cls) && stillOpen && s3.mates.length === 2 && near([b3[0], b3[3], b3[1], b3[4]], [-10, 10, 25, 55]);
+    // il piano che sparisce: «!» con il messaggio
+    await p.evaluate(() => { App.openPart('p1'); App.change(() => { App.doc.features = App.doc.features.filter(f => f.type !== 'plane'); }); });
+    await p.click('[data-ct="assembly"]'); await p.waitForTimeout(250);
+    const lost = await p.evaluate(() => ({ n: document.querySelectorAll('.tmate .badge.err').length, title: (document.querySelector('.tmate .badge.err') || {}).title }));
+    await p.evaluate(() => { App.openPart('p1'); App.undo(); }); await p.click('[data-ct="assembly"]'); await p.waitForTimeout(250);
+    const back = await p.evaluate(() => document.querySelectorAll('.tmate .badge.err').length);
+    const lostOk = lost.n === 1 && /piano scelto non esiste più/.test(lost.title) && back === 0;
+    await c.close();
+
+    // vertici col mouse: angolo della piastra e punto del perno
+    const V = await asmSetup();
+    await V.p.click('[data-ct="assembly"]'); await V.p.waitForTimeout(200);
+    await V.insert('p1'); await V.insert('p2');
+    const v0 = await V.st(), pin = v0.insts[1];
+    await V.p.click('[data-cmd="mate"]'); await V.p.waitForTimeout(100);
+    await V.clickW([80, 10, 0]);
+    await V.clickW([95 + 10, 30, 0]);
+    const vchips = await V.p.evaluate(() => document.querySelector('#pm .selbox').innerText);
+    await V.p.click('.pm-ok'); await V.p.waitForTimeout(150);
+    const refs = await V.p.evaluate(() => { const m = App.project.assembly.mates[0]; return { a: m.a, b: m.b }; });
+    const wp = await V.p.evaluate(() => { const a = App.project.assembly, i = a.insts[1], m = a.mates[0]; return Assembly.toWorld(i.pose, m.b.p); });
+    const vOk0 = /Vertice di Piastra<1>/.test(vchips) && /Vertice di Perno<1>/.test(vchips) && near(refs.a.p, [80, 10, 0], 1e-6) && near(refs.b.p, [10, 30, 0], 1e-6) && refs.a.faces.length === 3 && refs.b.faces.length === 2 && near(wp, [80, 10, 0], 1e-6);
+    // la piastra si allunga da 80 a 110 mm: il vertice si ritrova, il perno lo segue
+    await V.p.evaluate(() => { App.openPart('p1'); App.change(() => { for (const e of App.doc.features[0].sk.ents) if (e.t === 'pt' && e.x === 80) e.x = 110; }); });
+    await V.p.click('[data-ct="assembly"]'); await V.p.waitForTimeout(250);
+    const v1 = await V.p.evaluate(() => { const a = App.project.assembly, i = a.insts[1], m = a.mates[0]; return { w: Assembly.toWorld(i.pose, m.b.p), p: m.a.p, badge: document.querySelectorAll('.tmate .badge.err').length, ok: App.asm.last.ok }; });
+    const follow = near(v1.w, [110, 10, 0], 1e-6) && near(v1.p, [110, 10, 0], 1e-6) && v1.badge === 0 && v1.ok;
+    // Annulla nella parte: torna a 80 e il perno torna con lui
+    await V.p.evaluate(() => { App.openPart('p1'); App.undo(); }); await V.p.click('[data-ct="assembly"]'); await V.p.waitForTimeout(250);
+    const v2 = await V.p.evaluate(() => { const a = App.project.assembly, i = a.insts[1], m = a.mates[0]; return { w: Assembly.toWorld(i.pose, m.b.p), badge: document.querySelectorAll('.tmate .badge.err').length }; });
+    const undoV = near(v2.w, [80, 10, 0], 1e-6) && v2.badge === 0;
+    // smusso sullo spigolo che arriva al vertice: sparisce davvero
+    await V.p.evaluate(() => { App.openPart('p1'); App.change(() => { const d = App.doc, st = App.st, t = st.topo; let e = null; for (const g of Model.edgeGroups(st, t).values()) { const p = g.segs.flatMap(x => [t.verts[x.a], t.verts[x.b]]); if (p.every(v => Math.abs(v[0] - 80) < 1e-6 && Math.abs(v[1] - 10) < 1e-6)) e = g; } if (!e) throw new Error('spigolo non trovato'); d.features.push({ id: Model.uid(d, 'F'), name: 'Smusso1', type: 'chamfer', d: 2, edges: [{ a: st.tags.get(e.t1).name, b: st.tags.get(e.t2).name, p: [80, 10, -25] }] }); }); });
+    await V.p.click('[data-ct="assembly"]'); await V.p.waitForTimeout(250);
+    const v3 = await V.p.evaluate(() => ({ n: document.querySelectorAll('.tmate .badge.err').length, title: (document.querySelector('.tmate .badge.err') || {}).title, errs: App.project.parts[0].doc.features.length }));
+    const goneV = v3.n === 1 && /vertice scelto non esiste più/.test(v3.title);
+    await V.c.close();
+
+    // cono e sfera di uno STEP, scelti con il mouse: il centro della sfera finisce sull'asse del cono
+    const W = await asmSetup();
+    await W.p.click('[data-ct="assembly"]'); await W.p.waitForTimeout(200);
+    const openIns = async () => { await W.p.click('[data-cmd="insertPart"]'); await W.p.waitForSelector('#asmFile'); };
+    await openIns();
+    await W.p.setInputFiles('#asmFile', { name: 'cono.step', mimeType: 'application/step', buffer: Buffer.from(stepCone(5, 15, 20)) });
+    await W.p.waitForFunction(() => App.project.assembly.insts.length === 1 && document.querySelector('#modal').hidden, null, { timeout: 30000 }); await W.p.waitForTimeout(150);
+    await openIns();
+    await W.p.setInputFiles('#asmFile', { name: 'sfera.step', mimeType: 'application/step', buffer: Buffer.from(stepSphere(10, { c: [0, 0, 0] })) });
+    await W.p.waitForFunction(() => App.project.assembly.insts.length === 2 && document.querySelector('#modal').hidden, null, { timeout: 30000 }); await W.p.waitForTimeout(150);
+    await W.p.evaluate(() => { App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(false); }); await W.p.waitForTimeout(700);
+    const w0 = await W.st(), sf = w0.insts[1];
+    await W.p.click('[data-cmd="mate"]'); await W.p.waitForTimeout(100);
+    // punto sulla faccia conica, verso la vista: raggio 10 a z = 10; il cono non è nascosto dalla sfera, che sta accanto
+    const pkC = await W.p.evaluate(() => { const r = App.r, a = Math.PI / 4; for (const ang of [0, Math.PI / 2, Math.PI, -Math.PI / 2, a, -a]) { const w = [10 * Math.cos(ang), 10 * Math.sin(ang), 10], q = r.project(w), f = r.pickFace(q[0], q[1]); if (f) { const tg = App.st.tags.get(App.st.body[f.poly].t); if (tg.inst === App.project.assembly.insts[0].id && Math.abs(Math.hypot(f.point[0], f.point[1]) - (5 + f.point[2] / 2)) < 0.05 && f.point[2] > 2 && f.point[2] < 18) return w; } } return null; });
+    await W.clickW(pkC);
+    const chipC = await W.p.evaluate(() => document.querySelector('#pm .selbox').innerText);
+    const cs = sf.p;
+    await W.clickW(await W.p.evaluate(p0 => { const r = App.r, c = p0, b = r.basis(); return c.map((v, k) => v + 10 * b.back[k]); }, cs));
+    const chipS = await W.p.evaluate(() => document.querySelector('#pm .selbox').innerText);
+    const press = await W.p.evaluate(() => document.querySelector('[data-mate="concentric"]').getAttribute('aria-pressed'));
+    await W.p.click('.pm-ok'); await W.p.waitForTimeout(200);
+    const w1 = await W.st(), wc = await W.p.evaluate(() => { const a = App.project.assembly, i = a.insts[1]; return Assembly.toWorld(i.pose, [0, 0, 0]); });
+    const stepOk = /Faccia conica di/.test(chipC) && /Sfera di/.test(chipS) && press === 'true' && near([wc[0], wc[1]], [0, 0], 1e-5) && w1.dof === 4 && w1.ok;
+    await W.p.screenshot({ path: path.join(OUT, 'assieme-cono-sfera.png') });
+    await W.c.close();
+
+    const ok = opts0.length === 2 && btn0.join('|') === 'Piano frontale|Piano superiore|Piano destro|Piano25|Origine' && /Piano25 di Piastra<1>/.test(chips1) && opts1.join() === 'Perno<1>' && pressed === 'true' && /Gradi di libertà rimasti: 3/.test(msg1) && plOk && orOk && refuse && lostOk && vOk0 && follow && undoV && goneV && stepOk && !errs.length && !V.errs.length && !W.errs.length;
+    rec(ASM9, ok, JSON.stringify({ opts0, btn0, chips1, opts1, pressed, msg1, b1: b1 && fmtv(b1), plOk, b2: fmtv(b2), chips2, orOk, bad: bad.msg, refuse, lost, back, vchips, refs, wp, vOk0, v1, follow, v2, undoV, v3, goneV, chipC, chipS, press, wc, dof: w1.dof, stepOk, errs: [...errs, ...V.errs, ...W.errs] }));
+  } catch (e) { rec(ASM9, false, e.message.split('\n')[0]); }
+
   const ASM7 = 'Assieme su tablet e telefono: Sposta parte con il dito; il dito sul pezzo fuori dal comando non lo muove; niente scorrimento laterale a 390 px';
   try {
     const c = await browser.newContext({ viewport: { width: 1000, height: 700 }, hasTouch: true });
