@@ -2285,6 +2285,28 @@ ASM.push(['Ambito di uno sweep: tubo R5 lungo 50 attraverso due blocchi: solo su
   const on = mk(true), all = mk(false), Vt = 25 * Math.PI * 50, half = 25 * Math.PI / 2 * 10;
   return eqs([on.length, on[1], on[0], all.length], [2, 2000, 2000 + Vt - half, 1], 60);   // il primo: tubo a faccette, 1 %
 }]);
+// un Importato: blocco x0..x1, y 0..10, z −10..0, come i blocchi di twoU
+const impB = (d, x0, x1, extra = {}) => imp(d, stlB(boxTris(x0, 0, -10, x1, 10, 0)), 'stl', extra);
+ASM.push(['Ambito di un Importato: il blocco x 10..20 tocca A e B; senza ambito un corpo da 3000; solo A: 2000 + 1000; solo B: 1000 + 2000; tutti e due: 3000', () => {
+  const run = sc => { const { d, a, c } = twoU(); impB(d, 10, 20, sc ? { scope: sc(a, c) } : {}); return bodyVols(d); };
+  return eqs([...run(null), ...run(a => [a]), ...run((a, c) => [c]), ...run((a, c) => [a, c])], [3000, 2000, 1000, 1000, 2000, 3000]);
+}]);
+ASM.push(['Ambito di un Importato: x 5..25 solo su A: x 0..25 = 2500, area 2 × (250 + 250 + 100) = 1200; B resta 1000, area 600', () => {
+  const { d, a } = twoU(); impB(d, 5, 25, { scope: [a] }); const st = Model.regen(d), m = Model.massProperties(st, d);
+  return eqs([...bodyVols(d), m.area], [2500, 1000, 1200 + 600]);
+}]);
+ASM.push(['Ambito di un Importato: lontano dal corpo scelto: corpo nuovo con avviso; Unisci risultato tolta: l\'ambito non conta, nessun avviso', () => {
+  const x = twoU(); impB(x.d, 40, 50, { scope: [x.a] }); const st = Model.regen(x.d), w = [...st.warn.values()].join();
+  const y = twoU(); impB(y.d, 10, 20, { scope: [y.a], merge: false }); const sy = Model.regen(y.d);
+  return eqs([st.bodies.length, /non tocca i corpi scelti/.test(w) ? 1 : 0, sy.bodies.length, sy.warn.size, ...bodyVols(y.d)], [3, 1, 3, 0, 1000, 1000, 1000]);
+}]);
+ASM.push(['Ambito di un Importato: nessun corpo scelto o corpo sparito: errore chiaro; Selezione automatica: tocca A e B = 2 corpi, lontano = 0 e corpo nuovo senza errori', () => {
+  const x = twoU(); impB(x.d, 10, 20, { scope: [] }); const e1 = [...Model.regen(x.d).errors.values()].join();
+  const y = twoU(); feat(y.d, { type: 'delbody', bodies: [y.a] }); impB(y.d, 10, 20, { scope: [y.a] }); const e2 = [...Model.regen(y.d).errors.values()].join();
+  const au = (x0, x1) => { const { d } = twoU(); const id = impB(d, x0, x1, { scope: [], scopeAuto: true }); const f = d.features.find(q => q.id === id); const ids = Model.autoScope(d, f); return { d, f, ids }; };
+  const near = au(10, 20), far = au(40, 50), sf = Model.regen(far.d);
+  return eqs([/scegli almeno un corpo/.test(e1) ? 1 : 0, /non esistono più/.test(e2) ? 1 : 0, near.ids.length, far.ids.length, sf.errors.size, sf.bodies.length], [1, 1, 2, 0, 0, 3]);
+}]);
 ASM.push(['Ambito: la serie di un\'estrusione sugli stessi corpi: rialzi 2 × 5 × 10 dietro A e B, 1100 + 1100; solo su A la copia è un corpo nuovo, con l\'avviso sulla serie', () => {
   const run = sc => { const { d, a, c } = twoU(); const f = barF(d, 2, 4, { scope: sc(a, c) }, 10, 15); const p = feat(d, { type: 'lpattern', feats: [f], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 20 }); const st = Model.regen(d); return { v: bodyVols(d), w: st.warn.get(p) || '' }; };
   const both = run((a, c) => [a, c]), one = run(a => [a]);

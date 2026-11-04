@@ -1606,6 +1606,92 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     await page.click('.pm-no'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(150);
     rec('Albero sopra la vista: piano scelto per nome, si chiude e si riapre', pl === 'front' && closed === 0 && reopened > 0, JSON.stringify({ pl, closed, reopened }));
   } catch (e) { rec('Limiti dei corpi solidi con il mouse', false, e.message.split('\n')[0]); await page.evaluate(() => { try { App.closeModal(); if (App.pm) App.closePM(false); } catch (x) {} }); }
+  // Limiti dei corpi solidi, seconda parte: Ambito su Importato, schizzi nell'albero sopra la vista, facce di corpi diversi nello stesso piano
+  try {
+    await fresh();
+    await page.evaluate(() => {
+      const box = (x0, y0, x1, y1) => { const s = Sketch.newSketch(); const pt = (x, y) => { const id = 'p' + (s.next++); s.ents.push({ id, t: 'pt', x, y }); return id; }; const P = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => pt(x, y)); P.forEach((a, i) => s.ents.push({ id: 'l' + (s.next++), t: 'ln', a, b: P[(i + 1) % 4] })); return s; };
+      App.change(() => { const d = App.doc; const add = f => { f.id = Model.uid(d, 'F'); f.name = Model.defaultName(d, f.type); d.features.push(f); return f.id; };
+        add({ type: 'extrude', sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(0, 0, 40, 40) }), end: 'blind', depth: 10 });
+        add({ type: 'extrude', merge: false, sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(60, 0, 100, 40) }), end: 'blind', depth: 10 });
+        window.__sA = add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(45, 10, 55, 30) });
+        window.__sB = add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(42, 12, 58, 28) }); App.sel = []; });
+      App.r.fit(App.st.body);
+    });
+    await page.waitForTimeout(250);
+    const ids = await page.evaluate(() => App.st.bodies.map(b => b.id));
+    const ok = async () => { await page.click('.pm-ok'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(200); };
+    const vols = () => page.evaluate(() => App.st.bodies.map(b => { let s = 0; for (const p of b.polys) for (let i = 2; i < p.v.length; i++) { const [a, u, c] = [p.v[0], p.v[i - 1], p.v[i]]; s += a[0] * (u[1] * c[2] - u[2] * c[1]) - a[1] * (u[0] * c[2] - u[2] * c[0]) + a[2] * (u[0] * c[1] - u[1] * c[0]); } return Math.round(s / 6); }));
+    // schizzi nell'albero sopra la vista: l'estrusione parte con il primo schizzo, si cambia per nome (20 × 20 × 10 = 2000 → 16 × 16 × 10 = 2560)
+    await page.evaluate(() => App.select({ kind: 'feature', id: window.__sA, sketch: true, label: 'Schizzo' }));
+    await page.click('#cmdBar [data-cmd="extrude"]'); await page.waitForTimeout(300);
+    const list = await page.evaluate(() => [...document.querySelectorAll('#partFly [data-fly-sketch]')].map(b => b.dataset.flySketch));
+    const on0 = await page.locator(`#partFly [data-fly-sketch="${await page.evaluate(() => window.__sA)}"].on`).count();
+    await page.click(`#partFly [data-fly-sketch="${await page.evaluate(() => window.__sB)}"]`); await page.waitForTimeout(250);
+    const f0 = await page.evaluate(() => ({ sk: App.doc.features[App.doc.features.length - 1].sketch, want: window.__sB, on: document.querySelectorAll('#partFly [data-fly-sketch].on').length }));
+    // con «Corpi selezionati» a mano (modalità scope) il nome di uno schizzo cambia lo schizzo, non i corpi
+    await page.locator('#pmScopeSel').check(); await page.waitForTimeout(200);
+    await page.locator('#pmScopeAuto').uncheck(); await page.waitForTimeout(200);
+    const scope0 = await page.evaluate(() => App.doc.features[App.doc.features.length - 1].scope.slice());
+    await page.click(`#partFly [data-fly-sketch="${await page.evaluate(() => window.__sA)}"]`); await page.waitForTimeout(250);
+    const f1 = await page.evaluate(() => { const f = App.doc.features[App.doc.features.length - 1]; return { sk: f.sketch, want: window.__sA, scope: f.scope.slice() }; });
+    await page.screenshot({ path: path.join(OUT, 'corpi-schizzi.png') });
+    await page.click('.pm-no'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(150);
+    rec('Albero sopra la vista: schizzi per nome, evidenziato quello in uso, anche con Corpi selezionati a mano', list.length === 4 && on0 === 1 && f0.sk === f0.want && f0.on === 1 && f1.sk === f1.want && JSON.stringify(f1.scope) === JSON.stringify(scope0), JSON.stringify({ list, on0, f0, f1, scope0 }));
+    // sweep: profilo e percorso si leggono nell'albero; una funzione già salvata non vede gli schizzi che vengono dopo
+    await page.evaluate(() => App.select(null));
+    await page.click('#cmdBar [data-cmd="sweep"]'); await page.waitForTimeout(300);
+    await page.click(`#partFly [data-fly-sketch="${await page.evaluate(() => window.__sA)}"]`); await page.waitForTimeout(250);
+    await page.click(`#partFly [data-fly-sketch="${await page.evaluate(() => window.__sB)}"]`); await page.waitForTimeout(250);
+    const sw = await page.evaluate(() => { const f = App.doc.features[App.doc.features.length - 1]; const t = id => document.querySelector(`#partFly [data-fly-sketch="${id}"]`).textContent; return { prof: f.sketch === window.__sA, path: f.path === window.__sB, a: t(window.__sA), b: t(window.__sB) }; });
+    await page.click('.pm-no'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(150);
+    await page.evaluate(() => App.editFeature(App.doc.features.find(f => f.type === 'extrude' && f.merge === false))); await page.waitForTimeout(300);
+    const before = await page.evaluate(() => [...document.querySelectorAll('#partFly [data-fly-sketch]')].length);
+    await page.click('.pm-no'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(150);
+    rec('Albero sopra la vista: nello sweep si leggono profilo e percorso; una funzione già salvata elenca solo gli schizzi prima di lei', sw.prof && sw.path && /\(profilo\)$/.test(sw.a) && /\(percorso\)$/.test(sw.b) && before === 2, JSON.stringify({ sw, before }));
+    // togli i due schizzi di prova, importa un blocco x 40..60 che tocca A e B, Ambito dal pannello dell'Importato
+    await page.evaluate(() => App.change(() => { App.doc.features = App.doc.features.filter(f => f.id !== window.__sA && f.id !== window.__sB); App.sel = []; })); await page.waitForTimeout(200);
+    const stl = await page.evaluate(() => { const q = [[[40, 0, -40], [40, 0, 0], [40, 10, 0], [40, 10, -40]], [[60, 0, -40], [60, 10, -40], [60, 10, 0], [60, 0, 0]], [[40, 0, -40], [60, 0, -40], [60, 0, 0], [40, 0, 0]], [[40, 10, -40], [40, 10, 0], [60, 10, 0], [60, 10, -40]], [[40, 0, -40], [40, 10, -40], [60, 10, -40], [60, 0, -40]], [[40, 0, 0], [60, 0, 0], [60, 10, 0], [40, 10, 0]]]; let t = 'solid p\n'; for (const [a, b, c, d] of q) for (const tr of [[a, b, c], [a, c, d]]) { t += 'facet normal 0 0 0\nouter loop\n'; for (const v of tr) t += 'vertex ' + v.join(' ') + '\n'; t += 'endloop\nendfacet\n'; } return t + 'endsolid p\n'; });
+    await page.evaluate(s => App.importMeshData('ponte.stl', new TextEncoder().encode(s), { unit: 'mm' }), stl); await page.waitForTimeout(300);
+    const v0 = await vols();   // senza ambito: un corpo solo, 16000 + 8000 + 16000
+    await page.evaluate(() => App.editFeature(App.doc.features[App.doc.features.length - 1])); await page.waitForTimeout(300);
+    const allFirst = await page.locator('#pmScopeAll').isChecked();
+    await page.locator('#pmScopeSel').check(); await page.waitForTimeout(300);
+    const auto = await page.evaluate(() => App.doc.features[App.doc.features.length - 1].scope.length);
+    await page.locator('#pmScopeAuto').uncheck(); await page.waitForTimeout(250);
+    await page.click(`#partFly [data-fly-body="${ids[1]}"]`); await page.waitForTimeout(300);
+    await ok();
+    const v1 = await vols(), f2 = await page.evaluate(() => JSON.parse(JSON.stringify({ scope: App.doc.features[App.doc.features.length - 1].scope })));
+    rec('Ambito di un Importato con il mouse: tutti i corpi (40000), Selezione automatica 2 corpi, poi solo il primo per nome (24000 + 16000)', v0.length === 1 && v0[0] === 40000 && allFirst && auto === 2 && v1.length === 2 && v1[0] === 24000 && v1[1] === 16000 && f2.scope.length === 1 && f2.scope[0] === ids[0], JSON.stringify({ v0, allFirst, auto, v1, f2 }));
+    // facce di corpi diversi nello stesso piano: due blocchi 40 × 40 con la faccia di sopra a y = 10
+    await page.evaluate(() => App.change(() => { App.doc.features.pop(); App.sel = []; })); await page.waitForTimeout(200);
+    await page.evaluate(() => { App.r.fit(App.st.body); }); await page.waitForTimeout(300);
+    const at = (x, y, z) => page.evaluate(([x, y, z]) => { const r = document.querySelector('.view canvas').getBoundingClientRect(), p = App.r.project([x, y, z]); return { x: p[0] + r.left, y: p[1] + r.top }; }, [x, y, z]);
+    const lit = () => page.evaluate(() => { const r = App.r, st = App.st, out = st.bodies.map(() => 0), seen = new Set(); r.cpu.triPoly.forEach((pi, t) => { if (seen.has(pi)) return; seen.add(pi); const c = r.colors.slice(t * 9, t * 9 + 3); const hot = Math.abs(c[0] - 0.96) < 0.02 && Math.abs(c[1] - 0.62) < 0.02 && Math.abs(c[2] - 0.12) < 0.02, sel = Math.abs(c[0] - 0.18) < 0.02 && Math.abs(c[1] - 0.47) < 0.02 && Math.abs(c[2] - 0.88) < 0.02; if (hot || sel) out[st.bodies.indexOf(Model.bodyOfPoly(st, pi))]++; }); return out; });
+    const pa = await at(20, 10, -20), pb = await at(80, 10, -20);
+    await page.mouse.move(pa.x, pa.y); await page.waitForTimeout(200);
+    const h1 = await lit();
+    await page.mouse.move(pb.x, pb.y); await page.waitForTimeout(200);
+    const h2 = await lit();
+    await page.mouse.click(pa.x, pa.y); await page.waitForTimeout(200);
+    await page.mouse.move(5, 5); await page.waitForTimeout(150);
+    const s1 = await lit(), area = await page.evaluate(() => App.faceArea(App.sel[0].key, App.sel[0].body)), stat = await page.evaluate(() => document.querySelector('#stMsg').textContent);
+    await page.keyboard.down('Control'); await page.mouse.click(pb.x, pb.y); await page.keyboard.up('Control'); await page.waitForTimeout(200);
+    const sel2 = await page.evaluate(() => App.sel.length);
+    await page.mouse.move(5, 5); await page.waitForTimeout(150);
+    const s2 = await lit();
+    await page.keyboard.down('Control'); await page.mouse.click(pa.x, pa.y); await page.keyboard.up('Control'); await page.waitForTimeout(200);
+    await page.mouse.move(5, 5); await page.waitForTimeout(150);
+    const sel1 = await page.evaluate(() => App.sel.length), s3 = await lit();
+    await page.evaluate(() => App.select(null));
+    // Misura: l'area è quella della faccia scelta, e la seconda faccia nello stesso piano è un altro elemento
+    await page.evaluate(() => Features.measure()); await page.waitForTimeout(200);
+    await page.mouse.click(pa.x, pa.y); await page.waitForTimeout(200);
+    const mt = await page.evaluate(() => document.querySelector('#pm').textContent);
+    await page.evaluate(() => App.closePM(false)); await page.waitForTimeout(150);
+    const one = (a, b) => a[b] > 0 && a[1 - b] === 0;
+    rec('Facce di corpi diversi nello stesso piano: si illumina e si sceglie solo quella del corpo sotto il puntatore; area 1600 (non 3200); Ctrl + clic le tiene separate', one(h1, 0) && one(h2, 1) && one(s1, 0) && Math.abs(area - 1600) < 1e-6 && /1\.?600/.test(stat) && !/3\.?200/.test(stat) && sel2 === 2 && s2[0] > 0 && s2[1] > 0 && sel1 === 1 && one(s3, 1) && /Area\s*1\.?600/.test(mt) && !/3\.?200/.test(mt), JSON.stringify({ h1, h2, s1, area, stat, sel2, s2, sel1, s3, mt: mt.slice(0, 200) }));
+  } catch (e) { rec('Limiti dei corpi solidi, seconda parte', false, e.message.split('\n')[0]); await page.evaluate(() => { try { App.closeModal(); if (App.pm) App.closePM(false); } catch (x) {} }); }
   // sfondo: tratteggio, tolleranza, richiamo e tabella dal disegno vero, finestra e schizzo
   try {
     await fresh();
