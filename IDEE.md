@@ -2,6 +2,20 @@
 
 Promemoria delle cose discusse ma **non ancora fatte**. Da leggere all'inizio di una nuova sessione di lavoro.
 
+## PRIMO LAVORO: traduzione in inglese (per la settimana del 9 novembre 2026)
+
+Scelta dell'utente del 5 novembre: **è il primo lavoro della settimana prossima**. Tradurre tutto il programma in inglese, lasciando l'italiano come lingua normale e l'inglese da scegliere con un comando.
+
+Testo misurato il 5 novembre in `index.html` (conteggio automatico, approssimato). Tempi stimati: in tutto 6-10 ore di lavoro, su 3-5 chat, a tappe:
+
+1. **Interfaccia e scelta della lingua** (3-5 ore): circa 1.050 frasi, 8.700 parole, più le etichette di una parola sola (almeno 180). Attenzione a: messaggi composti a pezzi con numeri e plurali, numeri scritti in formato italiano (`toLocaleString('it-IT')`), nomi dei comandi da prendere dalla versione inglese di SolidWorks (da controllare su fonti esterne: l'utente non ha SolidWorks).
+2. **Glossario** (1 ora): circa 8.100 parole.
+3. **Guida** (1 ora): circa 7.000 parole.
+4. **Manuale PDF in inglese**, con le schermate rifatte (1-2 ore): capitoli scritti a mano in `tools/manuale/build.py` (circa 3.000 parole, codice compreso), più Guida e Glossario già tradotti.
+5. **Convertitore DWG e prove in inglese** (circa 1 ora; testo del Convertitore non ancora misurato): una prova che cerca le frasi rimaste in italiano nella versione inglese.
+
+L'Autoverifica (5.400 parole) è proposta fuori dalla traduzione: i nomi delle prove possono restare in italiano. Il lavoro consuma molto del limite settimanale dell'utente: dopo ogni tappa il programma deve restare usabile.
+
 ## Importare file di altri programmi
 
 Il 20 ottobre 2026 abbiamo valutato l'importazione di altri formati. Il 21 ottobre sono stati fatti **STL e OBJ** (Progetto › Importa STL o OBJ, funzione «Importato»), **DXF negli schizzi** (Progetto › Importa DXF (schizzo), Schizzo › Inserisci DXF) e **STEP/IGES** (Progetto › Importa STEP o IGES). Valutazione:
@@ -56,7 +70,7 @@ L'utente vuole inserire il Banco CAD su **AlternativeTo**. Controllo fatto su tu
 Cose ancora da fare:
 
 5. **Sorgenti di occt-import-js «nello stesso posto»** (LGPL 2.1, punto 6d): **fatto** il 4 novembre con due fork (`Rayuk-creator/occt-import-js` e `Rayuk-creator/OCCT`, vedi `licenze/LEGGIMI.md`). Fatto il 4 novembre anche per libredwg-web 0.8.2 (`Rayuk-creator/libredwg-web`).
-9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; l'interfaccia in inglese sarebbe un lavoro grande (tutti i testi, Guida 63 argomenti, Glossario 220 termini), da decidere con l'utente.
+9. **Dopo:** scheda AlternativeTo (la fa l'utente con il suo account; io preparo i testi in inglese: nome, descrizione breve e lunga, piattaforma «Online», categorie, alternative: SolidWorks, FreeCAD, Onshape, Tinkercad, Fusion; schermate da `docs/img`). **Rischio:** AlternativeTo rifiuta spesso i programmi non in inglese; per questo l'utente ha deciso il 5 novembre di tradurre prima tutto il programma (vedi in cima a questo file).
 
 ## Tutela del nome e dell'autore (4 novembre 2026)
 

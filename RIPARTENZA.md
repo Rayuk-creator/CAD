@@ -2,7 +2,7 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 5 novembre 2026, ore 12. La storia dei lavori sta in `CRONOLOGIA.md` (non serve leggerla a inizio task: si apre solo quando serve).
+Ultimo aggiornamento: 5 novembre 2026, ore 12:45. La storia dei lavori sta in `CRONOLOGIA.md` (non serve leggerla a inizio task: si apre solo quando serve).
 
 **Stato attuale:** ultima modifica = voce «Manuale d'uso (PDF)» nel menu Progetto (5 novembre, ore 12; vedi `git log`). Tutte le prove superate: 317/317 di calcolo, 51/51 STEP/IGES, 22/22 del lettore e del convertitore DWG, 94/94 dell'interfaccia, Autoverifica compresa nelle prove dell'interfaccia. Nessun lavoro lasciato a metà.
 
@@ -157,7 +157,7 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 
 ## 5. Cose aperte
 
-- **Da chiedere per primo (aggiornato il 5 novembre):** gli assiemi, la viteria, i limiti dei corpi solidi e il manuale in PDF sono fatti. Altri lavori possibili: pubblicazione su AlternativeTo (testi in inglese), una pagina su itch.io che rimanda al sito (parere dato all'utente: utilità poca, costo poco; dopo AlternativeTo e dopo scuole e insegnanti), nome del programma (parere dato all'utente: tenere Banco CAD, salvo puntare all'estero; decidere prima della scheda su AlternativeTo), cablaggio da PDF.
+- **Primo lavoro (scelta dell'utente del 5 novembre): traduzione di tutto il programma in inglese, per la settimana del 9 novembre.** Tappe e misure in cima a `IDEE.md`. Gli assiemi, la viteria, i limiti dei corpi solidi e il manuale in PDF sono fatti. Altri lavori possibili, dopo: pubblicazione su AlternativeTo (testi in inglese), nome del programma (parere dato all'utente: tenere Banco CAD, salvo puntare all'estero; decidere prima della scheda su AlternativeTo), cablaggio da PDF. L'idea di una pagina su itch.io è stata scartata dall'utente il 5 novembre: non riproporla.
 
 
 - **Fork di libredwg-web: fatto** (4 novembre), `Rayuk-creator/libredwg-web`, commit del tag v0.8.2 `45a2a217f4916daddd7bd598c900d6c698d141b6`. **Non premere «Sync fork».** Se si cambia versione: `aboutDialog`, commento del lettore nelle due pagine (`incorpora-libredwg.js`), `licenze/LEGGIMI.md`, `convertitore-dwg/LEGGIMI.md`, pagina del Convertitore, prova dell'interfaccia.
@@ -171,7 +171,7 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 - **Limite delle interferenze:** una sola coppia di pezzi enormi può tenere ferma la pagina (54 000 poligoni sovrapposti del tutto ≈ 100 s; tra una coppia e l'altra si può interrompere).
 - Se si cambia il modo d'uso del programma o del Convertitore, aggiornare tutti i riquadri «Come si usa» (i due README, `convertitore-dwg/README.md`, il LEGGIMI).
 
-- Tutto quello che c'è in `IDEE.md`. **Il disegno 2D libero è stato cancellato dall'utente il 3 novembre: non va fatto né riproposto.** Il prossimo lavoro è da chiedere all'utente; in elenco: **pubblicazione su AlternativeTo** (licenza fatta il 3 novembre; restano i punti indicati in `IDEE.md`) e, forse, il cablaggio 3D semi-automatico da PDF.
+- Tutto quello che c'è in `IDEE.md`. **Il disegno 2D libero è stato cancellato dall'utente il 3 novembre: non va fatto né riproposto.** Il prossimo lavoro è la **traduzione in inglese** (vedi sopra); poi in elenco: **pubblicazione su AlternativeTo** (licenza fatta il 3 novembre; restano i punti indicati in `IDEE.md`) e, forse, il cablaggio 3D semi-automatico da PDF.
 - STEP esportato: dal 3 novembre i bordi che non sono rette, cerchi o ellissi sono B-spline cubiche (`fitBspline`, `kind: 'bspline'`; `stats.bsplines`): i punti vanno sull'intersezione vera con proiezioni alternate, i vertici dove finiscono le catene sul punto vero comune alle superfici. Sui 112 pezzi delle prove nessuna faccia resta a facce piane.
 - Lo sweep lungo una spline non lascia più schegge (dal 3 novembre i tratti tangenti si uniscono togliendo i tappi; se il percorso torna su sé stesso si usano i tagli BSP, che le schegge possono ancora farle).
 - PDF della vista 3D: è un'immagine alla risoluzione dello schermo (circa 100 punti per pollice su un A4). Per una tavola nitida c'è il PDF della tavola.
