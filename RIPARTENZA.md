@@ -155,7 +155,7 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 
 ## 5. Cose aperte
 
-- **Da chiedere per primo (aggiornato il 4 novembre pomeriggio):** gli assiemi e la viteria elencati prima sono fatti. Altri lavori possibili: pubblicazione su AlternativeTo (testi in inglese), una pagina su itch.io che rimanda al sito (parere dato all'utente: utilità poca, costo poco; dopo AlternativeTo e dopo scuole e insegnanti), nome del programma (parere dato all'utente: tenere Banco CAD, salvo puntare all'estero; decidere prima della scheda su AlternativeTo), cablaggio da PDF.
+- **Da chiedere per primo (aggiornato il 5 novembre):** gli assiemi, la viteria, i limiti dei corpi solidi e il manuale in PDF sono fatti. Altri lavori possibili: ripubblicare il Banco CAD su claude.ai (è ferma alla versione 23, senza i lavori del 4 notte e del 5 novembre), voce «Manuale d'uso» nel menu Progetto (proposta all'utente, non ancora chiesta), pubblicazione su AlternativeTo (testi in inglese), una pagina su itch.io che rimanda al sito (parere dato all'utente: utilità poca, costo poco; dopo AlternativeTo e dopo scuole e insegnanti), nome del programma (parere dato all'utente: tenere Banco CAD, salvo puntare all'estero; decidere prima della scheda su AlternativeTo), cablaggio da PDF.
 
 
 - **Fork di libredwg-web: fatto** (4 novembre), `Rayuk-creator/libredwg-web`, commit del tag v0.8.2 `45a2a217f4916daddd7bd598c900d6c698d141b6`. **Non premere «Sync fork».** Se si cambia versione: `aboutDialog`, commento del lettore nelle due pagine (`incorpora-libredwg.js`), `licenze/LEGGIMI.md`, `convertitore-dwg/LEGGIMI.md`, pagina del Convertitore, prova dell'interfaccia.
