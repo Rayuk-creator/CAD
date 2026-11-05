@@ -1368,6 +1368,47 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
       `sito: Banco CAD → ${g1.href}; Convertitore → ${g2} (e da index.html → ${g3}); da disco: ${g4} e ${g5}${gerr.length ? '; errori: ' + gerr.join(' | ') : ''}`);
   } catch (e) { rec('Sito GitHub Pages: Banco CAD e Convertitore si collegano tra loro sullo stesso sito', false, e.message.split('\n')[0]); }
 
+  // 6d. Manuale d'uso nel menu Progetto: la voce è un collegamento vero, ha l'aspetto delle altre voci e porta al PDF del repository,
+  //     da disco all'indirizzo pubblico e sul sito allo stesso sito
+  try {
+    const fs = require('fs'), ROOTD = path.dirname(page_), SITE = 'https://rayuk-creator.github.io/CAD/', PDFURL = SITE + 'docs/Manuale-Banco-CAD.pdf';
+    const prova = async addr => {
+      const c = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+      let dato = null; // il browser tratta il PDF come uno scaricamento e la risposta non si rilegge: si guarda il file consegnato
+      await c.route('https://rayuk-creator.github.io/**', r => {
+        const u = new URL(r.request().url()).pathname.replace(/^\/CAD\//, '');
+        if (u === '' || u === 'index.html') return r.fulfill({ status: 200, contentType: 'text/html', body: fs.readFileSync(page_) });
+        const f = path.join(ROOTD, u);
+        if (!fs.existsSync(f) || !fs.statSync(f).isFile()) return r.fulfill({ status: 404, body: '' });
+        dato = fs.readFileSync(f);
+        return r.fulfill({ status: 200, contentType: 'application/pdf', body: dato });
+      });
+      await c.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
+      const p = await c.newPage(); const err = []; p.on('pageerror', e => err.push(e.message));
+      await p.goto(addr); await p.waitForFunction(() => window.App && App.r, null, { timeout: 30000 });
+      await p.click('#btnFile');
+      const look = await p.evaluate(() => {
+        const a = document.querySelector('#menuFile [data-act="manual"]'), b = document.querySelector('#menuFile [data-act="help"]');
+        if (!a) return null;
+        const s = getComputedStyle(a), t = getComputedStyle(b), ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+        return { tag: a.tagName, text: a.textContent.trim(), href: a.href, target: a.target, rel: a.rel, under: rb.top < ra.top, same: s.color === t.color && s.fontSize === t.fontSize && s.fontFamily === t.fontFamily && s.textDecorationLine === t.textDecorationLine && s.paddingLeft === t.paddingLeft && Math.abs(ra.height - rb.height) < 0.6 && Math.abs(ra.width - rb.width) < 0.6 };
+      });
+      if (!look) { await c.close(); throw new Error('la voce non c\'è nel menu'); }
+      const sent = c.waitForEvent('response', { predicate: r => /Manuale-Banco-CAD\.pdf$/.test(r.url()), timeout: 15000 });
+      const popup = c.waitForEvent('page', { timeout: 15000 });
+      await p.click('#menuFile [data-act="manual"]');
+      const [resp] = await Promise.all([sent, popup]);
+      const after = await p.evaluate(() => ({ closed: document.querySelector('#menuFile').hidden, modal: !!document.querySelector('#modal:not([hidden])'), url: App.MANUAL_URL }));
+      await c.close();
+      return { look, status: resp.status(), url: resp.url(), pdf: !!dato && dato.slice(0, 5).toString() === '%PDF-', after, err };
+    };
+    const disco = await prova('file://' + page_), sito = await prova(SITE);
+    const buono = x => x.look.tag === 'A' && x.look.text === 'Manuale d\'uso (PDF)' && x.look.href === PDFURL && x.look.target === '_blank' && x.look.rel === 'noopener' && x.look.under && x.look.same && x.status === 200 && x.url === PDFURL && x.pdf && x.after.closed && !x.after.modal && x.after.url === PDFURL && !x.err.length;
+    const gl = await page.evaluate(() => ({ term: !!Glossary.find('Manuale d\'uso'), guida: Guide.topics.some(t => t.steps.join(' ').includes('Progetto › Manuale d\'uso (PDF)')) }));
+    rec('Manuale d\'uso: voce del menu Progetto, uguale alle altre, apre il PDF vero da disco e dal sito; Glossario e Guida', buono(disco) && buono(sito) && gl.term && gl.guida,
+      JSON.stringify({ disco, sito, gl }));
+  } catch (e) { rec('Manuale d\'uso: voce del menu Progetto, uguale alle altre, apre il PDF vero da disco e dal sito; Glossario e Guida', false, e.message.split('\n')[0]); }
+
   // corpi solidi: «Unisci risultato» con il mouse, cartella nell'albero, Combina, Sposta/Copia, Elimina/Mantieni, massa, tavola, STEP
   try {
     await fresh();

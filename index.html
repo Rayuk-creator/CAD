@@ -99,7 +99,8 @@ input, select, textarea { font: inherit; color: var(--ink); }
 .menu-wrap { position: relative; }
 .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 4px; min-width: 220px; display: flex; flex-direction: column; }
 .menu button { text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 5px; cursor: pointer; }
-.menu button:hover { background: var(--accent-soft); }
+.menu button:hover, .menu a:hover { background: var(--accent-soft); }
+.menu a { display: block; text-align: left; padding: 8px 10px; border-radius: 5px; cursor: pointer; color: inherit; text-decoration: none; }
 
 /* ---------- CommandManager ---------- */
 .cmd { background: var(--panel); border-bottom: 1px solid var(--line); min-width: 0; }
@@ -409,6 +410,7 @@ label.chk .gl-i { margin-left: 2px; }
           <button type="button" data-act="step">Esporta STEP (per altri CAD)</button>
           <button type="button" data-act="stl">Esporta STL (stampa 3D)</button>
           <button type="button" data-act="help">Guida (come si fa)</button>
+          <a data-act="manual" id="manualLink" href="https://rayuk-creator.github.io/CAD/docs/Manuale-Banco-CAD.pdf" target="_blank" rel="noopener">Manuale d'uso (PDF)</a>
           <button type="button" data-act="about">Informazioni e licenze</button>
         </div>
       </div>
@@ -10553,6 +10555,13 @@ self.postMessage({ hello: true });`;
   // Convertitore DWG → DXF: pagina a parte per chi vuole salvare i DXF o convertire molti disegni insieme (cartella
   // convertitore-dwg del repository). La finestra di importazione porta il collegamento: sul sito GitHub Pages (….github.io)
   // la pagina dello stesso sito; altrimenti (file aperto da disco, pagina su claude.ai) quella su claude.ai.
+  // Manuale d'uso (docs/Manuale-Banco-CAD.pdf): come il Convertitore, sul sito GitHub Pages quello dello stesso sito; altrimenti
+  // (file aperto da disco, pagina su claude.ai) l'indirizzo pubblico. Il PDF non è dentro la pagina: serve la connessione.
+  const MANUAL_URL = (() => {
+    try { if (/\.github\.io$/i.test(location.hostname)) return new URL('docs/Manuale-Banco-CAD.pdf', location.href).href; } catch (e) { /* indirizzo non leggibile */ }
+    return 'https://rayuk-creator.github.io/CAD/docs/Manuale-Banco-CAD.pdf';
+  })();
+  App.MANUAL_URL = MANUAL_URL;
   const DWG_CONVERTER_URL = (() => {
     try { if (/\.github\.io$/i.test(location.hostname)) return new URL('convertitore-dwg/', location.href).href; } catch (e) { /* indirizzo non leggibile */ }
     return 'https://claude.ai/artifact/8PeF7HpK8VZ1RFpsfAJYkY';
@@ -10901,8 +10910,10 @@ self.postMessage({ hello: true });`;
       e.stopPropagation(); const m = $('#menuFile'); const open = m.hidden; hideMenus(); m.hidden = !open;
       m.querySelector('[data-act="pdf"]').textContent = App.mode === 'drawing' ? 'Salva PDF della tavola' : App.mode === 'sketch' ? 'Salva PDF dello schizzo' : 'Salva PDF della vista 3D';
     });
+    $('#manualLink').href = App.MANUAL_URL;
     $('#menuFile').addEventListener('click', e => {
       const b = e.target.closest('[data-act]'); if (!b) return; hideMenus();
+      if (b.dataset.act === 'manual') return; // è un collegamento: lo apre il browser
       if (b.dataset.act === 'addPart') { addNewPart(); return; }
       if (b.dataset.act === 'delPart') { deletePartDialog(); return; }
       if (App.mode === 'assembly' && (b.dataset.act === 'importCad' || b.dataset.act === 'importMesh')) { App.asm.insertDialog(); return; }
@@ -16813,6 +16824,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Interfaccia', 'Rigenerazione', ['ricostruito', 'ricostruzione'], 'Il ricalcolo del solido a partire dall\'albero. Avviene da solo ogni volta che cambi una quota o una funzione (in SolidWorks è il «semaforo» Ricostruisci).'],
     ['Interfaccia', 'Annulla / Ripeti', ['annulla', 'ripeti'], 'Tornano indietro o avanti di un\'operazione (Ctrl+Z e Ctrl+Y). Dentro uno schizzo annullano i singoli tratti.'],
     ['Interfaccia', 'Anteprima', ['anteprima arancione', 'anteprima rossa'], 'Mentre il PropertyManager è aperto, il materiale che verrà aggiunto si vede in arancione e quello che verrà tolto in rosso. Il pezzo cambia davvero solo quando confermi con ✓.'],
+    ['Interfaccia', 'Manuale d\'uso', ['manuale', 'manuale pdf'], 'Progetto › Manuale d\'uso (PDF) apre il manuale completo del programma, da leggere o stampare: esercizio guidato, tutti i comandi e il glossario. È un file a parte, quindi serve la connessione a Internet; si può scaricare e tenere.'],
     ['Interfaccia', 'Guida', ['come si fa', 'how to'], 'Il pannello con le istruzioni passo per passo di ogni comando: a cosa serve, come si fa, i consigli e i termini. Il pulsante «Mostrami dove» apre la scheda giusta e fa lampeggiare il comando.'],
     ['Interfaccia', 'Comandi del mouse', ['rotella', 'zoom', 'sposta', 'ruota'], 'Rotella: zoom verso il puntatore (in avanti ingrandisce, indietro riduce), anche nella messa in tavola. Ctrl + rotella: ruota il modello attorno alla verticale. Trascinando: tasto sinistro nel vuoto ruota, tasto destro (o Maiusc + sinistro) sposta. Su tablet: due dita ingrandiscono sempre; per ruotare e spostare tocca prima il pezzo, poi un dito ruota e due dita spostano. Tocca il vuoto per lasciarlo.'],
     ['Interfaccia', 'Isometrica', ['vista isometrica', 'iso'], 'Vista in cui i tre assi X, Y, Z formano angoli uguali sullo schermo: si vedono tre facce del pezzo insieme. È la vista standard per il modello 3D.'],
@@ -19684,9 +19696,10 @@ if (isNode) {
       'Al centro c\'è la vista 3D; in alto la barretta con Adatta, orientamenti, stile di visualizzazione, sezione e piani.',
       'In basso la barra di stato dice cosa è selezionato e, nello schizzo, se è definito.',
       'I pulsanti **Guida** e **Glossario** in alto aprono questa guida e il dizionario dei termini; la piccola ⓘ accanto ai titoli dei pannelli spiega la voce.',
+      '**Progetto › Manuale d\'uso (PDF)** apre il [[Manuale d\'uso|manuale]] completo, da leggere o stampare. Serve la connessione a Internet: se vuoi averlo sempre, scaricalo.',
     ],
     tips: ['Tieni aperta la Guida mentre lavori: il pannello resta a destra e non copre l\'albero.'],
-    terms: ['CommandManager', 'Albero di progettazione', 'PropertyManager', 'Angolo di conferma'],
+    terms: ['CommandManager', 'Albero di progettazione', 'PropertyManager', 'Angolo di conferma', 'Manuale d\'uso'],
   });
   add('Per iniziare', 'vista', 'Muovere la vista (mouse e tablet)', {
     why: 'Guardare il pezzo da tutte le parti senza modificarlo.',
