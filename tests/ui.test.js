@@ -1482,7 +1482,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const vol = () => page.evaluate(() => Model.massProperties(App.st, App.doc).volume);
     const openCut = async () => { await page.evaluate(() => App.select({ kind: 'feature', id: window.__s3, sketch: true, label: 'Schizzo' })); await page.click('#cmdBar [data-cmd="cut"]'); await page.waitForTimeout(250); await page.evaluate(() => { const f = App.doc.features[App.doc.features.length - 1]; f.end = 'through'; f.both = true; App.pm.update(); }); await page.waitForTimeout(150); };
     await openCut();
-    const seen = await page.locator('#pmScopeAll').isChecked();
+    const seen = await page.locator('#pmScopeSel').isChecked() && await page.locator('#pmScopeAuto').isChecked();
     await page.locator('#pmScopeSel').check(); await page.waitForTimeout(200);
     const ids = await page.evaluate(() => App.st.bodies.map(b => b.id));
     await page.locator('#pmScopeAuto').uncheck(); await page.waitForTimeout(200);   // a mano: l'elenco parte dai corpi toccati
@@ -1500,8 +1500,45 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const box2 = picked.length === 1 && picked[0] === ids[0];   // il clic toglie dall'elenco il secondo corpo
     await ok();
     const v2 = await vol();
-    rec('Ambito funzione con il mouse: Tutti i corpi di partenza, casella nel pannello (taglio solo sul primo corpo), Annulla, clic nella vista, salvato nella funzione', seen && Math.abs(v1 - (32000 - 20 * 20 * 10)) < 1 && saved.length === 1 && saved[0] === ids[0] && Math.abs(v0 - 32000) < 1 && box2 && Math.abs(v2 - (32000 - 20 * 20 * 10)) < 1, `V ${v1} (attesi 28000), dopo Annulla ${v0}, clic: ${JSON.stringify(picked)} (atteso ${ids[1]}), V ${v2}`);
+    rec('Ambito funzione con il mouse: Corpi selezionati e Selezione automatica di partenza, casella nel pannello (taglio solo sul primo corpo), Annulla, clic nella vista, salvato nella funzione', seen && Math.abs(v1 - (32000 - 20 * 20 * 10)) < 1 && saved.length === 1 && saved[0] === ids[0] && Math.abs(v0 - 32000) < 1 && box2 && Math.abs(v2 - (32000 - 20 * 20 * 10)) < 1, `V ${v1} (attesi 28000), dopo Annulla ${v0}, clic: ${JSON.stringify(picked)} (atteso ${ids[1]}), V ${v2}`);
   } catch (e) { rec('Ambito funzione con il mouse', false, e.message.split('\n')[0]); await page.evaluate(() => { try { App.closeModal(); if (App.pm) App.cancelPM && App.cancelPM(); } catch (x) {} }); }
+  // Partenza dell'ambito: ✓ premuto subito dopo l'ultima modifica; Tutti i corpi resta riaprendo; con un corpo solo niente ambito
+  try {
+    const ok = async () => { await page.click('.pm-ok'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(150); };
+    const vol = () => page.evaluate(() => Model.massProperties(App.st, App.doc).volume);
+    const lastF = () => page.evaluate(() => JSON.parse(JSON.stringify(App.doc.features[App.doc.features.length - 1])));
+    const openCut = async () => { await page.evaluate(() => App.select({ kind: 'feature', id: window.__s3, sketch: true, label: 'Schizzo' })); await page.click('#cmdBar [data-cmd="cut"]'); await page.waitForTimeout(250); };
+    await page.evaluate(() => App.undo()); await page.waitForTimeout(250);
+    const v0 = await vol();
+    await page.evaluate(() => { const s = Sketch.newSketch(); const pt = (x, y) => { const id = 'p' + (s.next++); s.ents.push({ id, t: 'pt', x, y }); return id; }; const P = [[20, 10], [30, 10], [30, 30], [20, 30]].map(([x, y]) => pt(x, y)); P.forEach((a, i) => s.ents.push({ id: 'l' + (s.next++), t: 'ln', a, b: P[(i + 1) % 4] })); App.change(() => { const d = App.doc, f = { type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: s }; f.id = window.__s3b = Model.uid(d, 'F'); f.name = Model.defaultName(d, 'sketch'); d.features.push(f); App.sel = []; }); }); await page.waitForTimeout(150);
+    await openCut();
+    await page.evaluate(() => { const f = App.doc.features[App.doc.features.length - 1]; f.end = 'through'; f.both = true; f.sketch = window.__s3b; App.pm.update(); }); await page.waitForTimeout(400);   // tocca solo il primo corpo
+    const n1 = await page.evaluate(() => App.doc.features[App.doc.features.length - 1].scope.length);
+    await page.evaluate(() => { App.doc.features[App.doc.features.length - 1].sketch = window.__s3; App.pm.okBtn.click(); });   // li tocca tutti e due, e l'anteprima non ha avuto il tempo di accorgersene
+    await page.waitForFunction(() => !App.pm, null, { timeout: 5000 });
+    const v1 = await vol(), f1 = await lastF();
+    await page.evaluate(() => App.undo()); await page.waitForTimeout(250);
+    await openCut();
+    await page.evaluate(() => { const f = App.doc.features[App.doc.features.length - 1]; f.end = 'through'; f.both = true; App.pm.update(); }); await page.waitForTimeout(150);
+    await page.locator('#pmScopeAll').check(); await page.waitForTimeout(200);
+    await ok();
+    const f2 = await lastF(), v2 = await vol();
+    await page.evaluate(() => Features.edit(App.doc.features[App.doc.features.length - 1])); await page.waitForTimeout(250);
+    const allStill = await page.locator('#pmScopeAll').isChecked();
+    await page.evaluate(() => App.cancelPM ? App.cancelPM() : App.closePM(false)); await page.waitForTimeout(150);
+    await fresh();
+    await page.evaluate(() => {
+      const box = (x0, y0, x1, y1) => { const s = Sketch.newSketch(); const pt = (x, y) => { const id = 'p' + (s.next++); s.ents.push({ id, t: 'pt', x, y }); return id; }; const P = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => pt(x, y)); P.forEach((a, i) => s.ents.push({ id: 'l' + (s.next++), t: 'ln', a, b: P[(i + 1) % 4] })); return s; };
+      App.change(() => { const d = App.doc; const add = f => { f.id = Model.uid(d, 'F'); f.name = Model.defaultName(d, f.type); d.features.push(f); return f.id; };
+        add({ type: 'extrude', sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(0, 0, 40, 40) }), end: 'blind', depth: 10 });
+        window.__s3 = add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(10, 10, 20, 20) }); App.sel = []; });
+    });
+    await page.waitForTimeout(150);
+    await openCut();
+    const one = await page.evaluate(() => { const f = App.doc.features[App.doc.features.length - 1]; return { scope: f.scope === undefined, auto: f.scopeAuto === undefined, panel: document.querySelectorAll('#pmScopeAll').length }; });
+    await page.evaluate(() => App.cancelPM ? App.cancelPM() : App.closePM(false)); await page.waitForTimeout(150);
+    rec('Partenza dell\'ambito: ✓ subito dopo una modifica = due corpi, 24000; Tutti i corpi scelto resta riaprendo (24000); con un corpo solo niente ambito', n1 === 1 && Math.abs(v0 - 32000) < 1e-6 && Math.abs(v1 - 24000) < 1e-6 && f1.scopeAuto === true && f1.scope.length === 2 && f2.scope === undefined && f2.scopeAuto === undefined && Math.abs(v2 - 24000) < 1e-6 && allStill && one.scope && one.auto && one.panel === 0, JSON.stringify({ v0, v1, f1s: f1.scope, f2s: f2.scope, v2, allStill, one }));
+  } catch (e) { rec('Partenza dell\'ambito', false, e.message.split('\n')[0]); await page.evaluate(() => { try { App.closeModal(); if (App.pm) App.closePM(false); } catch (x) {} }); }
 
   // Limiti dei corpi solidi con il mouse: Ambito su un'estrusione, Selezione automatica, albero sopra la vista, serie e specchio di corpi
   try {
@@ -1523,8 +1560,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const ids = await page.evaluate(() => App.st.bodies.map(b => b.id));
     // estrusione con Corpi selezionati: scelta dall'albero sopra la vista
     await openExt();
-    const allFirst = await page.locator('#pmScopeAll').isChecked();
-    await page.locator('#pmScopeSel').check(); await page.waitForTimeout(250);
+    const allFirst = await page.locator('#pmScopeSel').isChecked() && await page.locator('#pmScopeAuto').isChecked();
     await page.locator('#pmScopeAuto').uncheck(); await page.waitForTimeout(250);
     const nFly = await page.locator('#partFly [data-fly-body]').count();
     await page.click(`#partFly [data-fly-body="${ids[1]}"]`); await page.waitForTimeout(250);   // il ponte li tocca tutti e due: ne tolgo uno
@@ -1537,13 +1573,12 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     await undo();
     // Selezione automatica: il ponte tocca i due corpi
     await openExt();
-    await page.locator('#pmScopeSel').check();
     const auSubito = await page.evaluate(() => { const f = App.doc.features[App.doc.features.length - 1]; return { box: document.querySelector('#pmScopeAuto').checked, n: f.scope.length, auto: f.scopeAuto === true }; });   // subito, senza aspettare l'anteprima
     await page.waitForTimeout(600);
     const au = await page.evaluate(() => ({ n: App.doc.features[App.doc.features.length - 1].scope.length, dis: [...document.querySelectorAll('#pm [data-scope]')].every(i => i.disabled && i.checked), fly: document.querySelectorAll('#partFly [data-fly-body]').length }));
     await ok();
     const b2 = await bodies(), f2 = await last();
-    rec('Selezione automatica già spuntata scegliendo Corpi selezionati, come in SolidWorks: due corpi subito, caselle bloccate, un corpo da 36000, salvata', auSubito.box && auSubito.auto && auSubito.n === 2 && au.n === 2 && au.dis && au.fly === 0 && b2.length === 1 && b2[0] === 36000 && f2.scopeAuto === true && f2.scope.length === 2, JSON.stringify({ auSubito, au, b2 }));
+    rec('Selezione automatica già spuntata in una funzione nuova, come in SolidWorks: due corpi subito, caselle bloccate, un corpo da 36000, salvata', auSubito.box && auSubito.auto && auSubito.n === 2 && au.n === 2 && au.dis && au.fly === 0 && b2.length === 1 && b2[0] === 36000 && f2.scopeAuto === true && f2.scope.length === 2, JSON.stringify({ auSubito, au, b2 }));
     await undo();
     // togliere la spunta, tornare a Tutti i corpi e di nuovo a Corpi selezionati; una funzione salvata a mano non cambia riaprendola
     await openExt();

@@ -2354,6 +2354,10 @@ ASM.push(['Ambito: la serie di un\'estrusione sugli stessi corpi: rialzi 2 × 5 
   const both = run((a, c) => [a, c]), one = run(a => [a]);
   return eqs([...both.v, ...one.v, /corpo nuovo/.test(one.w) ? 1 : 0], [1100, 1100, 1100, 1000, 100, 1]);
 }]);
+ASM.push(['Selezione automatica e serie: taglio 2 × 10 × 10 su A, copia su B: 800 + 800; con A scelto a mano la copia non tocca B: 800 + 1000', () => {
+  const run = auto => { const { d, a } = twoU(); const f = barF(d, 2, 4, { scope: [a], ...(auto ? { scopeAuto: true } : {}) }, 0, 10, 10, 'cut'); feat(d, { type: 'lpattern', feats: [f], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 20 }); return bodyVols(d); };
+  return eqs([...run(true), ...run(false)], [800, 800, 800, 1000]);
+}]);
 ASM.push(['Selezione automatica: ponte x 10..20 = A e B; taglio x 5..25 = A e B; x 5..9 = A; x 10..20 (tocca solo le facce, non toglie niente) = nessuno; aggiunta lontana = nessuno', () => {
   const ask = (x0, x1, type) => { const { d, a, c } = twoU(); const id = barF(d, x0, x1, { scope: [], scopeAuto: true }, 0, 10, 10, type); const ids = Model.autoScope(d, d.features.find(f => f.id === id)); return [ids.includes(a) ? 1 : 0, ids.includes(c) ? 1 : 0, ids.length]; };
   return eqs([...ask(10, 20, 'extrude'), ...ask(5, 25, 'cut'), ...ask(5, 9, 'cut'), ...ask(10, 20, 'cut'), ...ask(40, 50, 'extrude')], [1, 1, 2, 1, 1, 2, 1, 0, 1, 0, 0, 0, 0, 0, 0]);

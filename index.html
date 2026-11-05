@@ -5679,7 +5679,7 @@ self.postMessage({ hello: true });`;
           const tp = transformTool(s.polys, m, st, '*' + f.id + ':' + (k + 1));
           if (s.holes) for (const h of s.holes) st.holes.push({ ...h, o: xf(m, h.o), dir: xd(m, h.dir), f: f.id });
           const src = doc.features.find(x => st.tools.get(x.id) === s);
-          applyOp(st, tp, s.op, { id: f.id + ':' + (k + 1), warnId: f.id, merge: src ? src.merge : undefined, scope: src ? src.scope : undefined, scopeAuto: src ? src.scopeAuto : undefined });   // ogni copia sugli stessi corpi
+          applyOp(st, tp, s.op, { id: f.id + ':' + (k + 1), warnId: f.id, merge: src ? src.merge : undefined, scope: src && !src.scopeAuto ? src.scope : undefined });   // corpi scelti a mano: ogni copia sugli stessi; Selezione automatica: ogni copia sui corpi che tocca
         } });
         if (f.bodies && f.bodies.length) patternBodies(f, st, mats);
         return;
@@ -14159,6 +14159,8 @@ self.postMessage({ hello: true });`;
       if (!f.name) f.name = Model.defaultName(doc, f.type);
       if (doc.rollback !== null && doc.rollback !== undefined && doc.rollback < doc.features.length) { doc.features.splice(doc.rollback, 0, f); doc.rollback++; }
       else doc.features.push(f);
+      // con più corpi si parte da «Corpi selezionati» con la Selezione automatica spuntata, come in SolidWorks
+      if (SCOPE_FEATS.includes(f.type) && f.merge !== false && !f.scope && Model.regen(doc, { stopAt: doc.features.indexOf(f) }).bodies.length > 1) { f.scope = []; f.scopeAuto = true; f.scope = Model.autoScope(doc, f) || []; }
     }
     let previewSt = null, baseIdx = doc.features.indexOf(f);
     let pickMode = defaultPick(f);
@@ -14177,6 +14179,7 @@ self.postMessage({ hello: true });`;
       overlay(c) { overlay2d(c, f); },
       ok() {
         clearTimeout(timer); // un aggiornamento dell'anteprima in sospeso non deve scattare dopo la conferma
+        if (f.scope && f.scopeAuto) { const ids = Model.autoScope(App.doc, f); if (ids) f.scope = ids; }   // l'ultima modifica può non essere ancora arrivata all'anteprima
         const st = Model.regen(App.doc);
         if (st.errors.has(f.id)) { App.toast(st.errors.get(f.id), 5000); return false; }
         if (f.type === 'hole' && !f.sketch) { App.toast('Mancano le posizioni dei fori.'); return false; }
@@ -16791,8 +16794,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
   const E = [
     // ---------- interfaccia ----------
     ['Funzioni', 'Corpi solidi', ['corpi', 'corpo solido', 'corpi solidi'], 'I solidi separati di una parte, elencati nella cartella «Corpi solidi» dell\'albero. Una parte può averne più di uno: si possono tenere staccati e poi unire, sottrarre, spostare o eliminare.'],
-    ['Funzioni', 'Ambito funzione', ['ambito', 'corpi selezionati', 'tutti i corpi', 'feature scope'], 'In una parte con più corpi solidi: su quali corpi lavora una funzione (taglio, foro, estrusione, rivoluzione, sweep, nervatura, corpo importato). «Tutti i corpi» è la scelta di partenza; con «Corpi selezionati» si spuntano i corpi nel pannello, si fa clic su di loro nella vista o sul loro nome nell\'albero sopra la vista, e gli altri non si toccano. Chi aggiunge materiale si unisce solo ai corpi scelti che tocca: se non ne tocca nessuno diventa un corpo nuovo, con un avviso. Con «Unisci risultato» tolta l\'ambito non serve e non si vede. Le serie e gli specchi di quella funzione lavorano sugli stessi corpi.'],
-    ['Funzioni', 'Selezione automatica', ['auto-select'], 'Dentro «Ambito funzione», già spuntata scegliendo «Corpi selezionati» (come in SolidWorks): spunta da sola i corpi che la funzione tocca; togli la spunta per sceglierli a mano. L\'elenco si aggiorna mentre il pannello è aperto, poi resta salvato nella funzione: se dopo aggiungi altri corpi, per farli entrare riapri la funzione o usa «Tutti i corpi».'],
+    ['Funzioni', 'Ambito funzione', ['ambito', 'corpi selezionati', 'tutti i corpi', 'feature scope'], 'In una parte con più corpi solidi: su quali corpi lavora una funzione (taglio, foro, estrusione, rivoluzione, sweep, nervatura, corpo importato). Una funzione nuova parte da «Corpi selezionati» con «Selezione automatica» spuntata, come in SolidWorks. Togliendo la spunta si spuntano i corpi nel pannello, si fa clic su di loro nella vista o sul loro nome nell\'albero sopra la vista, e gli altri non si toccano. «Tutti i corpi» lavora su tutti, anche su quelli aggiunti dopo. Chi aggiunge materiale si unisce solo ai corpi scelti che tocca: se non ne tocca nessuno diventa un corpo nuovo, con un avviso. Con «Unisci risultato» tolta l\'ambito non serve e non si vede. Le serie e gli specchi di quella funzione lavorano sugli stessi corpi se li hai scelti a mano; con la Selezione automatica ogni copia lavora sui corpi che tocca.'],
+    ['Funzioni', 'Selezione automatica', ['auto-select'], 'Dentro «Ambito funzione», già spuntata nelle funzioni nuove e scegliendo «Corpi selezionati» (come in SolidWorks): spunta da sola i corpi che la funzione tocca; togli la spunta per sceglierli a mano. L\'elenco si aggiorna mentre il pannello è aperto, poi resta salvato nella funzione: se dopo aggiungi altri corpi, per farli entrare riapri la funzione o usa «Tutti i corpi».'],
     ['Funzioni', 'Corpi da ripetere', ['corpi da specchiare', 'serie di corpi', 'specchio di corpi', 'bodies to pattern', 'bodies to mirror'], 'Nella serie lineare, nella serie circolare e nello specchio: ripete corpi interi invece che singole funzioni. Ogni copia è un corpo nuovo, anche con i suoi fori e i filetti indicati.'],
     ['Funzioni', 'Unisci i solidi', ['merge solids'], 'Nello specchio di un corpo: unisce la copia all\'originale. Serve che il corpo tocchi il piano di simmetria; altrimenti la copia resta un corpo a sé, con un avviso.'],
     ['Funzioni', 'Unisci risultato', ['unisci', 'risultato'], 'Casella delle funzioni che aggiungono materiale. Spuntata, il materiale si unisce ai corpi che tocca; senza spunta nasce un corpo nuovo, anche se tocca gli altri.'],
@@ -19516,6 +19519,10 @@ ASM.push(['Ambito: la serie di un\'estrusione sugli stessi corpi: rialzi 2 × 5 
   const both = run((a, c) => [a, c]), one = run(a => [a]);
   return eqs([...both.v, ...one.v, /corpo nuovo/.test(one.w) ? 1 : 0], [1100, 1100, 1100, 1000, 100, 1]);
 }]);
+ASM.push(['Selezione automatica e serie: taglio 2 × 10 × 10 su A, copia su B: 800 + 800; con A scelto a mano la copia non tocca B: 800 + 1000', () => {
+  const run = auto => { const { d, a } = twoU(); const f = barF(d, 2, 4, { scope: [a], ...(auto ? { scopeAuto: true } : {}) }, 0, 10, 10, 'cut'); feat(d, { type: 'lpattern', feats: [f], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 20 }); return bodyVols(d); };
+  return eqs([...run(true), ...run(false)], [800, 800, 800, 1000]);
+}]);
 ASM.push(['Selezione automatica: ponte x 10..20 = A e B; taglio x 5..25 = A e B; x 5..9 = A; x 10..20 (tocca solo le facce, non toglie niente) = nessuno; aggiunta lontana = nessuno', () => {
   const ask = (x0, x1, type) => { const { d, a, c } = twoU(); const id = barF(d, x0, x1, { scope: [], scopeAuto: true }, 0, 10, 10, type); const ids = Model.autoScope(d, d.features.find(f => f.id === id)); return [ids.includes(a) ? 1 : 0, ids.includes(c) ? 1 : 0, ids.length]; };
   return eqs([...ask(10, 20, 'extrude'), ...ask(5, 25, 'cut'), ...ask(5, 9, 'cut'), ...ask(10, 20, 'cut'), ...ask(40, 50, 'extrude')], [1, 1, 2, 1, 1, 2, 1, 0, 1, 0, 0, 0, 0, 0, 0]);
@@ -20009,7 +20016,7 @@ if (isNode) {
     steps: [
       'Crea il primo solido, poi una nuova funzione che aggiunge materiale (**Estrusione base**, **Rivoluzione base**, **Estrusione con percorso** o un corpo importato).',
       'Nel pannello togli la spunta da **Unisci risultato**: nasce un corpo nuovo, che compare nella cartella **Corpi solidi** dell\'albero.',
-      'Le funzioni lavorano su tutti i corpi; per sceglierne solo alcuni usa **Ambito funzione › Corpi selezionati** nel pannello: **Selezione automatica** è già spuntata e prende quelli che la funzione tocca; togli la spunta per sceglierli a mano. **Raccordi e smussi** lavorano solo sul corpo dello spigolo.',
+      'Con più corpi una funzione nuova parte da **Ambito funzione › Corpi selezionati** con **Selezione automatica** spuntata: lavora sui corpi che tocca. Togli la spunta per sceglierli a mano, oppure scegli **Tutti i corpi**. **Raccordi e smussi** lavorano solo sul corpo dello spigolo.',
       'Per ripetere un corpo intero, in **Serie lineare**, **Serie circolare** o **Specchio** usa la casella **Corpi da ripetere** (nello specchio **Corpi da specchiare**, con **Unisci i solidi** se vuoi un corpo solo). Mentre il pannello è aperto i corpi e gli schizzi si scelgono anche per nome, nell\'**albero** sopra la vista.',
       'In **Valuta › Proprietà di massa** trovi i dati di ogni corpo; **Esporta STEP** scrive un solido per ogni corpo.',
     ],
