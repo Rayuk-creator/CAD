@@ -26,6 +26,18 @@ Scelta dell'utente del 5 novembre: subito dopo la traduzione, così pulsante e a
 - **Manuale PDF (scelta dell'utente del 5 novembre):** solo online, non salvato per l'uso offline. Basta la voce che rimanda al PDF sul sito (Progetto › Manuale d'uso (PDF), già presente).
 - **Da provare:** che il lavoro salvato sul sito si ritrovi nella versione installata. Esporta resta il vero salvataggio.
 
+## Google Play (rimandato il 5 novembre 2026)
+
+Scelta dell'utente: non ora. Con l'installazione dal browser, chi ha Android può già installare il Banco CAD, e un CAD si usa soprattutto su PC. **Da riprendere solo quando insegnanti o studenti useranno il programma**: si avrebbero già i tester e si saprebbe se serve davvero su Android.
+
+Motivi e controlli del 5 novembre (da ricontrollare prima di decidere, le regole cambiano):
+
+- **12 tester iscritti di continuo per 14 giorni** con un account personale nuovo, poi domanda a Google, esame di solito entro 7 giorni (pagina ufficiale di Google Play Console).
+- **Nome vero in pubblico:** un account personale mostrerebbe il nome completo del documento, con verifica tramite documento e selfie (solo una guida non ufficiale, appswap.pages.dev). Il Banco CAD è a nome Rayuk-creator: **controllare sulle pagine ufficiali prima di decidere**.
+- **25 dollari una volta sola**, non rimborsabili (stessa guida non ufficiale).
+- **Lavoro in più:** informativa sulla privacy, moduli sui dati e sull'età, grafica, chiave di firma da conservare (guida non ufficiale, spacenexus.us). L'aggiornamento periodico del pacchetto dell'app non è stato verificato.
+- **Sito:** il file `.well-known/assetlinks.json` va nella radice del dominio, mentre il Banco CAD sta in `rayuk-creator.github.io/CAD`: quasi certamente serve un secondo repository per la radice del sito o un dominio proprio.
+
 ## Importare file di altri programmi
 
 Il 20 ottobre 2026 abbiamo valutato l'importazione di altri formati. Il 21 ottobre sono stati fatti **STL e OBJ** (Progetto › Importa STL o OBJ, funzione «Importato»), **DXF negli schizzi** (Progetto › Importa DXF (schizzo), Schizzo › Inserisci DXF) e **STEP/IGES** (Progetto › Importa STEP o IGES). Valutazione:
