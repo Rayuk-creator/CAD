@@ -16,6 +16,16 @@ Testo misurato il 5 novembre in `index.html` (conteggio automatico, approssimato
 
 L'Autoverifica (5.400 parole) è proposta fuori dalla traduzione: i nomi delle prove possono restare in italiano. Il lavoro consuma molto del limite settimanale dell'utente: dopo ogni tappa il programma deve restare usabile.
 
+## SECONDO LAVORO: rendere installabile il Banco CAD (dopo la traduzione)
+
+Scelta dell'utente del 5 novembre: subito dopo la traduzione, così pulsante e avvisi nascono già in due lingue e le schermate del manuale si rifanno una volta sola. Installazione dal browser (PWA, come il pulsante «Installa» del gioco di Matematica), **non** un installatore classico per Windows (oltre 100 MB, firma a pagamento). Tempo stimato: 1-2 ore, prove comprese.
+
+- **Solo dal sito GitHub Pages:** da disco e su claude.ai non si installa, e il programma funziona come oggi. Sul sito servono file in più (descrizione dell'app, icone, service worker); `index.html` deve restare completo e funzionante da solo.
+- **Aggiornamenti:** il punto da curare di più. Serve un avviso «nuova versione disponibile», perché nessuno resti su una versione vecchia senza saperlo.
+- **iPhone e iPad:** il pulsante non compare da solo: breve messaggio con Condividi › Aggiungi alla schermata Home.
+- **Da decidere con l'utente:** se salvare anche il manuale PDF per l'uso offline (circa 5 MB in più) o lasciarlo online.
+- **Da provare:** che il lavoro salvato sul sito si ritrovi nella versione installata. Esporta resta il vero salvataggio.
+
 ## Importare file di altri programmi
 
 Il 20 ottobre 2026 abbiamo valutato l'importazione di altri formati. Il 21 ottobre sono stati fatti **STL e OBJ** (Progetto › Importa STL o OBJ, funzione «Importato»), **DXF negli schizzi** (Progetto › Importa DXF (schizzo), Schizzo › Inserisci DXF) e **STEP/IGES** (Progetto › Importa STEP o IGES). Valutazione:
