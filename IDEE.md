@@ -66,4 +66,4 @@ Il marchio ora costa troppo. **Fatti:** condizioni aggiuntive GPL 3 sezione 7 (`
 
 - Sfondo del disegno: **fatti** il 3 novembre testi e quote, il 4 novembre tratteggi, tolleranze geometriche, MULTILEADER e tabelle (limite: le tabelle dei DWG dal 2010 in poi, che LibreDWG non scrive).
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
-- Le pagine pubblicate su claude.ai: «Banco CAD» (versione 23 del 4 novembre sera) e «Convertitore DWG → DXF» (3 novembre notte) sono condivise con chiunque abbia il link. Il Banco CAD su claude.ai è stato ripubblicato il 4 novembre sera con tutti i lavori di quel giorno. La versione di riferimento resta `index.html` in questo repository.
+- Le pagine pubblicate su claude.ai: «Banco CAD» (versione 24 del 5 novembre) e «Convertitore DWG → DXF» (3 novembre notte) sono condivise con chiunque abbia il link. Il Banco CAD su claude.ai è stato ripubblicato il 5 novembre con tutti i lavori fino a quel momento. La versione di riferimento resta `index.html` in questo repository.
