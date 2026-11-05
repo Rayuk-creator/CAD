@@ -2,7 +2,7 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 5 novembre 2026, notte. La storia dei lavori sta in `CRONOLOGIA.md` (non serve leggerla a inizio task: si apre solo quando serve).
+Ultimo aggiornamento: 5 novembre 2026, mattina. La storia dei lavori sta in `CRONOLOGIA.md` (non serve leggerla a inizio task: si apre solo quando serve).
 
 **Stato attuale:** ultima funzione nuova = facce e spigoli separati anche sulla stessa superficie o retta, e manuale d'uso in PDF (5 novembre notte; vedi `git log`). Tutte le prove superate: 316/316 di calcolo, 51/51 STEP/IGES, 22/22 del lettore e del convertitore DWG, 92/92 dell'interfaccia, Autoverifica compresa nelle prove dell'interfaccia. Nessun lavoro lasciato a metà.
 
@@ -126,6 +126,7 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 
 ### Trappole note nei test dell'interfaccia
 
+- `App.r.fit()` e `setView` animano la camera per 380 ms: un punto calcolato prima e premuto dopo finisce altrove (nell'assieme, nel vuoto: il trascinamento gira la vista). Dopo un'inquadratura animata usare `vistaFerma(pagina)`, non un'attesa a tempo. Causa della vecchia prova instabile `flexDrag`.
 - Dopo ✓ aspettare la rigenerazione prima di leggere le proprietà (la funzione `props()` lo fa già).
 - Dopo aver caricato un pezzo a mano chiamare `App.r.fit(...)`, altrimenti i clic finiscono fuori dal pezzo.
 - Sul tablet toccare un punto **pieno** del pezzo (il centro della piastra forata è il foro!).
@@ -165,8 +166,7 @@ package.json          npm test / test:kernel (comprende step.test.js e dwg.test.
 - Ripubblicare su claude.ai: `Artifact` con `url` e `file_path` = `index.html` del repository, senza `capabilities` (il permesso «downloads» resta). La lettura con `path` non basta, l'Artifact tool chiede anche quella senza `path`, che mette molto testo nella chat (circa 30 000 caratteri a pagina). Dopo, avvisare l'utente che la chat è diventata pesante.
 
 - Corpi solidi, limiti: la Selezione automatica non si ricalcola da sola a pannello chiuso (come in SolidWorks; per i corpi aggiunti dopo serve riaprire la funzione o «Tutti i corpi»).
-- **Prova instabile:** «Assieme, lavori del 4 novembre», controllo `flexDrag`: è fallita con la macchina lenta; ora aspetta che l'inquadratura sia ferma e fa una pausa prima di premere. La causa non è accertata fino in fondo: se ricapita, indagare.
-- **Da controllare:** non è stato possibile confermare dalle fonti che in SolidWorks «Selezione automatica» parta spuntata, né cosa resti nell'elenco togliendola.
+- **Selezione automatica in SolidWorks (controllo del 5 novembre):** che parta spuntata con «Corpi selezionati» lo dice una sola fonte, Hawkridge Systems, rivenditore SolidWorks: «The default selection is Selected Bodies, with Auto-select checked on» (la guida ufficiale non si è potuta leggere, le sue pagine arrivano vuote agli strumenti web). **Differenza da decidere con l'utente:** nel Banco CAD la scelta di partenza è «Tutti i corpi». **Ancora non confermato:** cosa resti nell'elenco togliendo la spunta (nessuna fonte lo dice; le fonti dicono solo che poi si scelgono i corpi a mano). Hawkridge conferma che i corpi aggiunti dopo restano fuori con la Selezione automatica e dentro con «Tutti i corpi», anche se una sua didascalia dice il contrario. Un articolo di CATI dice che la Selezione automatica lavora solo sui corpi visibili: nel Banco CAD non esiste nascondere un corpo, quindi per ora non conta.
 - **Limite delle interferenze:** una sola coppia di pezzi enormi può tenere ferma la pagina (54 000 poligoni sovrapposti del tutto ≈ 100 s; tra una coppia e l'altra si può interrompere).
 - Se si cambia il modo d'uso del programma o del Convertitore, aggiornare tutti i riquadri «Come si usa» (i due README, `convertitore-dwg/README.md`, il LEGGIMI).
 

@@ -12,6 +12,13 @@ const OUT = path.join(__dirname, 'output'); require('fs').mkdirSync(OUT, { recur
 let PAGE = null, shot = 0;
 const rec = (name, ok, msg = '') => { if (!ok && PAGE) PAGE.screenshot({ path: path.join(OUT, 'fail-' + (++shot) + '.png') }).catch(() => {}); results.push({ name, ok, msg }); console.log((ok ? 'OK  ' : 'NO  ') + name + (msg ? '\n      ' + msg : '')); };
 const rel = (g, e) => Math.abs(g - e) / Math.max(Math.abs(e), 1e-9);
+// aspetta che l'inquadratura sia ferma: App.r.fit() anima la camera per 380 ms, e un punto calcolato prima di
+// quel momento finisce altrove quando il mouse preme (su un componente: il trascinamento fa girare la vista)
+const vistaFerma = pg => pg.evaluate(async () => {
+  const fm = () => new Promise(r => requestAnimationFrame(r)); let last = '', same = 0;
+  for (let i = 0; i < 1000; i++) { await fm(); const c = App.r.cam, k = JSON.stringify([c.target, c.scale, c.q, App.r.project([0, 0, 0])]); same = !App.r.anim && k === last ? same + 1 : 0; last = k; if (same >= 5) return; }
+  throw new Error('la vista non si ferma');
+});
 // controllo indipendente dei PDF con pdfplumber (Python): null se non c'è
 const pdfCheck = file => { try { return JSON.parse(require('child_process').execFileSync('python3', [path.join(__dirname, 'pdfcheck.py'), file], { encoding: 'utf8', maxBuffer: 256e6, stdio: ['ignore', 'pipe', 'ignore'] })); } catch (e) { return null; } };
 
@@ -232,7 +239,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     rec('Interfaccia: importa STL dal menu (unità, modifica, annulla)', ok, `V ${p1 && p1.V.toFixed(1)} (8000), dopo «mm» ${p2 && p2.V.toFixed(3)} (8), annulla ${p3 && p3.V.toFixed(1)}; pannello: ${gl.join(', ')}`);
     // clic sulla faccia superiore del cubo importato: è una faccia piana, si può usare per lo schizzo
     await page.evaluate(() => { App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(); App.redraw(); });
-    await page.waitForTimeout(400);
+    await vistaFerma(page);
     const [fx, fy] = await page.evaluate(() => { const p = App.r.project([10, 20, 10]); const c = document.querySelector('.view canvas').getBoundingClientRect(); return [c.left + p[0], c.top + p[1]]; });
     await page.mouse.click(fx, fy); await page.waitForTimeout(150);
     const fsel = await page.evaluate(() => { const s = App.sel[0]; return s ? { kind: s.kind, planar: s.planar, n: s.n, w: s.w } : null; });
@@ -2525,10 +2532,10 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     await p.waitForTimeout(250);
     const flexPos = await p.evaluate(({ grp }) => { const st = App.st, mx = []; for (const q of st.body) if (st.tags.get(q.t).name.startsWith(st.bodies[0].id + '/' + grp.cur + '/')) for (const v of q.v) mx.push(v[0]); return { hi: Math.max(...mx), lo: Math.min(...mx), ok: App.asm.last.ok, orig: App.project.others.find(x => x.id === grp.id).insts[1].pose.p[0] }; }, { grp });
     // trascinato con il mouse dopo aver tolto il legame: si sposta il cursore
-    await p.evaluate(() => { App.change(() => { const a = App.project.assembly; a.mates = []; a.insts[1].pose = { p: [400, 0, 0], q: [1, 0, 0, 0] }; }); App.r.fit(); }); await p.waitForTimeout(200);
-    await p.evaluate(async () => { const fm = () => new Promise(r => requestAnimationFrame(r)); let last = '', same = 0; for (let i = 0; i < 300 && same < 5; i++) { await fm(); const k = JSON.stringify(App.r.project([0, 0, 0])); same = k === last ? same + 1 : 0; last = k; } });   // inquadratura ferma: su una macchina lenta il punto calcolato finiva fuori dal cursore
-    const dragPts = await p.evaluate(({ grp }) => { const st = App.st, r = document.querySelector('#view').getBoundingClientRect(); const S = App.project.assembly.insts[0]; const c = Assembly.toWorld(S.pose, [80, 20, -20]); const b = Assembly.toWorld(S.pose, [80, 20, -20]); let pts = []; for (const q of st.body) if (st.tags.get(q.t).name.startsWith(S.id + '/' + grp.cur + '/') && st.tags.get(q.t).n && st.tags.get(q.t).n[1] > 0.9) { pts = q.v; break; } const m = [0, 1, 2].map(k => pts.reduce((s, v) => s + v[k], 0) / pts.length), s = App.r.project(m); return { x: r.left + s[0], y: r.top + s[1], m }; }, { grp });
-    await p.mouse.move(dragPts.x, dragPts.y); await p.waitForTimeout(150); await p.mouse.down(); await p.mouse.move(dragPts.x + 40, dragPts.y, { steps: 5 }); await p.waitForTimeout(100); await p.mouse.up(); await p.waitForTimeout(200);
+    await p.evaluate(() => { App.change(() => { const a = App.project.assembly; a.mates = []; a.insts[1].pose = { p: [400, 0, 0], q: [1, 0, 0, 0] }; }); App.r.fit(); });
+    await vistaFerma(p);
+    const dragPts = await p.evaluate(({ grp }) => { const st = App.st, r = document.querySelector('#view').getBoundingClientRect(); const S = App.project.assembly.insts[0]; const c = Assembly.toWorld(S.pose, [80, 20, -20]); const b = Assembly.toWorld(S.pose, [80, 20, -20]); let pts = []; for (const q of st.body) if (st.tags.get(q.t).name.startsWith(S.id + '/' + grp.cur + '/') && st.tags.get(q.t).n && st.tags.get(q.t).n[1] > 0.9) { pts = q.v; break; } const m = [0, 1, 2].map(k => pts.reduce((s, v) => s + v[k], 0) / pts.length), s = App.r.project(m); const f = App.r.pickFace(s[0], s[1]); return { x: r.left + s[0], y: r.top + s[1], m, onCur: !!f && st.tags.get(st.body[f.poly].t).name.startsWith(S.id + '/' + grp.cur + '/') }; }, { grp });
+    await p.mouse.move(dragPts.x, dragPts.y); await p.mouse.down(); await p.mouse.move(dragPts.x + 40, dragPts.y, { steps: 5 }); await p.waitForTimeout(100); await p.mouse.up(); await p.waitForTimeout(200);
     const flexDrag = await p.evaluate(({ grp }) => { const st = App.st, S = App.project.assembly.insts[0], ys = [], xs = []; for (const q of st.body) { const n = st.tags.get(q.t).name; if (n.startsWith(S.id + '/' + grp.cur + '/')) for (const v of q.v) { ys.push(v[1]); xs.push(v[0]); } } return { lo: Math.min(...xs), yl: Math.min(...ys), yh: Math.max(...ys), base: st.body.filter(q => !st.tags.get(q.t).name.startsWith(S.id + '/' + grp.cur + '/') && st.tags.get(q.t).name.startsWith(S.id + '/')).flatMap(q => q.v.map(v => v[0])).reduce((a, b) => Math.min(a, b), Infinity) }; }, { grp });
     // interferenze dentro: cursore affondato nell'assieme gruppo; la casella lo tratta come un blocco
     await p.evaluate(({ grp }) => { const A = App.project.others.find(x => x.id === grp.id); App.change(() => { A.mates = []; A.insts[1].pose = { p: [10, 7, 0], q: [1, 0, 0, 0] }; const S = App.project.assembly.insts[0]; delete S.flexible; delete S.flex; const W = App.project.assembly.insts[1]; W.pose = { p: [400, 0, 0], q: [1, 0, 0, 0] }; }); }, { grp });
@@ -2557,7 +2564,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     await p.evaluate(() => { App.offerFile = App.__offer; if (App.closeModal) App.closeModal(); const m = document.querySelector('#modalActions .btn-primary'); if (m && m.offsetParent) m.click(); });
     const csv = JSON.parse(dls[0] || '["","",""]');
     // esplosione lungo una faccia: la faccia alta del muro girato di 30°
-    await p.evaluate(() => { App.change(() => { const W = App.project.assembly.insts[1]; W.pose = { p: [400, 0, 0], q: Assembly.qexp([0, 0, Math.PI / 6]) }; W.fixed = true; }); App.r.fit(); }); await p.waitForTimeout(200);
+    await p.evaluate(() => { App.change(() => { const W = App.project.assembly.insts[1]; W.pose = { p: [400, 0, 0], q: Assembly.qexp([0, 0, Math.PI / 6]) }; W.fixed = true; }); App.r.fit(); }); await vistaFerma(p);
     await p.click('[data-cmd="explode"]'); await p.waitForTimeout(150);
     await p.click('#expFace'); await p.waitForTimeout(80);
     const topPt = await p.evaluate(() => { const st = App.st, W = App.project.assembly.insts[1], r = document.querySelector('#view').getBoundingClientRect(), n = Assembly.dirWorld(W.pose, [0, 1, 0]); const q = st.body.find(x => { const t = st.tags.get(x.t); return t.inst === W.id && t.n && Math.abs(t.n[0] - n[0]) + Math.abs(t.n[1] - n[1]) < 1e-9; }); const m = [0, 1, 2].map(k => q.v.reduce((s, v) => s + v[k], 0) / q.v.length), s = App.r.project(m); return { x: r.left + s[0], y: r.top + s[1], n }; });
@@ -2581,7 +2588,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     await p.evaluate(() => { const k = Sketch.newSketch(), d = Model.newDoc(); d.name = 'Piastra'; d.material = 's235'; const pt = (x, y) => { const id = 'p' + (k.next++); k.ents.push({ id, t: 'pt', x, y }); return id; }; const P = [pt(0, 0), pt(80, 0), pt(80, 50), pt(0, 50)]; P.forEach((id, i) => k.ents.push({ id: 'l' + (k.next++), t: 'ln', a: id, b: P[(i + 1) % 4] })); k.ents.push({ id: 'c' + (k.next++), t: 'ci', c: pt(40, 25), r: 3.3 }); d.features.push({ id: 'F1', name: 'Schizzo1', type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: k }); d.features.push({ id: 'F2', name: 'Estrusione1', type: 'extrude', sketch: 'F1', end: 'blind', depth: 10 }); App.project.parts.push({ id: 'qPiastra', doc: d, drawing: null }); });
     await p.click('[data-cmd="newAsm"]'); await p.waitForTimeout(200);
     await insert('qPiastra');
-    await p.evaluate(() => { const a = App.r; a.setView && a.setView(GLView.Renderer.normalQ ? a.cam.q : a.cam.q); App.r.fit(); }); await p.waitForTimeout(150);
+    await p.evaluate(() => { const a = App.r; a.setView && a.setView(GLView.Renderer.normalQ ? a.cam.q : a.cam.q); App.r.fit(); }); await vistaFerma(p);
     await p.click('[data-cmd="holeFast"]'); await p.waitForTimeout(150);
     const wallPt = await p.evaluate(() => {
       // un punto della parete del foro che si vede davvero: si prova attorno al foro finché la vista dà quella faccia
@@ -2604,14 +2611,14 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const xs = sec.L.map(l => l[0]).sort((a, b) => a - b), span = xs.length ? xs[xs.length - 1] - xs[0] : 0;
     const secOk = sec.L.length === 2 && Math.abs(span - d3) < 0.01 && Math.abs(Math.abs(sec.L[0][3] - sec.L[0][1]) - 24) < 0.01;
     const ok = menu.join().length >= 0 && /flessibile/.test(tree) && Math.abs(flexPos.hi - 190) < 1e-6 && Math.abs(flexPos.lo - 170) < 1e-6 && flexPos.ok && Math.abs(flexPos.orig - 10) < 1e-9
-      && flexDrag.lo > 170 + 1 && Math.abs(flexDrag.yl - 10) < 1e-6 && Math.abs(flexDrag.yh - 20) < 1e-6 && Math.abs(flexDrag.base) < 1e-6
+      && dragPts.onCur && flexDrag.lo > 170 + 1 && Math.abs(flexDrag.yl - 10) < 1e-6 && Math.abs(flexDrag.yh - 20) < 1e-6 && Math.abs(flexDrag.base) < 1e-6
       && intDeep.length === 1 && /Base<1>.*Cursore<1>.*2\.?400/.test(intDeep[0]) && intWhole.length === 0
       && flyShown && flyRows.length === 4 && flyPicked.length === 1 && /Origine di Muro/.test(flyPicked[0]) && flyGone
       && /distinta base\.csv$/.test(csv[0]) && csv[2].charCodeAt(0) === 0xFEFF && /N\.;Parte;Materiale/.test(csv[2]) && /Base;.*;1;.*,/.test(csv[2])
       && /\(/.test(expMsg || '') && Math.abs(expStep.d[0] + Math.sin(Math.PI / 6)) < 1e-9 && Math.abs(expStep.d[1] - Math.cos(Math.PI / 6)) < 1e-9
       && moved && bl2.saved === 1 && bl3.some(q => Math.abs(q[0] - bl.cx) < 1e-6 && Math.abs(q[1] - bl.cy) < 1e-6)
       && dlg.size === 'M6' && dlg.chamfer && /Ø6,6/.test(dlg.info) && hole.n === 2 && hole.mates.join() === 'concentric,coincident' && hole.ok && Math.abs(hole.y - 16) < 1e-6 && Math.abs(hole.x - 40) < 1e-6 && Math.abs(hole.z + 25) < 1e-6 && hole.chamfer === true && undoN === '1:0' && secOk;
-    rec(ASMC5, ok && !errs.length, JSON.stringify({ menu, tree, flexPos, flexDrag, intDeep, intWhole, flyShown, flyRows, flyPicked, flyGone, csv: csv[0], csvT: csv[2].slice(0, 90), expMsg, expStep, moved, bl2, dlg, hole, undoN, sec: sec.L, errs }));
+    rec(ASMC5, ok && !errs.length, JSON.stringify({ menu, tree, flexPos, dragOnCur: dragPts.onCur, flexDrag, intDeep, intWhole, flyShown, flyRows, flyPicked, flyGone, csv: csv[0], csvT: csv[2].slice(0, 90), expMsg, expStep, moved, bl2, dlg, hole, undoN, sec: sec.L, errs }));
   } catch (e) { rec(ASMC5, false, e.message.split('\n')[0]); }
 
   const ASMC4 = 'Più assiemi e sottoassiemi con il mouse; piani e origine scelti nella vista; salvato e riletto; eliminazione';
