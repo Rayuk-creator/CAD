@@ -141,6 +141,8 @@ Orthographic views in **first-angle projection** (ISO 5456-2), hidden lines, cen
 
 ## Guide and glossary
 
+**User manual as a PDF, to download and print (in Italian):** [Manuale-Banco-CAD.pdf](https://rayuk-creator.github.io/CAD/docs/Manuale-Banco-CAD.pdf) (A4, about 60 pages: guided exercise, every command, glossary).
+
 ![«How to» guide: fillet and chamfer edges](docs/img/guida.png)
 
 - **Guida** (Guide, button at the top): 54 «how to» topics with numbered steps, tips and terms. **Mostrami dove** (Show me where) opens the right tab and makes the command blink.

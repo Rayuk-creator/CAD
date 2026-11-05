@@ -1,0 +1,51 @@
+@page{size:A4;margin:20mm 20mm 20mm 22mm;@bottom-center{content:counter(page);font:500 9pt "IBM Plex Sans","DejaVu Sans";color:#444}@bottom-left{content:"Banco CAD – Manuale d'uso";font:400 8pt "IBM Plex Sans";color:#777}}
+@page:first{margin:0;@bottom-center{content:none}@bottom-left{content:none}}
+*{box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;font:400 10.5pt/1.48 "IBM Plex Sans","DejaVu Sans",sans-serif;color:#1a1f26;background:#fff;hyphens:auto}
+strong,b{font-weight:600}em{font-style:normal;color:#14509f}
+.cover{height:297mm;padding:34mm 24mm 22mm;display:flex;flex-direction:column;break-after:page}
+.cv-top{font-size:12pt;color:#55606c;letter-spacing:.02em}
+.cv-title{font:600 54pt/1.05 "IBM Plex Sans Condensed","IBM Plex Sans";color:#14509f;margin-top:6mm}
+.cv-sub{font:500 22pt/1.2 "IBM Plex Sans";margin-top:3mm}
+.cover img{width:100%;margin:18mm 0 auto;display:block}
+.cv-foot{border-top:1.2pt solid #14509f;padding-top:4mm;font-size:10pt;color:#333;line-height:1.6}
+.tocpage{break-after:page}
+.toc-h{font:600 24pt "IBM Plex Sans Condensed";color:#14509f;margin-bottom:6mm}
+.toc{column-count:2;column-gap:9mm;font-size:8.1pt;line-height:1.22}
+.toc a{display:flex;color:inherit;text-decoration:none;padding:.15mm 0;break-inside:avoid;gap:1.5mm}
+.toc a.l1{font-weight:600;margin-top:2mm;font-size:8.8pt;color:#14509f;break-after:avoid}
+.toc .tn{flex:0 0 7mm;color:#555}.toc a.l1 .tn{color:inherit}
+.toc .tt{flex:1}.toc .tp{flex:0 0 auto;font-variant-numeric:tabular-nums}
+h1{font:600 24pt/1.12 "IBM Plex Sans Condensed";color:#14509f;break-before:page;margin:0 0 5mm;padding-bottom:2.5mm;border-bottom:1.2pt solid #14509f;break-after:avoid;hyphens:manual}
+h1 .num{color:#14509f;margin-right:2mm}
+h2{font:600 13pt/1.25 "IBM Plex Sans";margin:7mm 0 2mm;break-after:avoid;hyphens:manual}
+h2 .num{color:#14509f;margin-right:1.5mm}
+h3{font:600 11pt/1.3 "IBM Plex Sans";margin:5mm 0 1.5mm;break-after:avoid;color:#14509f}
+p{margin:0 0 2.4mm;orphans:2;widows:2}
+.why{color:#333;break-after:avoid}
+.where{font-size:9.4pt;color:#333;margin-bottom:2mm;break-after:avoid}
+ul{margin:0 0 3mm;padding-left:5mm}li{margin-bottom:1mm}
+ol.steps{margin:0 0 3mm;padding:0;list-style:none;counter-reset:s}
+ol.steps li{counter-increment:s;position:relative;padding-left:7mm;margin-bottom:1.3mm;break-inside:avoid}
+ol.steps li::before{content:counter(s);position:absolute;left:0;top:.15mm;width:4.8mm;height:4.8mm;border:.8pt solid #14509f;border-radius:50%;text-align:center;font:600 8pt/4.6mm "IBM Plex Sans";color:#14509f}
+.tip{border-left:2.2pt solid #14509f;padding:.6mm 0 .6mm 3mm;margin:2mm 0 3mm;font-size:9.6pt;break-inside:avoid}
+.tip b{color:#14509f;margin-right:1mm}
+figure{margin:3mm 0 4mm;break-inside:avoid}
+figure img{width:100%;display:block;border:.5pt solid #b8bfc7}
+figcaption{font-size:8.8pt;color:#444;margin-top:1.2mm}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:4mm;break-inside:avoid}
+.two figure{margin-top:0}
+.annobox{position:relative}
+.dot{position:absolute;width:6mm;height:6mm;margin:-3mm 0 0 -3mm;border-radius:50%;background:#14509f;color:#fff;border:.8pt solid #fff;font:600 9pt/5.6mm "IBM Plex Sans";text-align:center}
+table{width:100%;border-collapse:collapse;margin:2mm 0 4mm;font-size:9.4pt;line-height:1.36}
+thead{display:table-header-group}
+th{text-align:left;font-weight:600;border-bottom:1pt solid #14509f;padding:1mm 2mm 1mm 0;color:#14509f}
+td{border-bottom:.4pt solid #c9cfd6;padding:1mm 2mm 1mm 0;vertical-align:top}
+tr{break-inside:avoid}
+.tabnum td:first-child{font-weight:600;color:#14509f;width:6mm}
+.cmds td:first-child{width:42mm}
+.wide{font-size:9pt}
+.gloss{column-count:2;column-gap:7mm;font-size:8.6pt;line-height:1.36}
+.gl{margin:0 0 1.6mm;break-inside:avoid}.gc{color:#666;font-size:7.8pt}
+.gl-l{font:600 12pt "IBM Plex Sans Condensed";color:#14509f;border-bottom:.6pt solid #14509f;margin:2.5mm 0 1.2mm;break-after:avoid}

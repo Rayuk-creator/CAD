@@ -1675,7 +1675,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     const h2 = await lit();
     await page.mouse.click(pa.x, pa.y); await page.waitForTimeout(200);
     await page.mouse.move(5, 5); await page.waitForTimeout(150);
-    const s1 = await lit(), area = await page.evaluate(() => App.faceArea(App.sel[0].key, App.sel[0].body)), stat = await page.evaluate(() => document.querySelector('#stMsg').textContent);
+    const s1 = await lit(), area = await page.evaluate(() => App.faceArea(App.sel[0].key, App.sel[0].patch)), stat = await page.evaluate(() => document.querySelector('#stMsg').textContent);
     await page.keyboard.down('Control'); await page.mouse.click(pb.x, pb.y); await page.keyboard.up('Control'); await page.waitForTimeout(200);
     const sel2 = await page.evaluate(() => App.sel.length);
     await page.mouse.move(5, 5); await page.waitForTimeout(150);
@@ -1691,6 +1691,59 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     await page.evaluate(() => App.closePM(false)); await page.waitForTimeout(150);
     const one = (a, b) => a[b] > 0 && a[1 - b] === 0;
     rec('Facce di corpi diversi nello stesso piano: si illumina e si sceglie solo quella del corpo sotto il puntatore; area 1600 (non 3200); Ctrl + clic le tiene separate', one(h1, 0) && one(h2, 1) && one(s1, 0) && Math.abs(area - 1600) < 1e-6 && /1\.?600/.test(stat) && !/3\.?200/.test(stat) && sel2 === 2 && s2[0] > 0 && s2[1] > 0 && sel1 === 1 && one(s3, 1) && /Area\s*1\.?600/.test(mt) && !/3\.?200/.test(mt), JSON.stringify({ h1, h2, s1, area, stat, sel2, s2, sel1, s3, mt: mt.slice(0, 200) }));
+    // spigoli sulla stessa retta: il raccordo prende tutti e due, ognuno si illumina da solo; 16000 − (1 − π/4) × 25 × 40 per corpo
+    await page.evaluate(() => App.r.setView(GLView.Renderer.viewQ('iso'))); await page.waitForTimeout(700);
+    await page.evaluate(() => { App.setCmdTab('features'); App.select(null); App.r.fit(App.st.body); }); await page.waitForTimeout(500);
+    const ea = await at(20, 10, 0), eb = await at(80, 10, 0);
+    await page.click('#cmdBar [data-cmd="fillet"]'); await page.waitForTimeout(300);
+    const rr = page.locator('.pm-body .row', { hasText: 'Raggio' }).first().locator('input'); await rr.fill('5'); await rr.press('Tab');
+    await page.mouse.move(ea.x, ea.y); await page.waitForTimeout(150); await page.mouse.click(ea.x, ea.y); await page.waitForTimeout(250);
+    const n1 = await page.evaluate(() => App.doc.features[App.doc.features.length - 1].edges.length);
+    await page.mouse.move(eb.x, eb.y); await page.waitForTimeout(150); await page.mouse.click(eb.x, eb.y); await page.waitForTimeout(250);
+    const n2 = await page.evaluate(() => App.doc.features[App.doc.features.length - 1].edges.length);
+    const ec = await at(70, 10, 0); await page.waitForTimeout(600); await page.mouse.move(ec.x, ec.y); await page.waitForTimeout(150); await page.mouse.click(ec.x, ec.y); await page.waitForTimeout(250);   // un altro punto dello stesso tratto
+    const n3 = await page.evaluate(() => App.doc.features[App.doc.features.length - 1].edges.length);
+    await page.waitForTimeout(700); await page.mouse.click(eb.x, eb.y); await page.waitForTimeout(250);
+    const n4 = await page.evaluate(() => App.doc.features[App.doc.features.length - 1].edges.length);
+    await page.click('.pm-ok'); await page.waitForFunction(() => !App.pm); await page.waitForTimeout(300);
+    const vE = await page.evaluate(() => Model.massProperties(App.st, App.doc).volume), expE = 32000 - 2 * (1 - Math.PI / 4) * 25 * 40;
+    await page.evaluate(() => App.undo()); await page.waitForTimeout(300);
+    rec('Spigoli sulla stessa retta: il secondo si aggiunge invece di togliere il primo, un nuovo clic toglie solo lui; raccordo R5 su tutti e due', n1 === 1 && n2 === 2 && n3 === 1 && n4 === 2 && Math.abs(vE - expE) < 1e-3 * expE, JSON.stringify({ n1, n2, n3, n4, vE, expE }));
+    // tratti di lunghezza diversa, 40 e 30: si illumina solo il tratto sotto il puntatore, la lunghezza è la sua, Ctrl + clic li tiene separati
+    await page.evaluate(() => { const box = (x0, y0, x1, y1) => { const s = Sketch.newSketch(); const pt = (x, y) => { const id = 'p' + (s.next++); s.ents.push({ id, t: 'pt', x, y }); return id; }; const P = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => pt(x, y)); P.forEach((a, i) => s.ents.push({ id: 'l' + (s.next++), t: 'ln', a, b: P[(i + 1) % 4] })); return s; };
+      App.change(() => { const d = App.doc = Model.newDoc(); const add = f => { f.id = Model.uid(d, 'F'); f.name = Model.defaultName(d, f.type); d.features.push(f); return f.id; };
+        add({ type: 'extrude', sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(0, 0, 40, 40) }), end: 'blind', depth: 10 });
+        add({ type: 'extrude', merge: false, sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(60, 0, 90, 40) }), end: 'blind', depth: 10 }); App.sel = []; });
+      App.r.fit(App.st.body); const o = App.r.recolor; App.r.recolor = function (h) { window.__hl = h; return o.call(this, h); }; });
+    await page.waitForTimeout(400);
+    const edgeLit = () => page.evaluate(() => { const V = App.st.topo.verts, out = [0, 0]; App.r.sharp.forEach((e, i) => { if (window.__hl.edgeCol(i)) out[(V[e.a][0] + V[e.b][0]) / 2 < 50 ? 0 : 1]++; }); return out; });
+    const e40 = await at(20, 10, 0), e30 = await at(75, 10, 0);
+    await page.mouse.move(e30.x, e30.y); await page.waitForTimeout(200); const hE = await edgeLit();
+    await page.mouse.click(e30.x, e30.y); await page.waitForTimeout(200); const st30 = await page.evaluate(() => document.querySelector('#stMsg').textContent);
+    await page.mouse.move(5, 5); await page.waitForTimeout(650);
+    await page.mouse.click(e40.x, e40.y); await page.waitForTimeout(200); const st40 = await page.evaluate(() => document.querySelector('#stMsg').textContent);
+    await page.mouse.move(5, 5); await page.waitForTimeout(650);
+    await page.keyboard.down('Control'); await page.mouse.click(e30.x, e30.y); await page.keyboard.up('Control'); await page.waitForTimeout(200); const nE = await page.evaluate(() => App.sel.length);
+    await page.mouse.move(5, 5); await page.waitForTimeout(150); const sE = await edgeLit();
+    await page.evaluate(() => App.select(null));
+    const lenOf = async q => { await page.evaluate(() => Features.measure()); await page.waitForTimeout(200); await page.mouse.move(q.x, q.y); await page.waitForTimeout(150); await page.mouse.click(q.x, q.y); await page.waitForTimeout(200); const t = await page.evaluate(() => document.querySelector('#pm').textContent); await page.evaluate(() => App.closePM(false)); await page.waitForTimeout(150); return t; };
+    const m30 = await lenOf(e30), m40 = await lenOf(e40);
+    await page.evaluate(() => { delete App.r.recolor; });
+    rec('Spigoli sulla stessa retta: si illumina solo il tratto sotto il puntatore, lunghezza 30 e 40 nella barra e nella Misura, Ctrl + clic ne tiene due', hE[0] === 0 && hE[1] > 0 && /lunghezza 30,00/.test(st30) && /lunghezza 40,00/.test(st40) && nE === 2 && sE[0] > 0 && sE[1] > 0 && /Lunghezza\s*30,00/.test(m30) && /Lunghezza\s*40,00/.test(m40), JSON.stringify({ hE, st30, st40, nE, sE, m30: m30.slice(-40), m40: m40.slice(-40) }));
+    // un corpo solo con due facce staccate nello stesso piano: illuminazione, area, Ctrl + clic
+    await page.evaluate(() => { const box = (x0, y0, x1, y1) => { const s = Sketch.newSketch(); const pt = (x, y) => { const id = 'p' + (s.next++); s.ents.push({ id, t: 'pt', x, y }); return id; }; const P = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => pt(x, y)); P.forEach((a, i) => s.ents.push({ id: 'l' + (s.next++), t: 'ln', a, b: P[(i + 1) % 4] })); return s; };
+      App.change(() => { const d = App.doc = Model.newDoc(); const add = f => { f.id = Model.uid(d, 'F'); f.name = Model.defaultName(d, f.type); d.features.push(f); return f.id; };
+        add({ type: 'extrude', sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(0, 0, 100, 40) }), end: 'blind', depth: 10 });
+        add({ type: 'cut', sketch: add({ type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: box(40, -5, 60, 45) }), end: 'through', both: true }); App.sel = []; }); App.r.fit(App.st.body); });
+    await page.waitForTimeout(400);
+    const faceLit = () => page.evaluate(() => { const r = App.r, out = [0, 0], seen = new Set(); r.cpu.triPoly.forEach((pi, t) => { if (seen.has(pi)) return; seen.add(pi); const c = r.colors.slice(t * 9, t * 9 + 3), hot = (Math.abs(c[0] - 0.96) < 0.02 && Math.abs(c[1] - 0.62) < 0.02) || (Math.abs(c[0] - 0.18) < 0.02 && Math.abs(c[1] - 0.47) < 0.02); if (!hot) return; const p = r.cpu.body[pi]; out[p.v.reduce((s, v) => s + v[0], 0) / p.v.length < 50 ? 0 : 1]++; }); return out; });
+    const qa = await at(20, 10, -20), qb = await at(80, 10, -20);
+    await page.mouse.click(qa.x, qa.y); await page.waitForTimeout(200); await page.mouse.move(5, 5); await page.waitForTimeout(150);
+    const fa = await faceLit(), statA = await page.evaluate(() => document.querySelector('#stMsg').textContent);
+    await page.keyboard.down('Control'); await page.mouse.click(qb.x, qb.y); await page.keyboard.up('Control'); await page.waitForTimeout(200); await page.mouse.move(5, 5); await page.waitForTimeout(150);
+    const fb = await faceLit(), nSel = await page.evaluate(() => App.sel.length);
+    await page.evaluate(() => App.select(null));
+    rec('Un corpo con due facce staccate nello stesso piano: si sceglie solo quella sotto il puntatore, area 1600 (non 3200); con Ctrl + clic sono due', fa[0] > 0 && fa[1] === 0 && /1\.?600/.test(statA) && fb[0] > 0 && fb[1] > 0 && nSel === 2, JSON.stringify({ fa, statA, fb, nSel }));
   } catch (e) { rec('Limiti dei corpi solidi, seconda parte', false, e.message.split('\n')[0]); await page.evaluate(() => { try { App.closeModal(); if (App.pm) App.closePM(false); } catch (x) {} }); }
   // sfondo: tratteggio, tolleranza, richiamo e tabella dal disegno vero, finestra e schizzo
   try {

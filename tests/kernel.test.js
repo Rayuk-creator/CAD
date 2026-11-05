@@ -2307,6 +2307,48 @@ ASM.push(['Ambito di un Importato: nessun corpo scelto o corpo sparito: errore c
   const near = au(10, 20), far = au(40, 50), sf = Model.regen(far.d);
   return eqs([/scegli almeno un corpo/.test(e1) ? 1 : 0, /non esistono più/.test(e2) ? 1 : 0, near.ids.length, far.ids.length, sf.errors.size, sf.bodies.length], [1, 1, 2, 0, 0, 3]);
 }]);
+// facce come le vede l'utente: numero e area delle facce con la stessa chiave
+const patchAreas = (st, n) => { const P = Model.facePatches(st), a = new Map(); st.body.forEach((p, i) => { if (Math.abs(p.p.n[1] - n[1]) + Math.abs(p.p.n[0] - n[0]) + Math.abs(p.p.n[2] - n[2]) > 1e-9) return; let s = 0; for (let k = 2; k < p.v.length; k++) { const u = [0, 1, 2].map(c => p.v[k - 1][c] - p.v[0][c]), w = [0, 1, 2].map(c => p.v[k][c] - p.v[0][c]); s += Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]) / 2; } a.set(P[i], (a.get(P[i]) || 0) + s); }); return [...a.values()].sort((x, y) => x - y); };
+ASM.push(['Facce: due corpi 10 × 10 con la faccia alta nello stesso piano: stessa chiave, due facce da 100; toccandosi lungo un lato restano due', () => {
+  const { d } = twoU(); const st = Model.regen(d), hi = st.body.map((p, i) => i).filter(i => st.body[i].p.n[1] > 0.5), same = new Set(hi.map(i => st.topo.faceKeys[st.body[i].t])).size;
+  const t = D0('c'); blk(t, 0, 0, 10, 10, 10); blk(t, 10, 0, 20, 10, 10, false); const s2 = Model.regen(t);
+  return eqs([same, ...patchAreas(st, [0, 1, 0]), s2.bodies.length, ...patchAreas(s2, [0, 1, 0])], [1, 100, 100, 2, 100, 100]);
+}]);
+ASM.push(['Facce: un corpo con una scanalatura larga 20 passante: i due lati in alto sono facce da 400 (40 × 10 ciascuno sul blocco 100 × 10), non una da 800', () => {
+  const d = D0('c'); blk(d, 0, 0, 100, 10, 10); barF(d, 40, 60, {}, -5, 15, 10, 'cut');
+  const st = Model.regen(d); return eqs([st.bodies.length, ...patchAreas(st, [0, 1, 0])], [1, 400, 400]);
+}]);
+ASM.push(['Facce: i tagli spezzano i poligoni con vertici a T ma la faccia resta una: 100 × 100 con 3 fori quadrati 10 × 10 (10000 − 300) e con una tasca che arriva al bordo', () => {
+  const d = D0('c'); blk(d, 0, 0, 100, 100, 10); for (const [x, y] of [[20, 20], [50, 35], [70, 60]]) barF(d, x, x + 10, {}, y, y + 10, 10, 'cut');
+  const st = Model.regen(d); const a = patchAreas(st, [0, 1, 0]);
+  const e = D0('c'); blk(e, 0, 0, 100, 100, 10); barF(e, 0, 30, {}, 0, 30, 10, 'cut'); barF(e, 20, 60, {}, 20, 40, 10, 'cut');
+  const b = patchAreas(Model.regen(e), [0, 1, 0]);
+  return eqs([a.length, a[0], b.length, b[0]], [1, 9700, 1, 10000 - 900 - 40 * 20 + 100]);
+}]);
+ASM.push(['Facce: due facce nello stesso piano che si toccano solo in uno spigolo verticale, cioè in un punto della faccia alta, restano due; un cilindro resta una faccia sola', () => {
+  const d = D0('c'); blk(d, 0, 0, 10, 10, 10); blk(d, 10, 10, 20, 20, 10);
+  const st = Model.regen(d); const c = D0('c'); const b = SB(); b.circle(0, 0, 10); feat(c, { type: 'extrude', sketch: sketch(c, STD('top'), b), end: 'blind', depth: 10 });
+  const sc = Model.regen(c), P = Model.facePatches(sc), side = new Set(sc.body.map((p, i) => [p, i]).filter(([p]) => Math.abs(p.p.n[1]) < 0.5).map(([, i]) => P[i])).size;
+  return eqs([...patchAreas(st, [0, 1, 0]), side], [100, 100, 1]);
+}]);
+// facce fatte a mano, con i vertici a T che i tagli possono lasciare: nessun lato in comune nella topologia
+const patchesOf = quads => { const body = quads.map(v => ({ v, p: { n: [0, 1, 0], w: 0 }, t: 0 })); return [...Model.facePatches({ body, bodies: [{ id: 'A', start: 0 }], topo: { edges: [], faceKeys: ['k'] } })]; };
+const quadXZ = (x0, z0, x1, z1) => [[x0, 0, z0], [x1, 0, z0], [x1, 0, z1], [x0, 0, z1]];
+ASM.push(['Facce: vertice a T: il lato x 2..8 di un poligono sta sul lato x 0..10 dell\'altro: stessa faccia; uno lontano e uno che tocca solo in un angolo restano a parte', () => {
+  const p = patchesOf([quadXZ(0, 0, 10, 5), quadXZ(2, 5, 8, 9), quadXZ(20, 0, 30, 5), quadXZ(10, -5, 15, 0)]);
+  return eqs([p[0] === p[1] ? 1 : 0, p[0] === p[2] ? 1 : 0, p[0] === p[3] ? 1 : 0], [1, 0, 0]);
+}]);
+ASM.push(['Facce: una retta proprio sul bordo di una cella della griglia, con i due lati distanti 10⁻¹³: stessa faccia', () => {
+  const X = 3e-5, p = patchesOf([quadXZ(-5, 0, X - 1e-13, 5), quadXZ(X + 1e-13, 1, 5, 4)]);
+  return eqs([Math.floor((X - 1e-13) / 1e-5) === Math.floor((X + 1e-13) / 1e-5) ? 1 : 0, p[0] === p[1] ? 1 : 0], [0, 1]);
+}]);
+ASM.push(['Spigoli: due tratti sulla stessa retta, x 0..10 e x 20..30: stesso gruppo, tratti diversi secondo il punto; raccordo R2 su tutti e due: 2 × (4 − π) × 10 in meno', () => {
+  const { d } = twoU(); const st = Model.regen(d), A = Model.resolveEdge({ a: '?', b: '?', p: [5, 10, 0] }, st, st.topo), B = Model.resolveEdge({ a: '?', b: '?', p: [25, 10, 0] }, st, st.topo);
+  const names = r => { const g = Model.edgeGroups(st, st.topo); for (const x of g.values()) for (const e of x.segs) { const u = st.topo.verts[e.a], v = st.topo.verts[e.b]; const m = [0, 1, 2].map(c => (u[c] + v[c]) / 2); if (Math.hypot(m[0] - r[0], m[1] - r[1], m[2] - r[2]) < 1e-6) return { a: st.tags.get(x.t1).name, b: st.tags.get(x.t2).name, p: r }; } };
+  const f = feat(d, { type: 'fillet', r: 2, edges: [names([5, 10, 0]), names([25, 10, 0])], tangent: false });
+  const pa = Model.pieceOf(A, [5, 10, 0]), pb = Model.pieceOf(A, [25, 10, 0]), [m, n] = [A.pieces[pa], A.pieces[pb]];
+  return eqs([A.pieces.length, B.pieces.length, pa === pb ? 1 : 0, (m[0][0] + m[1][0]) / 2, (n[0][0] + n[1][0]) / 2, Model.massProperties(Model.regen(d), d).volume, ...bodyVols(d).map(v => Math.round(1000 - v > 8 ? 1 : 0))], [2, 2, 0, 5, 25, 2000 - 2 * (4 - Math.PI) * 10, 1, 1]);
+}]);
 ASM.push(['Ambito: la serie di un\'estrusione sugli stessi corpi: rialzi 2 × 5 × 10 dietro A e B, 1100 + 1100; solo su A la copia è un corpo nuovo, con l\'avviso sulla serie', () => {
   const run = sc => { const { d, a, c } = twoU(); const f = barF(d, 2, 4, { scope: sc(a, c) }, 10, 15); const p = feat(d, { type: 'lpattern', feats: [f], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 20 }); const st = Model.regen(d); return { v: bodyVols(d), w: st.warn.get(p) || '' }; };
   const both = run((a, c) => [a, c]), one = run(a => [a]);

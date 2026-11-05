@@ -139,6 +139,8 @@ Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nasc
 
 ## Guida e glossario
 
+**Manuale d'uso in PDF, da scaricare e stampare:** [Manuale-Banco-CAD.pdf](https://rayuk-creator.github.io/CAD/docs/Manuale-Banco-CAD.pdf) (A4, 60 pagine circa: esercizio guidato, tutti i comandi, glossario).
+
 ![Guida «Come si fa»: raccordo e smusso degli spigoli](docs/img/guida.png)
 
 - **Guida** (pulsante in alto): 60 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.

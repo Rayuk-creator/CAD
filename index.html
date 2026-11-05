@@ -5658,8 +5658,13 @@ self.postMessage({ hello: true });`;
         // con più corpi si lavora solo quello che ha gli spigoli
         let owners = null;
         if (st.bodies.length > 1) {
-          const ts = new Set(); for (const ed of eds) for (const g of ed.kind === 'curve' ? ed.parts.map(q => q.group) : [ed.group]) if (g) { ts.add(g.t1); ts.add(g.t2); }
-          owners = new Set(st.bodies.filter(b => b.polys.some(p => ts.has(p.t))).map(b => b.id));
+          // il corpo si ricava dai tratti veri dello spigolo: due spigoli sulla stessa retta, in corpi diversi, stanno nello stesso gruppo
+          owners = new Set();
+          const V = topo.verts;
+          for (const ed of eds) for (const g of ed.kind === 'curve' ? ed.parts.map(q => q.group) : [ed.group]) if (g) for (const e of g.segs) {
+            if (ed.kind === 'line' && distPtSeg(mul(add(V[e.a], V[e.b]), 0.5), ed.a, ed.b) > 1e-6) continue;
+            const o = bodyOfPoly(st, e.polys[0]); if (o) owners.add(o.id);
+          }
           if (!owners.size) owners = null;
         }
         for (const t of tools) if (t.op === 'add') applyOp(st, t.polys, 'add', { id: f.id }, owners);
@@ -6036,6 +6041,48 @@ self.postMessage({ hello: true });`;
     const set = new Set(f.bodies); for (const id of set) bodyById(st, id);
     st.bodies = st.bodies.filter(b => f.keep ? set.has(b.id) : !set.has(b.id));
     syncBodies(st);
+  }
+  // Facce come le vede l'utente: ogni poligono riceve il numero della sua faccia (il primo poligono di quella faccia). Due poligoni stanno
+  // nella stessa faccia se hanno la stessa chiave, lo stesso corpo e un lato in comune; i vertici a T lasciati dai tagli non la spezzano,
+  // perché basta che due lati sulla stessa retta si sovrappongano. Due facce nello stesso piano che si toccano solo in un punto restano due.
+  const patchCache = new WeakMap();
+  function facePatches(st) {
+    let out = patchCache.get(st.body); if (out) return out;
+    const body = st.body, n = body.length, keys = st.topo.faceKeys, up = new Int32Array(n).map((_, i) => i), bi = new Int32Array(n);
+    for (let k = 0; k < st.bodies.length; k++) { const e = k + 1 < st.bodies.length ? st.bodies[k + 1].start : n; for (let i = st.bodies[k].start; i < e; i++) bi[i] = k; }
+    const find = i => { while (up[i] !== i) { up[i] = up[up[i]]; i = up[i]; } return i; };
+    const join = (a, b) => { a = find(a); b = find(b); if (a !== b) { if (a < b) up[b] = a; else up[a] = b; } };
+    const same = (a, b) => keys[body[a].t] === keys[body[b].t] && bi[a] === bi[b];
+    for (const e of st.topo.edges) for (let i = 0; i < e.polys.length; i++) for (let j = i + 1; j < e.polys.length; j++) if (same(e.polys[i], e.polys[j])) join(e.polys[i], e.polys[j]);
+    // solo dove la chiave ha ancora più pezzi: lati sulla stessa retta che si sovrappongono (due griglie sfasate, così un arrotondamento al bordo di una cella non divide una retta)
+    const groups = new Map();
+    for (let i = 0; i < n; i++) { const g = bi[i] + '|' + keys[body[i].t]; let l = groups.get(g); if (!l) groups.set(g, l = []); l.push(i); }
+    const Q = 1e-5, D = 1e-6, MIN = 1e-6;
+    for (const l of groups.values()) {
+      if (new Set(l.map(find)).size < 2) continue;
+      const segs = [];
+      for (const pi of l) { const v = body[pi].v; for (let i = 0; i < v.length; i++) {
+        const a = v[i], b = v[(i + 1) % v.length]; let d = sub(b, a); const L = len(d); if (L < 1e-9) continue;
+        d = mul(d, 1 / L); const sg = (Math.abs(d[0]) > 1e-9 ? d[0] : Math.abs(d[1]) > 1e-9 ? d[1] : d[2]) < 0 ? -1 : 1; d = mul(d, sg);
+        const ta = dot(a, d), tb = dot(b, d), o = sub(a, mul(d, ta));
+        segs.push({ pi, d, o, t0: Math.min(ta, tb), t1: Math.max(ta, tb) });
+      } }
+      for (const sh of [0, 0.5]) {
+        const lines = new Map();
+        for (const g of segs) { const k = [...g.d.map(x => Math.floor(x / D + sh)), ...g.o.map(x => Math.floor(x / Q + sh))].join(); let m = lines.get(k); if (!m) lines.set(k, m = []); m.push(g); }
+        for (const m of lines.values()) { if (m.length < 2) continue; m.sort((a, b) => a.t0 - b.t0); let top = m[0]; for (let i = 1; i < m.length; i++) { const g = m[i]; if (g.t0 < top.t1 - MIN) join(top.pi, g.pi); if (g.t1 > top.t1) top = g; } }
+      }
+    }
+    out = new Int32Array(n); for (let i = 0; i < n; i++) out[i] = find(i);
+    patchCache.set(st.body, out);
+    return out;
+  }
+  // il tratto di uno spigolo rettilineo più vicino a un punto (spigoli sulla stessa retta, staccati, sono tratti diversi)
+  function pieceOf(geo, p) {
+    if (!geo || geo.kind !== 'line') return undefined;
+    let best = 0, dm = Infinity;
+    geo.pieces.forEach((pc, i) => { const dd = distPtSeg(p, pc[0], pc[1]); if (dd < dm) { dm = dd; best = i; } });
+    return best;
   }
   const bodyOfPoly = (st, i) => { for (let k = st.bodies.length - 1; k >= 0; k--) if (i >= st.bodies[k].start) return st.bodies[k]; return null; };
   // proprietà di massa di ogni corpo
@@ -6935,7 +6982,7 @@ self.postMessage({ hello: true });`;
 
   // schizzi usati da una funzione (lo sweep ne usa due: profilo e percorso)
   const sketchesOf = f => [f.sketch, f.path].filter(Boolean);
-  const api = { autoScope, helixMesh, FAST, FAST_TYPES, fastenerDoc, fastenerName, fastenerLengths, threadsOf, threadMinor, bodyProps, bodyOfPoly, stepBodies, sketchesOf, STD_PLANES, MATERIALS, HOLE, newDoc, uid, defaultName, regen, resolvePlane, findFaceTag, frameFromPlane, edgeGroups, edgeGeometry, resolveEdge, massProperties, FEAT_LABEL, rotMatrix, Import: IM, importInfo };
+  const api = { facePatches, pieceOf, autoScope, helixMesh, FAST, FAST_TYPES, fastenerDoc, fastenerName, fastenerLengths, threadsOf, threadMinor, bodyProps, bodyOfPoly, stepBodies, sketchesOf, STD_PLANES, MATERIALS, HOLE, newDoc, uid, defaultName, regen, resolvePlane, findFaceTag, frameFromPlane, edgeGroups, edgeGeometry, resolveEdge, massProperties, FEAT_LABEL, rotMatrix, Import: IM, importInfo };
   if (isNode) module.exports = api; else root.Model = api;
 })(this);
 
@@ -9098,10 +9145,15 @@ self.postMessage({ hello: true });`;
     const faceSel = new Set(), faceHov = new Set(), edgeSel = new Set(), edgeHov = new Set();
     const st = App.st;
     const keyOfPoly = pi => st.topo.faceKeys[App.r.cpu ? App.r.cpu.body[pi].t : st.body[pi].t];
-    // una faccia scelta nella vista vale solo per il suo corpo (it.body): la chiave da sola è uguale per le facce di corpi diversi nello stesso piano
-    const addFace = (set, it) => { if (it && it.kind === 'face') set.add(it.body ? it.key + '@' + it.body : it.key); };
-    const hasFace = (set, k, pi) => { if (!set.size) return false; if (set.has(k)) return true; const b = st.bodies.length > 1 ? Model.bodyOfPoly(st, pi) : null; return !!b && set.has(k + '@' + b.id); };
-    const addEdge = (set, it) => { if (it && it.kind === 'edge') set.add(it.gkey); };
+    // una faccia scelta nella vista vale solo per sé (it.patch): la chiave da sola è uguale per tutte le facce nello stesso piano. Dopo una rigenerazione i numeri non valgono più: resta la chiave
+    const samePolys = !App.r.cpu || App.r.cpu.body === st.body, patches = samePolys && st.body.length ? Model.facePatches(st) : null;
+    const addFace = (set, it) => { if (it && it.kind === 'face') set.add(it.patch !== undefined && it.pst === st && patches ? it.key + '@' + it.patch : it.key); };
+    const hasFace = (set, k, pi) => { if (!set.size) return false; if (set.has(k)) return true; return !!patches && set.has(k + '@' + patches[pi]); };
+    // uno spigolo rettilineo scelto vale per il suo tratto (it.piece); gli altri tratti sulla stessa retta sono altri spigoli
+    const piecesOf = new Map();
+    const addEdge = (set, it) => { if (!it || it.kind !== 'edge') return; if (it.piece === undefined || !it.geo || !it.geo.pieces) { set.add(it.gkey); return; } set.add(it.gkey + '~' + it.piece); piecesOf.set(it.gkey, it.geo); };
+    const edgePiece = (i, k) => { const g = piecesOf.get(k), e = App.r.sharp[i], V = st.topo.verts; return g && e ? Model.pieceOf(g, V[e.a].map((x, c) => (x + V[e.b][c]) / 2)) : undefined; };
+    const hasEdge = (set, i, k) => { if (!set.size) return false; if (set.has(k)) return true; return piecesOf.has(k) && set.has(k + '~' + edgePiece(i, k)); };
     App.sel.forEach(s => { addFace(faceSel, s); addEdge(edgeSel, s); });
     const bodySel = new Set(App.sel.filter(s => s.kind === 'body').map(s => s.id));
     if (App.pm && App.pm.bodiesPicked) for (const id of App.pm.bodiesPicked()) bodySel.add(id);
@@ -9110,7 +9162,7 @@ self.postMessage({ hello: true });`;
     const groups = App.edgeGroupKeys || [];
     return {
       faceCol: pi => { const k = keyOfPoly(pi); if (hasFace(faceHov, k, pi)) return C_HOV; if (hasFace(faceSel, k, pi)) return C_SEL; if (bodySel.size) { const b = Model.bodyOfPoly(st, pi); if (b && bodySel.has(b.id)) return C_SEL; } return null; },
-      edgeCol: i => { const k = groups[i]; return edgeHov.has(k) ? C_HOV : edgeSel.has(k) ? C_SEL : null; },
+      edgeCol: i => { const k = groups[i]; return hasEdge(edgeHov, i, k) ? C_HOV : hasEdge(edgeSel, i, k) ? C_SEL : null; },
     };
   }
   App.recolor = function () {
@@ -9356,8 +9408,7 @@ self.postMessage({ hello: true });`;
   App.faceItem = function (pi) {
     const st = App.st, poly = st.body[pi];
     const tg = st.tags.get(poly.t);
-    const bd = App.mode === 'part' && st.bodies.length > 1 ? Model.bodyOfPoly(st, pi) : null;   // nell'assieme le chiavi hanno già il componente
-    return { kind: 'face', poly: pi, tag: tg, key: st.topo.faceKeys[poly.t], body: bd ? bd.id : undefined, name: tg.name, planar: tg.kind === 'plane', n: tg.n, w: tg.w, label: tg.kind === 'plane' ? 'Faccia piana' : tg.cg || tg.scg ? 'Faccia curva' : (tg.R !== undefined ? 'Faccia cilindrica Ø' + fmt(tg.R * 2) : 'Faccia curva') };
+    return { kind: 'face', poly: pi, tag: tg, key: st.topo.faceKeys[poly.t], patch: Model.facePatches(st)[pi], pst: st, name: tg.name, planar: tg.kind === 'plane', n: tg.n, w: tg.w, label: tg.kind === 'plane' ? 'Faccia piana' : tg.cg || tg.scg ? 'Faccia curva' : (tg.R !== undefined ? 'Faccia cilindrica Ø' + fmt(tg.R * 2) : 'Faccia curva') };
   };
   App.edgeItem = function (idx, point) {
     const st = App.st, e = App.r.sharp[idx];
@@ -9371,7 +9422,7 @@ self.postMessage({ hello: true });`;
     if (geo && geo.kind === 'line') label = 'Spigolo rettilineo';
     if (geo && geo.kind === 'circle') label = (geo.full ? 'Spigolo circolare Ø' : 'Spigolo ad arco R') + fmt(geo.full ? geo.R * 2 : geo.R);
     if (geo && geo.kind === 'curve') label = 'Spigolo curvo (ellisse o spline)';
-    return { kind: 'edge', idx, gkey, ref: { a: st.tags.get(t1).name, b: st.tags.get(t2).name, p: point }, geo, label };
+    return { kind: 'edge', idx, gkey, piece: geo ? Model.pieceOf(geo, point) : undefined, ref: { a: st.tags.get(t1).name, b: st.tags.get(t2).name, p: point }, geo, label };
   };
   function pickAt(sx, sy, filter) {
     const r = App.r;
@@ -9425,7 +9476,7 @@ self.postMessage({ hello: true });`;
     if (!best) return null;
     return { kind: 'plane', id: best, label: Model.STD_PLANES[best] ? Model.STD_PLANES[best].name : (App.doc.features.find(f => f.id === best) || {}).name };
   }
-  App.sameItem = (a, b) => a && b && a.kind === b.kind && (a.kind === 'face' ? a.key === b.key && a.body === b.body : a.kind === 'edge' ? a.gkey === b.gkey : a.kind === 'plane' ? a.id === b.id : a.kind === 'feature' || a.kind === 'body' || a.kind === 'mate' ? a.id === b.id : a.kind === 'vertex' ? a.vkey === b.vkey : false);
+  App.sameItem = (a, b) => a && b && a.kind === b.kind && (a.kind === 'face' ? a.key === b.key && a.patch === b.patch : a.kind === 'edge' ? a.gkey === b.gkey && a.piece === b.piece : a.kind === 'plane' ? a.id === b.id : a.kind === 'feature' || a.kind === 'body' || a.kind === 'mate' ? a.id === b.id : a.kind === 'vertex' ? a.vkey === b.vkey : false);
   App.select = function (item, additive) {
     if (!item) { if (!additive) App.sel = []; }
     else if (additive) {
@@ -9442,16 +9493,16 @@ self.postMessage({ hello: true });`;
     const s = App.sel[App.sel.length - 1];
     let t = s.label || '';
     if (s.kind === 'face' && s.tag.kind === 'plane') {
-      const area = faceArea(s.key, s.body);
+      const area = faceArea(s.key, s.pst === App.st ? s.patch : undefined);
       t += ' · area ' + fmt(area) + ' mm²';
     }
-    if (s.kind === 'edge' && s.geo && s.geo.kind === 'line') t += ' · lunghezza ' + fmt(len(sub(s.geo.pieces[0][1], s.geo.pieces[0][0])) ) + ' mm';
+    if (s.kind === 'edge' && s.geo && s.geo.kind === 'line') { const pc = s.geo.pieces[s.piece || 0]; t += ' · lunghezza ' + fmt(len(sub(pc[1], pc[0]))) + ' mm'; }
     if (s.kind === 'edge' && s.geo && s.geo.kind === 'curve') t += ' · lunghezza ' + fmt(s.geo.length) + ' mm';
     setStatus(t + (App.sel.length > 1 ? ` (${App.sel.length} elementi selezionati)` : ''));
   }
-  function faceArea(key, body) {
-    const st = App.st; let A = 0;
-    st.body.forEach((p, pi) => { if (st.topo.faceKeys[p.t] !== key) return; if (body && (Model.bodyOfPoly(st, pi) || {}).id !== body) return; for (let i = 1; i < p.v.length - 1; i++) A += len(cross(sub(p.v[i], p.v[0]), sub(p.v[i + 1], p.v[0]))) / 2; });
+  function faceArea(key, patch) {
+    const st = App.st; let A = 0; const P = patch !== undefined ? Model.facePatches(st) : null;
+    st.body.forEach((p, pi) => { if (st.topo.faceKeys[p.t] !== key) return; if (P && P[pi] !== patch) return; for (let i = 1; i < p.v.length - 1; i++) A += len(cross(sub(p.v[i], p.v[0]), sub(p.v[i + 1], p.v[0]))) / 2; });
     return A;
   }
   App.faceArea = faceArea;
@@ -14644,8 +14695,9 @@ self.postMessage({ hello: true });`;
       case 'edges': {
         if (it.kind !== 'edge') return;
         // stesso spigolo anche se cliccato in un altro punto (per esempio un altro tratto del bordo di un'ellisse)
-        const st = A().st, gk = r => { const ed = Model.resolveEdge(r, st, st.topo); if (!ed || !ed.group) return null; const k1 = st.topo.faceKeys[ed.group.t1], k2 = st.topo.faceKeys[ed.group.t2]; return k1 < k2 ? k1 + '#' + k2 : k2 + '#' + k1; };
-        const i = f.edges.findIndex(r => sameEdge(r, it.ref) || gk(r) === it.gkey);
+        const st = A().st, gk = r => { const ed = Model.resolveEdge(r, st, st.topo); if (!ed || !ed.group) return null; const k1 = st.topo.faceKeys[ed.group.t1], k2 = st.topo.faceKeys[ed.group.t2]; const p = Model.pieceOf(ed, r.p); return (k1 < k2 ? k1 + '#' + k2 : k2 + '#' + k1) + (p === undefined ? '' : '~' + p); };
+        const want = it.gkey + (it.piece === undefined ? '' : '~' + it.piece);
+        const i = f.edges.findIndex(r => sameEdge(r, it.ref) || gk(r) === want);
         if (i >= 0) f.edges.splice(i, 1); else f.edges.push(it.ref);
         App.refreshPM(); pm.update(); return;
       }
@@ -14688,7 +14740,7 @@ self.postMessage({ hello: true });`;
         if (ed && ed.group) {
           const g = ed.group; const st = App.st;
           const k1 = st.topo.faceKeys[g.t1], k2 = st.topo.faceKeys[g.t2];
-          out.push({ kind: 'edge', gkey: k1 < k2 ? k1 + '#' + k2 : k2 + '#' + k1 });
+          out.push({ kind: 'edge', gkey: k1 < k2 ? k1 + '#' + k2 : k2 + '#' + k1, piece: Model.pieceOf(ed, ref.p), geo: ed });
         }
       }
     }
@@ -14804,11 +14856,11 @@ self.postMessage({ hello: true });`;
     if (picks.length === 1) {
       const it = picks[0];
       if (it.kind === 'face') {
-        rows.push(['Area', fmt(App.faceArea(it.key, it.body)) + ' mm²']);
+        rows.push(['Area', fmt(App.faceArea(it.key, it.pst === App.st ? it.patch : undefined)) + ' mm²']);
         if (it.tag.kind === 'rev' && it.tag.R !== undefined) rows.push(['Diametro', 'Ø' + fmt(it.tag.R * 2) + ' mm'], ['Raggio', fmt(it.tag.R) + ' mm']);
       }
       if (it.kind === 'edge' && it.geo) {
-        if (it.geo.kind === 'line') { const L = len(sub(it.geo.b || it.geo.pieces[0][1], it.geo.a || it.geo.pieces[0][0])); rows.push(['Lunghezza', fmt(L) + ' mm']); }
+        if (it.geo.kind === 'line') { const pc = it.geo.pieces[it.piece || 0], L = len(sub(it.geo.b || pc[1], it.geo.a || pc[0])); rows.push(['Lunghezza', fmt(L) + ' mm']); }
         if (it.geo.kind === 'circle') rows.push(['Diametro', 'Ø' + fmt(it.geo.R * 2) + ' mm'], ['Centro', it.geo.c.map(x => fmt(x)).join('; ')], ['Lunghezza', fmt(2 * Math.PI * it.geo.R) + ' mm']);
       }
       if (it.kind === 'vertex') rows.push(['X', fmt(it.point[0])], ['Y', fmt(it.point[1])], ['Z', fmt(it.point[2])]);
@@ -19417,6 +19469,48 @@ ASM.push(['Ambito di un Importato: nessun corpo scelto o corpo sparito: errore c
   const near = au(10, 20), far = au(40, 50), sf = Model.regen(far.d);
   return eqs([/scegli almeno un corpo/.test(e1) ? 1 : 0, /non esistono più/.test(e2) ? 1 : 0, near.ids.length, far.ids.length, sf.errors.size, sf.bodies.length], [1, 1, 2, 0, 0, 3]);
 }]);
+// facce come le vede l'utente: numero e area delle facce con la stessa chiave
+const patchAreas = (st, n) => { const P = Model.facePatches(st), a = new Map(); st.body.forEach((p, i) => { if (Math.abs(p.p.n[1] - n[1]) + Math.abs(p.p.n[0] - n[0]) + Math.abs(p.p.n[2] - n[2]) > 1e-9) return; let s = 0; for (let k = 2; k < p.v.length; k++) { const u = [0, 1, 2].map(c => p.v[k - 1][c] - p.v[0][c]), w = [0, 1, 2].map(c => p.v[k][c] - p.v[0][c]); s += Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]) / 2; } a.set(P[i], (a.get(P[i]) || 0) + s); }); return [...a.values()].sort((x, y) => x - y); };
+ASM.push(['Facce: due corpi 10 × 10 con la faccia alta nello stesso piano: stessa chiave, due facce da 100; toccandosi lungo un lato restano due', () => {
+  const { d } = twoU(); const st = Model.regen(d), hi = st.body.map((p, i) => i).filter(i => st.body[i].p.n[1] > 0.5), same = new Set(hi.map(i => st.topo.faceKeys[st.body[i].t])).size;
+  const t = D0('c'); blk(t, 0, 0, 10, 10, 10); blk(t, 10, 0, 20, 10, 10, false); const s2 = Model.regen(t);
+  return eqs([same, ...patchAreas(st, [0, 1, 0]), s2.bodies.length, ...patchAreas(s2, [0, 1, 0])], [1, 100, 100, 2, 100, 100]);
+}]);
+ASM.push(['Facce: un corpo con una scanalatura larga 20 passante: i due lati in alto sono facce da 400 (40 × 10 ciascuno sul blocco 100 × 10), non una da 800', () => {
+  const d = D0('c'); blk(d, 0, 0, 100, 10, 10); barF(d, 40, 60, {}, -5, 15, 10, 'cut');
+  const st = Model.regen(d); return eqs([st.bodies.length, ...patchAreas(st, [0, 1, 0])], [1, 400, 400]);
+}]);
+ASM.push(['Facce: i tagli spezzano i poligoni con vertici a T ma la faccia resta una: 100 × 100 con 3 fori quadrati 10 × 10 (10000 − 300) e con una tasca che arriva al bordo', () => {
+  const d = D0('c'); blk(d, 0, 0, 100, 100, 10); for (const [x, y] of [[20, 20], [50, 35], [70, 60]]) barF(d, x, x + 10, {}, y, y + 10, 10, 'cut');
+  const st = Model.regen(d); const a = patchAreas(st, [0, 1, 0]);
+  const e = D0('c'); blk(e, 0, 0, 100, 100, 10); barF(e, 0, 30, {}, 0, 30, 10, 'cut'); barF(e, 20, 60, {}, 20, 40, 10, 'cut');
+  const b = patchAreas(Model.regen(e), [0, 1, 0]);
+  return eqs([a.length, a[0], b.length, b[0]], [1, 9700, 1, 10000 - 900 - 40 * 20 + 100]);
+}]);
+ASM.push(['Facce: due facce nello stesso piano che si toccano solo in uno spigolo verticale, cioè in un punto della faccia alta, restano due; un cilindro resta una faccia sola', () => {
+  const d = D0('c'); blk(d, 0, 0, 10, 10, 10); blk(d, 10, 10, 20, 20, 10);
+  const st = Model.regen(d); const c = D0('c'); const b = SB(); b.circle(0, 0, 10); feat(c, { type: 'extrude', sketch: sketch(c, STD('top'), b), end: 'blind', depth: 10 });
+  const sc = Model.regen(c), P = Model.facePatches(sc), side = new Set(sc.body.map((p, i) => [p, i]).filter(([p]) => Math.abs(p.p.n[1]) < 0.5).map(([, i]) => P[i])).size;
+  return eqs([...patchAreas(st, [0, 1, 0]), side], [100, 100, 1]);
+}]);
+// facce fatte a mano, con i vertici a T che i tagli possono lasciare: nessun lato in comune nella topologia
+const patchesOf = quads => { const body = quads.map(v => ({ v, p: { n: [0, 1, 0], w: 0 }, t: 0 })); return [...Model.facePatches({ body, bodies: [{ id: 'A', start: 0 }], topo: { edges: [], faceKeys: ['k'] } })]; };
+const quadXZ = (x0, z0, x1, z1) => [[x0, 0, z0], [x1, 0, z0], [x1, 0, z1], [x0, 0, z1]];
+ASM.push(['Facce: vertice a T: il lato x 2..8 di un poligono sta sul lato x 0..10 dell\'altro: stessa faccia; uno lontano e uno che tocca solo in un angolo restano a parte', () => {
+  const p = patchesOf([quadXZ(0, 0, 10, 5), quadXZ(2, 5, 8, 9), quadXZ(20, 0, 30, 5), quadXZ(10, -5, 15, 0)]);
+  return eqs([p[0] === p[1] ? 1 : 0, p[0] === p[2] ? 1 : 0, p[0] === p[3] ? 1 : 0], [1, 0, 0]);
+}]);
+ASM.push(['Facce: una retta proprio sul bordo di una cella della griglia, con i due lati distanti 10⁻¹³: stessa faccia', () => {
+  const X = 3e-5, p = patchesOf([quadXZ(-5, 0, X - 1e-13, 5), quadXZ(X + 1e-13, 1, 5, 4)]);
+  return eqs([Math.floor((X - 1e-13) / 1e-5) === Math.floor((X + 1e-13) / 1e-5) ? 1 : 0, p[0] === p[1] ? 1 : 0], [0, 1]);
+}]);
+ASM.push(['Spigoli: due tratti sulla stessa retta, x 0..10 e x 20..30: stesso gruppo, tratti diversi secondo il punto; raccordo R2 su tutti e due: 2 × (4 − π) × 10 in meno', () => {
+  const { d } = twoU(); const st = Model.regen(d), A = Model.resolveEdge({ a: '?', b: '?', p: [5, 10, 0] }, st, st.topo), B = Model.resolveEdge({ a: '?', b: '?', p: [25, 10, 0] }, st, st.topo);
+  const names = r => { const g = Model.edgeGroups(st, st.topo); for (const x of g.values()) for (const e of x.segs) { const u = st.topo.verts[e.a], v = st.topo.verts[e.b]; const m = [0, 1, 2].map(c => (u[c] + v[c]) / 2); if (Math.hypot(m[0] - r[0], m[1] - r[1], m[2] - r[2]) < 1e-6) return { a: st.tags.get(x.t1).name, b: st.tags.get(x.t2).name, p: r }; } };
+  const f = feat(d, { type: 'fillet', r: 2, edges: [names([5, 10, 0]), names([25, 10, 0])], tangent: false });
+  const pa = Model.pieceOf(A, [5, 10, 0]), pb = Model.pieceOf(A, [25, 10, 0]), [m, n] = [A.pieces[pa], A.pieces[pb]];
+  return eqs([A.pieces.length, B.pieces.length, pa === pb ? 1 : 0, (m[0][0] + m[1][0]) / 2, (n[0][0] + n[1][0]) / 2, Model.massProperties(Model.regen(d), d).volume, ...bodyVols(d).map(v => Math.round(1000 - v > 8 ? 1 : 0))], [2, 2, 0, 5, 25, 2000 - 2 * (4 - Math.PI) * 10, 1, 1]);
+}]);
 ASM.push(['Ambito: la serie di un\'estrusione sugli stessi corpi: rialzi 2 × 5 × 10 dietro A e B, 1100 + 1100; solo su A la copia è un corpo nuovo, con l\'avviso sulla serie', () => {
   const run = sc => { const { d, a, c } = twoU(); const f = barF(d, 2, 4, { scope: sc(a, c) }, 10, 15); const p = feat(d, { type: 'lpattern', feats: [f], dir: { kind: 'axis', id: 'x' }, n: 2, spacing: 20 }); const st = Model.regen(d); return { v: bodyVols(d), w: st.warn.get(p) || '' }; };
   const both = run((a, c) => [a, c]), one = run(a => [a]);
@@ -19577,7 +19671,7 @@ if (isNode) {
   add('Per iniziare', 'interfaccia', 'Com\'è fatto lo schermo', {
     why: 'Il Banco CAD è organizzato come SolidWorks: comandi in alto, albero a sinistra, pezzo al centro.',
     steps: [
-      'In alto c\'è il [[CommandManager]]: le schede **Funzioni**, **Schizzo**, **Valuta** e **Messa in tavola** cambiano i pulsanti mostrati sotto.',
+      'In alto c\'è il [[CommandManager]]: le schede **Funzioni**, **Schizzo**, **Valuta**, **Messa in tavola** e **Assieme** cambiano i pulsanti mostrati sotto.',
       'A sinistra c\'è l\'[[Albero di progettazione]]: piani, origine e tutte le funzioni nell\'ordine in cui le hai fatte.',
       'Quando crei o modifichi una funzione, al posto dell\'albero compare il [[PropertyManager]] con i parametri; ✓ conferma, ✕ annulla.',
       'Al centro c\'è la vista 3D; in alto la barretta con Adatta, orientamenti, stile di visualizzazione, sezione e piani.',
