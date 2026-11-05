@@ -23,7 +23,7 @@ Scelta dell'utente del 5 novembre: subito dopo la traduzione, così pulsante e a
 - **Solo dal sito GitHub Pages:** da disco e su claude.ai non si installa, e il programma funziona come oggi. Sul sito servono file in più (descrizione dell'app, icone, service worker); `index.html` deve restare completo e funzionante da solo.
 - **Aggiornamenti:** il punto da curare di più. Serve un avviso «nuova versione disponibile», perché nessuno resti su una versione vecchia senza saperlo.
 - **iPhone e iPad:** il pulsante non compare da solo: breve messaggio con Condividi › Aggiungi alla schermata Home.
-- **Da decidere con l'utente:** se salvare anche il manuale PDF per l'uso offline (circa 5 MB in più) o lasciarlo online.
+- **Manuale PDF (scelta dell'utente del 5 novembre):** solo online, non salvato per l'uso offline. Basta la voce che rimanda al PDF sul sito (Progetto › Manuale d'uso (PDF), già presente).
 - **Da provare:** che il lavoro salvato sul sito si ritrovi nella versione installata. Esporta resta il vero salvataggio.
 
 ## Importare file di altri programmi
