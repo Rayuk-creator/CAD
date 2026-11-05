@@ -9,7 +9,7 @@ node "$D/esercizio.js" "$W/img" | grep -v '^shot'
 node "$D/schermate.js" "$W/img" | grep -v '^shot' || true
 python3 -c "
 from PIL import Image
-im=Image.open('$W/img/es-8-finito.png');w,h=im.size;im.crop((int(w*.27),int(h*.2),int(w*.9),int(h*.86))).save('$W/img/es-8-crop.png')"
+im=Image.open('$W/img/es-8-finito.png');w,h=im.size;im.crop((int(w*.24),int(h*.27),int(w*.98),int(h*.93))).save('$W/img/es-8-crop.png')"
 python3 "$D/build.py" "$W"; node "$D/render.js" "$W"; python3 "$D/pages.py" "$W"
 python3 "$D/build.py" "$W"; node "$D/render.js" "$W"; python3 "$D/pages.py" "$W"
 python3 "$D/finish.py" "$W"; python3 "$D/check.py" "$W"
