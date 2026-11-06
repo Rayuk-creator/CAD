@@ -1708,6 +1708,14 @@ label.chk .gl-i { margin-left: 2px; }
   }
 
   /* ---------------- residui ---------------- */
+  // copia speculare di un arco (Specchia entità): centro ed estremi simmetrici danno già il raggio costante, e la riga
+  // del vincolo implicito sarebbe di troppo. Se una simmetria viene tolta, o l'originale sparisce, la riga torna.
+  function mirroredArc(e, sk, E) {
+    const src = e.mirrorOf && E.get(e.mirrorOf);
+    if (!src || src.t !== 'ar') return false;
+    const S = [src.c, src.a, src.b];
+    return [e.c, e.a, e.b].every(p => S.includes(p) || sk.cons.some(k => k.t === 'symmetric' && !k.driven && ((k.e[0] === p && S.includes(k.e[1])) || (k.e[1] === p && S.includes(k.e[0])))));
+  }
   function residuals(sk, E, out, rows) {
     const P = id => { const p = E.get(id); return [p.x, p.y]; };
     const L = id => { const l = E.get(id); return [P(l.a), P(l.b)]; };
@@ -1715,7 +1723,9 @@ label.chk .gl-i { margin-left: 2px; }
     const C = id => P(E.get(id).c);
     const push = (v, con) => { out.push(v); if (rows) rows.push(con); };
     // vincolo implicito degli archi: raggio costante
+    // (non per la copia speculare di un arco: vedi mirroredArc)
     for (const e of sk.ents) if (e.t === 'ar') {
+      if (mirroredArc(e, sk, E)) continue;
       const c = P(e.c), a = P(e.a), b = P(e.b);
       push(Math.hypot(a[0] - c[0], a[1] - c[1]) - Math.hypot(b[0] - c[0], b[1] - c[1]), { implicit: e.id });
     }
@@ -1877,7 +1887,7 @@ label.chk .gl-i { margin-left: 2px; }
   // gli elementi che danno righe, nell'ordine di residuals: prima gli archi (raggio costante), poi i vincoli
   function rowItems(sk, V) {
     const items = [];
-    for (const e of sk.ents) if (e.t === 'ar') items.push({ sk: { ents: [e], cons: [] }, d: depsOf(V, [e.id]) });
+    for (const e of sk.ents) if (e.t === 'ar' && !mirroredArc(e, sk, V.E)) items.push({ sk: { ents: [e], cons: [] }, d: depsOf(V, [e.id]) });
     for (const c of sk.cons) if (activeCon(c)) items.push({ sk: { ents: [], cons: [c] }, d: depsOf(V, consIds(c)) });
     return items;
   }
@@ -12935,7 +12945,14 @@ self.postMessage({ hello: true });`;
         if (e.t === 'pt') { mp(e.id); continue; }
         if (e.t === 'ln') addEnt({ t: 'ln', a: mp(e.a), b: mp(e.b), cons: e.cons });
         if (e.t === 'ci') { const nc = addEnt({ t: 'ci', c: mp(e.c), r: e.r, cons: e.cons }); addCon('equal', [e.id, nc]); }
-        if (e.t === 'ar') { const na = addEnt({ t: 'ar', c: mp(e.c), a: mp(e.b), b: mp(e.a), cons: e.cons }); addCon('equal', [e.id, na]); }
+        if (e.t === 'ar') {
+          // la copia ha centro ed estremi simmetrici: il raggio segue da solo. Un punto in comune sta sull'asse e deve restarci.
+          addEnt({ t: 'ar', c: mp(e.c), a: mp(e.b), b: mp(e.a), cons: e.cons, mirrorOf: e.id });
+          for (const pid of [e.c, e.a, e.b]) if (map.get(pid) === pid && pid !== axis.a && pid !== axis.b) {
+            const on = { id: nid('k'), t: 'onLine', e: [pid, axis.id] };
+            if (!S.wouldOverdefine(ss.sk, { ...on })) ss.sk.cons.push(on);
+          }
+        }
       }
     });
   }
@@ -17820,6 +17837,24 @@ SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
     { t: 'len', e: [L[0].id], v: 80 }, { t: 'len', e: [L[1].id], v: 50 });
   const r = Sketch.solve(s); const E = Sketch.byId(s);
   return { ok: r.ok, got: [E.get(p3).x, E.get(p3).y], exp: [80, 50] };
+}]);
+SK.push(['Specchia entità: la copia di un arco è completamente definita e speculare; senza il legame la stessa geometria è sovradefinita', () => {
+  // arco fisso con centro (8; 17), raggio 5, da 90° a 180°; asse Y; copia partita un po' fuori posto
+  const fatto = legame => {
+    const b = SB(), s = b.s, fix = (x, y) => b.pt(x, y, { fixed: true });
+    const c = fix(8, 17), a = b.pt(8, 22), d = b.pt(3, 17), ax = b.line(fix(0, 0), fix(0, 30), { cons: true, center: true });
+    const src = b.arc(c, a, d);
+    s.cons.push({ id: 'k4', t: 'vAlign', e: [c, a] }, { id: 'k5', t: 'hAlign', e: [c, d] }, { id: 'k6', t: 'radius', e: [src], v: 5 });
+    const c2 = b.pt(-8.3, 17.2), d2 = b.pt(-3.2, 16.9), a2 = b.pt(-7.9, 22.2);
+    s.ents.push({ id: 'am', t: 'ar', c: c2, a: d2, b: a2, ...(legame ? { mirrorOf: src } : {}) });
+    s.cons.push({ id: 'k1', t: 'symmetric', e: [c, c2, ax] }, { id: 'k2', t: 'symmetric', e: [a, a2, ax] }, { id: 'k3', t: 'symmetric', e: [d, d2, ax] });
+    return { s, c2, a2, d2 };
+  };
+  const m = fatto(true), r = Sketch.solve(m.s), st = Sketch.analyze(m.s), E = Sketch.byId(m.s);
+  const senza = fatto(false); Sketch.solve(senza.s); const st0 = Sketch.analyze(senza.s);
+  // togliendo una simmetria torna il vincolo implicito del raggio: l'arco resta un arco (estremo a distanza 5 dal centro)
+  const t = fatto(true); t.s.cons = t.s.cons.filter(k => k.id !== 'k3'); const v = Sketch.solve(t.s), st3 = Sketch.analyze(t.s), Et = Sketch.byId(t.s), R3 = Math.hypot(Et.get(t.d2).x - Et.get(t.c2).x, Et.get(t.d2).y - Et.get(t.c2).y);
+  return { ok: r.ok && st.status === 'full' && st.dof === 0 && st0.status === 'over' && v.ok && st3.status === 'under' && st3.dof === 1, got: [E.get(m.c2).x, E.get(m.c2).y, E.get(m.a2).x, E.get(m.a2).y, E.get(m.d2).x, E.get(m.d2).y, R3], exp: [-8, 17, -8, 22, -3, 17, 5] };
 }]);
 SK.push(['Cerchio con diametro quotato 25', () => {
   const b = SB(); const c = b.circle(5, 5, 7); b.s.cons.push({ t: 'diameter', e: [c], v: 25 });

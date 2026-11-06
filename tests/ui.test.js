@@ -2753,6 +2753,53 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     rec(ASMC4, ok && !errs.length, `scelto ${JSON.stringify(picked)}; secondo ${JSON.stringify(second)}; ritorno ${JSON.stringify(back1)}; elenco ${listed.join()}; con sotto ${JSON.stringify(withSub)}; distinta ${JSON.stringify(bom)}; niente ciclo ${noCycle.join()}; tavola ${JSON.stringify(sheet)}; riletto ${JSON.stringify(reread)}; dopo eliminazione ${JSON.stringify(del)}; errori ${errs.join(' | ')}`);
   } catch (e) { rec(ASMC4, false, e.message.split('\n')[0]); }
 
+  // Specchia entità: la copia di un arco non deve mandare lo schizzo in rosso (centro ed estremi simmetrici danno già raggi uguali)
+  try {
+    const c = await browser.newContext({ viewport: { width: 1500, height: 940 } });
+    const p = await c.newPage(); PAGE = p;
+    const errs = []; p.on('pageerror', e => errs.push(e.message));
+    await p.goto('file://' + page_); await p.waitForFunction(() => window.App && App.r, null, { timeout: 15000 }); await p.waitForTimeout(400);
+    await p.evaluate(() => App.setCmdTab('sketch'));
+    await p.locator('.tnode', { hasText: 'Piano frontale' }).first().click();
+    await p.click('#cmdBar [data-cmd="sketch"]');
+    await p.waitForFunction(() => App.mode === 'sketch'); await p.waitForTimeout(1200);
+    const tool = async id => { if (await p.evaluate(i => Sketcher.session().tool === i, id)) return; await p.click(`#cmdBar [data-cmd="${id}"]`); await p.waitForTimeout(100); };
+    const num = async o => { const ks = Object.keys(o); for (const k of ks) await p.locator('#ni_' + k).fill(String(o[k])); await p.locator('#ni_' + ks[ks.length - 1]).press('Enter'); await p.waitForTimeout(150); };
+    const esc = async () => { await p.keyboard.press('Escape'); await p.waitForTimeout(80); await p.keyboard.press('Escape'); await p.waitForTimeout(120); };
+    const click = async (u, v, mod) => {
+      const [x, y] = await p.evaluate(([u, v]) => { const q = App.r.project(Geom.to3(Sketcher.frame(), [u, v])), r = document.querySelector('.view canvas').getBoundingClientRect(); return [r.left + q[0], r.top + q[1]]; }, [u, v]);
+      await p.mouse.move(x, y); await p.waitForTimeout(40); if (mod) await p.keyboard.down(mod); await p.mouse.click(x, y); if (mod) await p.keyboard.up(mod); await p.waitForTimeout(100);
+    };
+    const state = () => p.evaluate(() => { const s = Sketcher.session().sk, a = Sketch.analyze(s); return { status: a.status, dof: a.dof, equal: s.cons.filter(k => k.t === 'equal').length, sym: s.cons.filter(k => k.t === 'symmetric').length, arcs: s.ents.filter(e => e.t === 'ar').length, circles: s.ents.filter(e => e.t === 'ci').length }; });
+    const mirror = async (u, v) => { await click(u, v); await click(0, 25, 'Control'); const sel = await p.evaluate(() => Sketcher.session().sel.size); await tool('smirror'); await p.waitForTimeout(150); await esc(); return sel; };
+    await tool('centerline'); await num({ x: 0, y: 0 }); await num({ L: 30, a: 90 }); await esc();
+    // 1) arco con il centro fuori dall'asse
+    await tool('carc'); await num({ x: 7.794, y: 17.102 }); await num({ r: 6.84, a: 177 }); await num({ s: -52 }); await esc();
+    const a0 = await state(); const am = 151 * Math.PI / 180;
+    const s1 = await mirror(7.794 + 6.84 * Math.cos(am), 17.102 + 6.84 * Math.sin(am));
+    const a1 = await state();
+    const geo = await p.evaluate(() => { const s = Sketcher.session().sk, m = new Map(s.ents.map(e => [e.id, e])), A = s.ents.filter(e => e.t === 'ar'), R = a => Math.hypot(m.get(a.a).x - m.get(a.c).x, m.get(a.a).y - m.get(a.c).y); return { cx: m.get(A[1].c).x, cy: m.get(A[1].c).y, r: R(A[1]) }; });
+    // il raggio dell'originale comanda la copia: il legame esiste davvero
+    const r7 = await p.evaluate(() => { const s = Sketcher.session().sk, k = s.cons.find(x => x.t === 'radius'); k.v = 7; Sketch.solve(s); const m = new Map(s.ents.map(e => [e.id, e])), a = s.ents.filter(e => e.t === 'ar')[1]; return Math.hypot(m.get(a.a).x - m.get(a.c).x, m.get(a.a).y - m.get(a.c).y); });
+    await p.evaluate(() => { const s = Sketcher.session().sk; s.cons.find(x => x.t === 'radius').v = 6.84; Sketch.solve(s); });
+    // 2) arco con il centro sull'asse, vincolato (l'origine è l'estremo dell'asse): i raggi restano uguali da soli
+    await tool('carc'); await num({ x: 0, y: 0 }); await num({ r: 40, a: 30 }); await num({ s: 30 }); await esc();
+    const s2 = await mirror(40 * Math.cos(45 * Math.PI / 180), 40 * Math.sin(45 * Math.PI / 180));
+    const a2 = await state();
+    // 3) cerchio: la relazione Uguale serve ancora
+    await tool('circle'); await num({ x: 30, y: -10 }); await num({ d: 6 }); await esc();
+    const s3 = await mirror(33, -10);
+    const a3 = await state();
+    await c.close();
+    const close = (g, e) => Math.abs(g - e) < 1e-6;
+    const ok = !errs.length && s1 === 2 && s2 === 2 && s3 === 2
+      && a0.status !== 'over' && a1.status !== 'over' && a1.dof === a0.dof && a1.arcs === 2 && a1.sym === 3 && a1.equal === 0
+      && close(geo.cx, -7.794) && close(geo.cy, 17.102) && close(geo.r, 6.84) && close(r7, 7)
+      && a2.status !== 'over' && a2.arcs === 4 && a2.equal === 0
+      && a3.status !== 'over' && a3.circles === 2 && a3.equal === 1;
+    rec('Specchia entità: la copia di un arco non manda lo schizzo in rosso e segue l\'originale', ok, `prima ${JSON.stringify(a0)}; arco ${JSON.stringify(a1)} ${JSON.stringify(geo)} raggio dopo 7: ${r7}; centro sull'asse ${JSON.stringify(a2)}; cerchio ${JSON.stringify(a3)}; selezioni ${s1},${s2},${s3}; errori ${errs.join()}`);
+  } catch (e) { rec('Specchia entità: la copia di un arco non manda lo schizzo in rosso e segue l\'originale', false, e.message.split('\n')[0]); }
+
   await browser.close();
   const f = results.filter(r => !r.ok).length;
   console.log(`\n${results.length - f}/${results.length} superati`);

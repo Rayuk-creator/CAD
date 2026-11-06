@@ -644,6 +644,24 @@ SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
   const r = Sketch.solve(s); const E = Sketch.byId(s);
   return { ok: r.ok, got: [E.get(p3).x, E.get(p3).y], exp: [80, 50] };
 }]);
+SK.push(['Specchia entità: la copia di un arco è completamente definita e speculare; senza il legame la stessa geometria è sovradefinita', () => {
+  // arco fisso con centro (8; 17), raggio 5, da 90° a 180°; asse Y; copia partita un po' fuori posto
+  const fatto = legame => {
+    const b = SB(), s = b.s, fix = (x, y) => b.pt(x, y, { fixed: true });
+    const c = fix(8, 17), a = b.pt(8, 22), d = b.pt(3, 17), ax = b.line(fix(0, 0), fix(0, 30), { cons: true, center: true });
+    const src = b.arc(c, a, d);
+    s.cons.push({ id: 'k4', t: 'vAlign', e: [c, a] }, { id: 'k5', t: 'hAlign', e: [c, d] }, { id: 'k6', t: 'radius', e: [src], v: 5 });
+    const c2 = b.pt(-8.3, 17.2), d2 = b.pt(-3.2, 16.9), a2 = b.pt(-7.9, 22.2);
+    s.ents.push({ id: 'am', t: 'ar', c: c2, a: d2, b: a2, ...(legame ? { mirrorOf: src } : {}) });
+    s.cons.push({ id: 'k1', t: 'symmetric', e: [c, c2, ax] }, { id: 'k2', t: 'symmetric', e: [a, a2, ax] }, { id: 'k3', t: 'symmetric', e: [d, d2, ax] });
+    return { s, c2, a2, d2 };
+  };
+  const m = fatto(true), r = Sketch.solve(m.s), st = Sketch.analyze(m.s), E = Sketch.byId(m.s);
+  const senza = fatto(false); Sketch.solve(senza.s); const st0 = Sketch.analyze(senza.s);
+  // togliendo una simmetria torna il vincolo implicito del raggio: l'arco resta un arco (estremo a distanza 5 dal centro)
+  const t = fatto(true); t.s.cons = t.s.cons.filter(k => k.id !== 'k3'); const v = Sketch.solve(t.s), st3 = Sketch.analyze(t.s), Et = Sketch.byId(t.s), R3 = Math.hypot(Et.get(t.d2).x - Et.get(t.c2).x, Et.get(t.d2).y - Et.get(t.c2).y);
+  return { ok: r.ok && st.status === 'full' && st.dof === 0 && st0.status === 'over' && v.ok && st3.status === 'under' && st3.dof === 1, got: [E.get(m.c2).x, E.get(m.c2).y, E.get(m.a2).x, E.get(m.a2).y, E.get(m.d2).x, E.get(m.d2).y, R3], exp: [-8, 17, -8, 22, -3, 17, 5] };
+}]);
 SK.push(['Cerchio con diametro quotato 25', () => {
   const b = SB(); const c = b.circle(5, 5, 7); b.s.cons.push({ t: 'diameter', e: [c], v: 25 });
   const r = Sketch.solve(b.s); return { ok: r.ok, got: [Sketch.byId(b.s).get(c).r], exp: [12.5] };
