@@ -2,9 +2,9 @@
 
 File per riprendere il lavoro in una **nuova task**. Leggerlo per intero prima di cominciare, insieme a `IDEE.md`.
 
-Ultimo aggiornamento: 6 novembre 2026, ore 10. La storia dei lavori sta in `CRONOLOGIA.md` (non serve leggerla a inizio task: si apre solo quando serve).
+Ultimo aggiornamento: 6 novembre 2026, ore 10:15. La storia dei lavori sta in `CRONOLOGIA.md` (non serve leggerla a inizio task: si apre solo quando serve).
 
-**Stato attuale:** ultima modifica = correzione di Specchia entità sugli archi (6 novembre; vedi `git log`). Tutte le prove superate: 318/318 di calcolo, 51/51 STEP/IGES, 22/22 del lettore e del convertitore DWG, 95/95 dell'interfaccia, Autoverifica compresa nelle prove dell'interfaccia. Nessun lavoro lasciato a metà.
+**Stato attuale:** ultima modifica = correzione di Specchia entità sugli archi (6 novembre; vedi `git log`). Tutte le prove superate: 318/318 di calcolo, 51/51 STEP/IGES, 22/22 del lettore e del convertitore DWG, 95/95 dell'interfaccia, Autoverifica compresa nelle prove dell'interfaccia. Nessun lavoro lasciato a metà. **Primo lavoro: funzioni per l'elica** (vedi `IDEE.md`). Da chiedere: se ripubblicare su claude.ai (la versione 24 lì non ha la correzione di Specchia entità; il sito GitHub Pages sì).
 
 ---
 
@@ -75,6 +75,7 @@ README.md / .en.md    presentazione in italiano e in inglese (con immagini)
 docs/img/             6 schermate del README
 docs/Manuale-Banco-CAD.pdf  manuale d'uso (A4), scaricabile dal sito; si rifà con `bash tools/manuale/fai.sh <cartella di lavoro>`
 tools/manuale/        programmi del manuale: testi presi da Guida e Glossario, schermate vere, esercizio eseguito con il mouse
+tools/guide/          due guide PDF (ingranaggio, elica): `bash tools/guide/fai.sh` esegue i passaggi nel programma e scrive i PDF in tools/guide/out (fuori da git, non pubblicati: l'utente non ha ancora deciso se metterli sul sito). Testi in gear_doc.py e prop_doc.py; quelli vanno aggiornati se cambiano i comandi usati
 IDEE.md               lavori futuri e idee rimandate
 RIPARTENZA.md         questo file
 CRONOLOGIA.md         storia dei lavori: da aprire solo quando serve

@@ -1,3 +1,8 @@
 node_modules
 tests/core/
 tests/output/
+tools/guide/img/
+tools/guide/out/
+tools/guide/*.log
+tools/guide/*.json
+tools/guide/__pycache__/

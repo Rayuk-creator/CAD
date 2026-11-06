@@ -1,0 +1,36 @@
+@page{size:A4;margin:18mm 18mm 18mm 20mm;@bottom-center{content:counter(page);font:500 9pt "IBM Plex Sans","DejaVu Sans";color:#444}@bottom-left{content:"__FOOT__";font:400 8pt "IBM Plex Sans";color:#777}}
+@page:first{margin:0;@bottom-center{content:none}@bottom-left{content:none}}
+*{box-sizing:border-box}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;font:400 10.5pt/1.48 "IBM Plex Sans","DejaVu Sans",sans-serif;color:#1a1f26;background:#fff;hyphens:auto}
+strong,b{font-weight:600}
+.k{font-weight:600;color:#14509f}
+.cover{height:297mm;padding:30mm 22mm 20mm;display:flex;flex-direction:column;break-after:page}
+.cv-top{font-size:12pt;color:#55606c}
+.cv-title{font:600 44pt/1.08 "IBM Plex Sans Condensed","IBM Plex Sans";color:#14509f;margin-top:6mm;hyphens:manual}
+.cv-sub{font:500 16pt/1.3 "IBM Plex Sans";margin-top:3mm}
+.cover img{width:100%;margin:12mm 0 auto;display:block;border:.5pt solid #d3d8de}
+.cv-foot{border-top:1.2pt solid #14509f;padding-top:4mm;font-size:10pt;color:#333;line-height:1.6;margin-top:8mm}
+h1{font:600 21pt/1.15 "IBM Plex Sans Condensed";color:#14509f;margin:0 0 4mm;padding-bottom:2mm;border-bottom:1.2pt solid #14509f;break-after:avoid;hyphens:manual}
+h1.np,h1{break-before:auto}
+h1:not(:first-of-type){margin-top:9mm}
+h2{font:600 12.5pt/1.25 "IBM Plex Sans";margin:5mm 0 2mm;break-after:avoid;hyphens:manual}
+p{margin:0 0 2.4mm;orphans:2;widows:2}ul{margin:0 0 3mm;padding-left:5mm}li{margin-bottom:1mm}
+.step{margin:0 0 7mm}ol.steps{break-before:avoid}figure.half{width:62%;margin-left:auto;margin-right:auto}figure.w80{width:82%;margin-left:auto;margin-right:auto}
+.sh{display:flex;align-items:center;gap:2.5mm;margin:0 0 1.6mm;break-after:avoid;border-bottom:.8pt solid #14509f;padding-bottom:1.2mm}
+.sn{flex:0 0 auto;font:600 11pt/7mm "IBM Plex Sans";width:7mm;height:7mm;text-align:center;border-radius:50%;background:#14509f;color:#fff}
+.st{font:600 13.5pt/1.2 "IBM Plex Sans";hyphens:manual}
+.why{color:#333;break-after:avoid}
+ol.steps{margin:0 0 3mm;padding:0;list-style:none;counter-reset:s}
+ol.steps li{counter-increment:s;position:relative;padding-left:7mm;margin-bottom:1.3mm;break-inside:avoid}
+ol.steps li::before{content:counter(s,lower-alpha);position:absolute;left:0;top:.15mm;width:4.8mm;height:4.8mm;border:.8pt solid #14509f;border-radius:50%;text-align:center;font:600 8pt/4.4mm "IBM Plex Sans";color:#14509f}
+.tip{border-left:2.2pt solid #14509f;padding:.6mm 0 .6mm 3mm;margin:2mm 0 3mm;font-size:9.6pt;break-inside:avoid}.tip b{color:#14509f;margin-right:1mm}
+.check{background:#eef3fa;padding:1.6mm 2.6mm;margin:2.5mm 0 0;font-size:9.8pt;break-inside:avoid}.check b{color:#14509f;margin-right:1mm}
+figure{margin:2.5mm 0 3mm;break-inside:avoid}figure img,figure svg{width:100%;display:block;border:.5pt solid #b8bfc7}
+figcaption{font-size:8.8pt;color:#444;margin-top:1mm}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:4mm;break-inside:avoid}.two figure{margin-top:0}
+table{width:100%;border-collapse:collapse;margin:2mm 0 4mm;font-size:9.4pt;line-height:1.36}thead{display:table-header-group}
+th{text-align:left;font-weight:600;border-bottom:1pt solid #14509f;padding:1mm 2mm 1mm 0;color:#14509f}
+td{border-bottom:.4pt solid #c9cfd6;padding:1mm 2mm 1mm 0;vertical-align:top}tr{break-inside:avoid}
+.num td,.num th{text-align:right;font-variant-numeric:tabular-nums}.num td:first-child,.num th:first-child{text-align:left}
+table{break-inside:avoid}
+.two>figure{min-width:0}

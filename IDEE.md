@@ -4,7 +4,7 @@ Promemoria delle cose discusse ma **non ancora fatte**. Da leggere all'inizio di
 
 ## PRIMO LAVORO: funzioni per l'elica (prima della traduzione)
 
-Scelta dell'utente del 6 novembre: **in coda prima della traduzione**. Oggi il Banco CAD non ha il comando Loft, quindi una pala non può cambiare inclinazione dalla base alla punta (svergolamento), e non ha un comando per disegnare una curva elicoidale (l'elica esiste solo dentro le viti, `helixTool`). Da aggiungere, con i nomi di SolidWorks, prove con valori calcolati a mano, Glossario e Guida. Poi aggiornare la guida PDF dell'elica con la pala svergolata.
+Scelta dell'utente del 6 novembre: **in coda prima della traduzione**. Oggi il Banco CAD non ha il comando Loft, quindi una pala non può cambiare inclinazione dalla base alla punta (svergolamento), e non ha un comando per disegnare una curva elicoidale (l'elica esiste solo dentro le viti, `helixTool`). Da aggiungere, con i nomi di SolidWorks, prove con valori calcolati a mano, Glossario e Guida. Poi aggiornare la guida PDF dell'elica con la pala svergolata (`tools/guide/prop.js` e `prop_doc.py`, si rifà con `bash tools/guide/fai.sh`).
 
 ## SUBITO DOPO: traduzione in inglese (per la settimana del 9 novembre 2026)
 
