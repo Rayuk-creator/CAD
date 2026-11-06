@@ -2,9 +2,13 @@
 
 Promemoria delle cose discusse ma **non ancora fatte**. Da leggere all'inizio di una nuova sessione di lavoro.
 
-## PRIMO LAVORO: traduzione in inglese (per la settimana del 9 novembre 2026)
+## PRIMO LAVORO: funzioni per l'elica (prima della traduzione)
 
-Scelta dell'utente del 5 novembre: **è il primo lavoro della settimana prossima**. Tradurre tutto il programma in inglese, lasciando l'italiano come lingua normale e l'inglese da scegliere con un comando.
+Scelta dell'utente del 6 novembre: **in coda prima della traduzione**. Oggi il Banco CAD non ha il comando Loft, quindi una pala non può cambiare inclinazione dalla base alla punta (svergolamento), e non ha un comando per disegnare una curva elicoidale (l'elica esiste solo dentro le viti, `helixTool`). Da aggiungere, con i nomi di SolidWorks, prove con valori calcolati a mano, Glossario e Guida. Poi aggiornare la guida PDF dell'elica con la pala svergolata.
+
+## SUBITO DOPO: traduzione in inglese (per la settimana del 9 novembre 2026)
+
+Scelta dell'utente del 5 novembre: **è il lavoro della settimana prossima, dopo le funzioni per l'elica**. Tradurre tutto il programma in inglese, lasciando l'italiano come lingua normale e l'inglese da scegliere con un comando.
 
 Testo misurato il 5 novembre in `index.html` (conteggio automatico, approssimato). Tempi stimati: in tutto 6-10 ore di lavoro, su 3-5 chat, a tappe:
 
@@ -16,7 +20,7 @@ Testo misurato il 5 novembre in `index.html` (conteggio automatico, approssimato
 
 L'Autoverifica (5.400 parole) è proposta fuori dalla traduzione: i nomi delle prove possono restare in italiano. Il lavoro consuma molto del limite settimanale dell'utente: dopo ogni tappa il programma deve restare usabile.
 
-## SECONDO LAVORO: rendere installabile il Banco CAD (dopo la traduzione)
+## DOPO LA TRADUZIONE: rendere installabile il Banco CAD (dopo la traduzione)
 
 Scelta dell'utente del 5 novembre: subito dopo la traduzione, così pulsante e avvisi nascono già in due lingue e le schermate del manuale si rifanno una volta sola. Installazione dal browser (PWA, come il pulsante «Installa» del gioco di Matematica), **non** un installatore classico per Windows (oltre 100 MB, firma a pagamento). Tempo stimato: 1-2 ore, prove comprese.
 
