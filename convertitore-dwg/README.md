@@ -18,6 +18,8 @@ Trasforma i disegni di AutoCAD (`.dwg`) in file DXF, che il [Banco CAD](../READM
 > 5. Premi **Scegli i file DWG** (oppure trascina i file `.dwg` nella pagina), guarda l'**anteprima**, poi premi **Salva DXF** accanto a ogni disegno, oppure **Salva tutti i DXF (.zip)** per averli in un solo file.
 > 6. Nel Banco CAD: **Progetto › Importa DXF o DWG (schizzo)** e scegli il file `.dxf` appena salvato.
 >
+> La pagina è in italiano e in inglese: pulsante **Language: English** in alto a destra (la scelta vale anche per il Banco CAD sullo stesso sito).
+>
 > Funziona anche su **tablet e telefoni**: il convertitore parte con 16 MB di memoria e ne prende di più solo per i disegni grandi.
 
 Licenza (GNU GPL 3), lettore usato, funzionamento e limiti: vedi [LEGGIMI.md](LEGGIMI.md).

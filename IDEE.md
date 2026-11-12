@@ -6,7 +6,7 @@ Promemoria delle cose discusse ma **non ancora fatte**. Da leggere all'inizio di
 
 Elica e spirale, sweep lungo la curva, Estrusione e Taglio con loft, guida PDF dell'elica con la pala svergolata (`bash tools/guide/fai.sh`, PDF in `tools/guide/out`, non pubblicati: da chiedere all'utente se metterli sul sito) e manuale rifatto. Possibili aggiunte, solo se servono: curve guida nel loft, tangenze agli estremi del loft.
 
-## IN CORSO: traduzione in inglese
+## Traduzione in inglese: FATTA (12 novembre)
 
 Scelta dell'utente del 5 novembre, confermata il 12 novembre (ordine: elica, traduzione, installabile; e subito dopo la traduzione: **ripubblicare su claude.ai** e **mettere sul sito le due guide PDF**, scelta del 12 novembre). L'italiano resta la lingua normale, l'inglese si sceglie con Progetto › Language: English. Come funziona: `RIPARTENZA.md`, punto «Lingua».
 
@@ -14,7 +14,9 @@ Scelta dell'utente del 5 novembre, confermata il 12 novembre (ordine: elica, tra
 2. **Glossario: FATTO il 12 novembre sera** (233 voci, `tools/traduzione/glossario-en.json`; come funziona: `RIPARTENZA.md`, punto «Lingua»).
 3. **Guida: FATTA il 12 novembre sera** (66 argomenti, circa 7 300 parole, `tools/traduzione/guida-en.json`; come funziona: `RIPARTENZA.md`, punto «Lingua»). Anche il pulsante «Come si fa: …» del Glossario ora mostra il titolo inglese.
 4. **Manuale PDF in inglese: FATTO il 12 novembre notte** (`docs/Manual-Banco-CAD.pdf`, 63 pagine, schermate in inglese; si rifà con `bash tools/manuale/fai.sh <cartella> en`). README inglese riscritto con i nomi inglesi dei comandi.
-5. **Convertitore DWG** in inglese (**prossima**) e prova finale: `npm run test:lingua` con 0 frasi mancanti (l'esclusione di Guida in `tools/traduzione/mancanti.js` è già tolta: resta solo l'Autoverifica; c'è ancora «Prova ricarica», nome di una parte scritto da una prova: da sistemare nella prova o nella pagina).
+5. **Convertitore DWG in inglese e prova finale: FATTI il 12 novembre notte** (pulsante «Language: English», stessa scelta del Banco CAD; dizionario `tools/traduzione/convertitore-en.json`). `npm run test:lingua`: **0 frasi senza traduzione** (resta fuori solo l'Autoverifica). «Prova ricarica» sistemata nella pagina (`I18N.user`).
+
+**Subito dopo (scelta dell'utente del 12 novembre): ripubblicare su claude.ai** il Banco CAD e il Convertitore **e mettere sul sito le due guide PDF** (ingranaggio ed elica, `tools/guide/out`).
 
 L'Autoverifica (5 400 parole) resta fuori dalla traduzione: i nomi delle prove possono restare in italiano. Il lavoro consuma molto del limite settimanale dell'utente: dopo ogni tappa il programma deve restare usabile.
 

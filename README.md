@@ -52,7 +52,7 @@ Con **Progetto › Importa DXF o DWG (schizzo)**, o con **Inserisci DXF o DWG** 
 
 I file **DWG** di AutoCAD si aprono direttamente nello stesso modo, dalla versione R1.4 alla 2018 (e quindi anche i file di AutoCAD 2019–2025), con il lettore libero LibreDWG dentro la pagina. Testi, quote, tratteggi, tolleranze geometriche, richiami multipli e tabelle possono arrivare come **sfondo grigio** sotto lo schizzo, solo da guardare mentre lo quoti: non comandano la forma e non finiscono nel pezzo. Le tabelle dei DWG salvati dal 2010 in poi restano fuori (il lettore non ne dà la posizione): il messaggio finale le conta.
 
-Per **salvare i DXF** (per altri programmi) o convertire molti disegni insieme c'è il **Convertitore DWG → DXF**, una pagina a parte (cartella `convertitore-dwg/`); il Banco CAD apre anche lo `.zip` con cui la pagina pubblicata salva i DXF.
+Per **salvare i DXF** (per altri programmi) o convertire molti disegni insieme c'è il **Convertitore DWG → DXF**, una pagina a parte (cartella `convertitore-dwg/`); il Banco CAD apre anche lo `.zip` con cui la pagina pubblicata salva i DXF. Anche il Convertitore è in italiano e in inglese (pulsante in alto a destra).
 
 > [!IMPORTANT]
 > **Come si usa il Convertitore DWG → DXF**
@@ -167,7 +167,7 @@ Il programma è un solo file, `index.html` (circa 9 MB), con HTML, CSS e JavaScr
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (342 + 51 prove STEP/IGES e STEP esportati + 22 del lettore e del convertitore DWG + 12 della lingua, circa un minuto)
+npm run test:kernel               # solo i calcoli (342 + 51 prove STEP/IGES e STEP esportati + 22 del lettore e del convertitore DWG + 14 della lingua, circa un minuto)
 npm run test:ui                   # solo l'interfaccia in Chromium (100 prove)
 npm run test:lingua               # frasi dell'interfaccia senza traduzione inglese
 ```
@@ -185,7 +185,7 @@ tests/step.test.js    prove del lettore STEP/IGES vero e degli STEP esportati (r
 tests/stepgen.js      scrive piccoli file STEP di prova (igesgen.js: IGES)
 tests/dwg.test.js     prove del Convertitore DWG → DXF (DWG da R11 a 2018, confronto con DXF di riferimento)
 tests/lingua.test.js  prove della traduzione inglese
-tools/traduzione/     traduzione inglese: dizionario, Glossario e Guida (incorpora.js li mette nella pagina)
+tools/traduzione/     traduzione inglese: dizionario, Glossario e Guida, dizionario del Convertitore (incorpora.js li mette nelle due pagine)
 tools/manuale/        programmi che rifanno i manuali PDF (fai.sh; con en quello inglese)
 tools/incorpora-occt.js  inserisce o aggiorna il lettore STEP/IGES nella pagina
 tools/copia-lettore-dwg.js  copia nella pagina il lettore DWG del Convertitore

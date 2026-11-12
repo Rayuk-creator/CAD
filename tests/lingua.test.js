@@ -97,6 +97,25 @@ rec('Testi di un SVG tradotti (tavola salvata), il resto non cambia',
     ['← Tutti gli argomenti', 'Mostrami dove', 'Come si fa', 'Consigli', 'Termini', 'Cerca nella guida'].every(x => en.tr(x) !== x) && en.tr('Come si fa: {} →') === 'How to: {} →');
 }
 
+// Convertitore DWG → DXF: stesso modulo con il suo dizionario (convertitore-en.json)
+{
+  const conv = fs.readFileSync(path.join(__dirname, '..', 'convertitore-dwg', 'index.html'), 'utf8');
+  const ca = conv.indexOf('/* LINGUA: inizio */'), cb = conv.indexOf('/* LINGUA: fine */');
+  rec('Convertitore: il modulo della lingua è uguale a tools/traduzione (i18n.js + convertitore-en.json)',
+    ca >= 0 && conv.slice(ca, cb + '/* LINGUA: fine */\n'.length) === block('convertitore-en.json'));
+  const cd = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'tools', 'traduzione', 'convertitore-en.json'), 'utf8'));
+  // chiavi dei testi scritti dal codice: T('…') e F('…'), anche nei due rami di un «? :»
+  const code = conv.slice(conv.indexOf('/* LINGUA: fine */'), conv.indexOf('<!-- LETTORE DWG: inizio -->'));
+  const used = new Set();
+  for (const m of code.matchAll(/\b(?:T|F)\(([^;]*?)\)/g)) for (const q of m[1].matchAll(/(===\s*)?'((?:[^'\\]|\\.)*)'/g)) if (!q[1]) used.add(q[2].replace(/\\'/g, "'"));   // non i confronti (=== 'worker')
+  // nomi delle entità delle tabelle READ e SKIP
+  const tab = /const READ = \{[\s\S]*?const SKIP = \{[\s\S]*?\};/.exec(code)[0];
+  for (const m of tab.matchAll(/\['([^']*)', '([^']*)'\]/g)) { used.add(m[1]); used.add(m[2]); }
+  const missing = [...used].filter(k => !(k in cd)), badc = Object.keys(cd).filter(k => !cd[k] || (k.match(/\{\}/g) || []).length !== (cd[k].match(/\{\}/g) || []).length);
+  rec(`Convertitore: tutte le ${used.size} frasi scritte dal codice (e i nomi delle entità) hanno la traduzione, con gli stessi {}`, used.size > 80 && !missing.length && !badc.length,
+    missing.concat(badc).slice(0, 6).join(' | '));
+}
+
 const fail = rows.filter(x => !x).length;
 console.log(`\n${rows.length - fail}/${rows.length} superati`);
 process.exit(fail ? 1 : 0);

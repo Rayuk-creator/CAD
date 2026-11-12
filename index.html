@@ -2309,6 +2309,8 @@ label.chk .gl-i { margin-left: 2px; }
     lang, en, check, t, tr, svg, set, start, missing, dict: EN,
     // testo già nella lingua giusta, scritto da un modulo che si traduce da sé (Glossario): non va segnalato
     keep: s => { if (s) made.add(norm(String(s))); return s; },
+    // nome scritto dall'utente (parte, assieme): si traduce se è un nome del programma («Parte1»), ma se manca non si segnala
+    user: s => tr(String(s), 0, true),
     dc: en ? '.' : ',',                 // separatore decimale
     loc: en ? 'en-US' : 'it-IT',        // per toLocaleString
     // numero con il separatore decimale della lingua (la stringa arriva con il punto)
@@ -11320,7 +11322,7 @@ self.postMessage({ hello: true });`;
     }).catch(() => { App.storeLoading = false; App.storeInDb = false; toast('Il progetto salvato non si può leggere dall\'archivio del browser.', 6000); });
   }
   function afterLoad(mode) {
-    $('#docName').value = I18N.t(App.doc.name || 'Parte1');
+    $('#docName').value = I18N.user(App.doc.name || 'Parte1');
     App.mode = 'part'; $('#app').dataset.mode = 'part';
     App.undoStack = []; App.redoStack = []; App.sel = [];
     if (mode === 'assembly') App.asm.enter();
@@ -11932,13 +11934,13 @@ self.postMessage({ hello: true });`;
     if (App.mode === 'assembly') { App.asm.renderTree(t); return; }
     const node = (icon, label, attrs = {}, badge) => {
       const n = el('div', { class: 'tnode' + (attrs.cls ? ' ' + attrs.cls : ''), role: 'treeitem', tabindex: '-1', title: attrs.title || '' });
-      n.innerHTML = `<span class="tg">${attrs.toggle || ''}</span><span class="ti">${App.ICON[icon] || ''}</span><span class="tl">${esc(label)}</span>${badge || ''}`;
+      n.innerHTML = `<span class="tg">${attrs.toggle || ''}</span><span class="ti">${App.ICON[icon] || ''}</span><span class="tl"${attrs.raw ? ' data-i18n="no"' : ''}>${esc(label)}</span>${badge || ''}`;   // raw: nome dell'utente, già passato da I18N.user
       if (attrs.on) n.addEventListener('click', attrs.on);
       if (attrs.dbl) n.addEventListener('dblclick', attrs.dbl);
       if (attrs.ctx) n.addEventListener('contextmenu', e => { e.preventDefault(); attrs.ctx(e); });
       return n;
     };
-    t.append(node('material', doc.name || 'Parte1', { title: 'La parte' }));
+    t.append(node('material', I18N.user(doc.name || 'Parte1'), { title: 'La parte', raw: true }));
     const mat = Model.MATERIALS.find(m => m.id === doc.material) || Model.MATERIALS[0];
     t.append(node('material', 'Materiale <' + mat.name + '>', { on: () => App.cmd('material'), dbl: () => App.cmd('material'), title: 'Doppio clic per cambiare il materiale' }));
     for (const id of ['front', 'top', 'right']) {
@@ -12482,7 +12484,7 @@ self.postMessage({ hello: true });`;
       return;
     }
     App.change(() => { App.doc = d.doc; App.drawingState = d.drawing || null; App.sel = []; activePart().doc = App.doc; });
-    $('#docName').value = I18N.t(App.doc.name || 'Parte1');
+    $('#docName').value = I18N.user(App.doc.name || 'Parte1');
     App.r.fit();
     toast('Progetto importato');
   }
@@ -13182,7 +13184,7 @@ self.postMessage({ hello: true });`;
       return;
     }
     const restored = load();
-    $('#docName').value = I18N.t(App.doc.name || 'Parte1');
+    $('#docName').value = I18N.user(App.doc.name || 'Parte1');
     $('#partSel').addEventListener('change', e => { const v = e.target.value; if (v === 'asm') App.setCmdTab('assembly'); else if (v.startsWith('asm:')) App.asm.switchTo(v.slice(4)); else openPart(v); });
     $('#docName').addEventListener('change', e => {
       if (App.mode === 'assembly') { const v = e.target.value.trim() || 'Assieme1'; App.change(() => { App.project.assembly.name = v; }, { noRegen: true }); App.asm.refreshPartSel(); App.renderTree(); return; }
@@ -13330,7 +13332,7 @@ self.postMessage({ hello: true });`;
     App.mode = 'part'; $('#app').dataset.mode = 'part';
     ctxLoad();
     App.sel = []; App.hover = null;
-    $('#docName').value = I18N.t(App.doc.name || 'Parte1');
+    $('#docName').value = I18N.user(App.doc.name || 'Parte1');
     App.setCmdTab(tab || (App.doc.features.length ? 'features' : 'sketch'));
     App.regen();
     App.r.fit();
@@ -13469,7 +13471,7 @@ self.postMessage({ hello: true });`;
       App.mode = 'part'; $('#app').dataset.mode = 'part';
       ctxLoad();
       App.sel = []; App.hover = null;
-      $('#docName').value = I18N.t(App.doc.name || 'Parte1');
+      $('#docName').value = I18N.user(App.doc.name || 'Parte1');
       App.regen();
       App.r.fit();
       refreshPartSel();
@@ -18827,7 +18829,7 @@ self.postMessage({ hello: true });`;
   D.exit = function () {
     const App = A();
     active = false; tool = null; picks = [];
-    if (D.assembly()) { const n = document.querySelector('#docName'); n.disabled = false; n.value = I18N.t(App.doc.name || 'Parte1'); D.setAssembly(null); D.invalidate(); }
+    if (D.assembly()) { const n = document.querySelector('#docName'); n.disabled = false; n.value = I18N.user(App.doc.name || 'Parte1'); D.setAssembly(null); D.invalidate(); }
     App.mode = 'part';
     document.querySelector('#app').dataset.mode = 'part';
     document.querySelector('#view').hidden = false;

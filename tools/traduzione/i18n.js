@@ -183,6 +183,8 @@
     lang, en, check, t, tr, svg, set, start, missing, dict: EN,
     // testo già nella lingua giusta, scritto da un modulo che si traduce da sé (Glossario): non va segnalato
     keep: s => { if (s) made.add(norm(String(s))); return s; },
+    // nome scritto dall'utente (parte, assieme): si traduce se è un nome del programma («Parte1»), ma se manca non si segnala
+    user: s => tr(String(s), 0, true),
     dc: en ? '.' : ',',                 // separatore decimale
     loc: en ? 'en-US' : 'it-IT',        // per toLocaleString
     // numero con il separatore decimale della lingua (la stringa arriva con il punto)

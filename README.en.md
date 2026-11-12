@@ -52,7 +52,7 @@ With **Project › Import DXF or DWG (sketch)**, or **Insert DXF or DWG** in the
 
 AutoCAD **DWG** files open directly in the same way, from release R1.4 to 2018 (so also files from AutoCAD 2019–2025), with the free LibreDWG reader inside the page. Texts, dimensions, hatches, geometric tolerances, multileaders and tables can arrive as a **gray background** under the sketch, only to look at while you dimension it: they do not drive the shape and do not end up in the part. Tables in DWG files saved from 2010 onwards stay out (the reader does not give their position): the final message counts them.
 
-To **save DXF files** (for other programs) or convert many drawings at once there is the **DWG → DXF converter** (*Convertitore DWG → DXF*), a separate page (folder `convertitore-dwg/`); Banco CAD also opens the `.zip` in which the converter saves the DXF files. The converter is still in Italian only.
+To **save DXF files** (for other programs) or convert many drawings at once there is the **DWG → DXF converter** (*Convertitore DWG → DXF*), a separate page (folder `convertitore-dwg/`); Banco CAD also opens the `.zip` in which the converter saves the DXF files. The converter is in English too: press **Language: English** at the top right (on the site the choice is shared with Banco CAD).
 
 > [!IMPORTANT]
 > **How to use the DWG → DXF converter**
@@ -166,7 +166,7 @@ The program is one file, `index.html` (about 9 MB), with HTML, CSS and JavaScrip
 npm install
 npx playwright install chromium   # first time only
 npm test                          # all tests
-npm run test:kernel               # calculations only (342 + 51 STEP/IGES and exported STEP + 22 DWG reader and converter + 12 language tests, about a minute)
+npm run test:kernel               # calculations only (342 + 51 STEP/IGES and exported STEP + 22 DWG reader and converter + 14 language tests, about a minute)
 npm run test:ui                   # interface only, in Chromium (100 tests)
 npm run test:lingua               # interface sentences without an English translation
 ```
@@ -185,7 +185,7 @@ tests/step.test.js    tests of the real STEP/IGES reader and of exported STEP fi
 tests/stepgen.js      writes small STEP test files (igesgen.js: IGES)
 tests/dwg.test.js     tests of the DWG → DXF converter (DWG from R11 to 2018, compared with reference DXF files)
 tests/lingua.test.js  tests of the English translation
-tools/traduzione/     English translation: dictionary, Glossary and Guide (incorpora.js puts them into the page)
+tools/traduzione/     English translation: dictionary, Glossary and Guide, converter dictionary (incorpora.js puts them into the two pages)
 tools/manuale/        scripts that rebuild the PDF manuals (fai.sh; with en the English one)
 tools/incorpora-occt.js  inserts or updates the STEP/IGES reader in the page
 LICENSE               GPL 3 license of Banco CAD

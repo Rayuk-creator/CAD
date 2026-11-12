@@ -1140,13 +1140,14 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
   // 3h. ricarica immediata: l'ultima modifica resta, la funzione non confermata no
   try {
     const n0 = await page.evaluate(() => { App.change(() => { App.doc.name = 'Prova ricarica'; }); return App.doc.features.length; });
-    await page.reload(); await page.waitForFunction(() => window.App && App.st, null, { timeout: 15000 }); await page.waitForTimeout(300);
+    // App.storeLoading: il progetto grande si rilegge da IndexedDB dopo l'avvio (prima bastava aspettare 300 ms, su un computer lento no)
+    await page.reload(); await page.waitForFunction(() => window.App && App.st && !App.storeLoading, null, { timeout: 15000 }); await page.waitForTimeout(300);
     const name = await page.evaluate(() => App.doc.name);
     // pannello aperto su una funzione nuova, poi ricarica
     await page.evaluate(() => { App.setCmdTab('features'); App.select(null); Features.create('plane'); });
     await page.waitForTimeout(500); // più del ritardo del salvataggio
     const during = await page.evaluate(() => App.doc.features.length);
-    await page.reload(); await page.waitForFunction(() => window.App && App.st, null, { timeout: 15000 }); await page.waitForTimeout(300);
+    await page.reload(); await page.waitForFunction(() => window.App && App.st && !App.storeLoading, null, { timeout: 15000 }); await page.waitForTimeout(300);
     const after = await page.evaluate(() => App.doc.features.length);
     rec('Ricarica immediata: modifica salvata, niente funzioni fantasma', name === 'Prova ricarica' && during === n0 + 1 && after === n0, `nome «${name}», funzioni ${n0} → con pannello ${during} → dopo ricarica ${after}`);
   } catch (e) { rec('Ricarica immediata: modifica salvata, niente funzioni fantasma', false, e.message.split('\n')[0]); }
@@ -2898,6 +2899,48 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
       && it.file === 'Progetto' && it.name === 'Parte1' && it.feats === en.feats && /Piano frontale/.test(it.tree) && /Estrusione1/.test(it.tree) && it.dc === ',';
     rec('Lingua: Progetto › Language: English traduce la pagina e tiene il progetto; poi si torna in italiano', ok, `${JSON.stringify(en)} ${JSON.stringify(it)} ${lerr.join()}`);
   } catch (e) { rec('Lingua: Progetto › Language: English traduce la pagina e tiene il progetto; poi si torna in italiano', false, e.message.split('\n')[0]); }
+  /* ---------- lingua: il Convertitore DWG → DXF in inglese (pulsante, scelta condivisa con il Banco CAD, frasi scritte dal codice) ---------- */
+  try {
+    const cctx = await browser.newContext({ viewport: { width: 1100, height: 900 }, acceptDownloads: true });
+    const cp = await cctx.newPage(); const cerr = []; cp.on('pageerror', e => cerr.push(e.message));
+    const CONV = 'file://' + path.join(path.dirname(page_), 'convertitore-dwg', 'index.html');
+    const P = n => path.join(path.dirname(page_), 'convertitore-dwg', 'prove', n);
+    // testo visibile senza i nomi dei file (translate="no") e senza il pulsante della lingua
+    const look = () => cp.evaluate(() => { const b = document.body.cloneNode(true); b.querySelectorAll('[translate="no"],script,style').forEach(n => n.remove()); return { text: b.textContent.replace(/\s+/g, ' '), missing: [...I18N.missing], en: I18N.en, lang: document.documentElement.lang, title: document.title, btn: document.querySelector('#langBtn').textContent, toast: document.querySelector('#toast').textContent }; });
+    const ITAL = /\b(il|lo|la|le|gli|di|del|della|dei|che|non|con|per|una|uno|disegn[oi]|oppure|Scegli|Salva|Salvato|Scaricato|Anteprima|ingombro|Versione|Unità|Letti|Saltati|lettore|Pronto|Errore|linee|archi|cerchi|testo|quota|nessuna)\b/;
+    await cp.goto(CONV); await cp.waitForFunction(() => window.Convertitore);
+    const it0 = await look();
+    await cp.click('#langBtn'); await cp.waitForFunction(() => window.I18N && I18N.en && window.Convertitore, null, { timeout: 15000 });
+    await cp.click('#btnSample');
+    await cp.setInputFiles('#dwgFile', [P('v-r14.dwg'), P('riferimento/entita-r11.dxf')]);
+    await cp.setInputFiles('#dwgFile', { name: 'mio pezzo.step', mimeType: 'application/step', buffer: Buffer.from('ISO-10303-21;\nHEADER;') });
+    await cp.waitForFunction(() => document.querySelectorAll('.item').length === 4 && !document.querySelector('.chip.run'), null, { timeout: 60000 });
+    const [dl] = await Promise.all([cp.waitForEvent('download', { timeout: 15000 }), cp.click('#btnAll')]);
+    await cp.waitForTimeout(200);
+    const en = await look();
+    const rows = await cp.evaluate(() => [...document.querySelectorAll('.item')].map(it => it.textContent.replace(/\s+/g, ' ')));
+    await cp.screenshot({ path: path.join(OUT, 'convertitore-inglese.png'), fullPage: true });
+    // stessa scelta nel Banco CAD (stesso indirizzo di partenza), poi di nuovo in italiano dal Convertitore
+    const bp = await cctx.newPage(); await bp.goto('file://' + page_); await bp.waitForFunction(() => window.App && App.r);
+    const bEn = await bp.evaluate(() => I18N.en && document.querySelector('#btnFile').textContent);
+    await bp.close();
+    await cp.click('#langBtn'); await cp.waitForFunction(() => window.I18N && !I18N.en && window.Convertitore, null, { timeout: 15000 });
+    const it1 = await look();
+    await cctx.close();
+    const sample = rows.find(r => /sample-libredwg-r11\.dwg/.test(r)) || '', r14 = rows.find(r => /v-r14\.dwg/.test(r)) || '';
+    const ok = !cerr.length && it0.btn === 'Language: English' && !it0.en && it0.title === 'Convertitore DWG → DXF'
+      && en.en && en.lang === 'en' && en.title === 'DWG → DXF Converter' && en.btn === 'Lingua: italiano' && !en.missing.length && !ITAL.test(en.text)
+      && /Drop the \.dwg files here/.test(en.text) && /Reader ready/.test(en.text) && /Save all DXFs \(\.zip\)/.test(en.text)
+      && /2 inserted blocks, 1 line, 1 arc, 1 circle, 1 polyline \(2 block definitions\)/.test(sample) && /Preview · 5 elements · size 5 × 8 /.test(sample)
+      && /16 lines/.test(r14) && /1 text/.test(r14) && /less than 0\.1 s|\d\.\d s/.test(r14) && /13\.6 kB/.test(r14)
+      && /This is already a DXF file: open it directly in Banco CAD with «Import DXF or DWG \(sketch\)»\./.test(en.text)
+      && /This is a STEP file \(a 3D part\)/.test(en.text) && rows.some(r => /mio pezzo\.step/.test(r))
+      && dl.suggestedFilename() === 'dxf-drawings.zip' && en.toast === 'Downloaded dxf-drawings.zip'
+      && bEn === 'Project' && !it1.en && it1.btn === 'Language: English' && /Trascina qui i file \.dwg/.test(it1.text);
+    const ital = (en.text.match(ITAL) || [])[0];
+    rec('Lingua: il Convertitore DWG → DXF in inglese (pulsante, stessa scelta del Banco CAD, elenco, errori, anteprima, .zip) e di nuovo in italiano', ok,
+      `inglese: titolo «${en.title}», pulsante «${en.btn}», mancanti ${en.missing.length ? en.missing.join(' | ') : 0}, parola italiana ${ital ? '«' + ital + '»' : 'nessuna'}; esempio «${sample.slice(0, 160)}»; R14 «${r14.slice(0, 120)}»; zip ${dl.suggestedFilename()}, «${en.toast}»; Banco CAD «${bEn}»; ritorno «${it1.btn}»${cerr.length ? '; errori: ' + cerr.join(' | ') : ''}`);
+  } catch (e) { rec('Lingua: il Convertitore DWG → DXF in inglese (pulsante, stessa scelta del Banco CAD, elenco, errori, anteprima, .zip) e di nuovo in italiano', false, e.message.split('\n')[0]); }
   /* ---------- lingua: il Glossario in inglese (comandi, ⓘ dei pannelli, finestrella, pannello, ricerca) ---------- */
   try {
     // voce trovata da ogni termine italiano, nella pagina italiana: in inglese deve restare la stessa
