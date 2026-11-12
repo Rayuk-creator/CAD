@@ -181,6 +181,8 @@
   }
   const api = {
     lang, en, check, t, tr, svg, set, start, missing, dict: EN,
+    // testo già nella lingua giusta, scritto da un modulo che si traduce da sé (Glossario): non va segnalato
+    keep: s => { if (s) made.add(norm(String(s))); return s; },
     dc: en ? '.' : ',',                 // separatore decimale
     loc: en ? 'en-US' : 'it-IT',        // per toLocaleString
     // numero con il separatore decimale della lingua (la stringa arriva con il punto)

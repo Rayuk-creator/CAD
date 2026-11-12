@@ -11,8 +11,8 @@ Elica e spirale, sweep lungo la curva, Estrusione e Taglio con loft, guida PDF d
 Scelta dell'utente del 5 novembre, confermata il 12 novembre (ordine: elica, traduzione, installabile; e subito dopo la traduzione: **ripubblicare su claude.ai** e **mettere sul sito le due guide PDF**, scelta del 12 novembre). L'italiano resta la lingua normale, l'inglese si sceglie con Progetto › Language: English. Come funziona: `RIPARTENZA.md`, punto «Lingua».
 
 1. **Interfaccia e scelta della lingua: FATTA il 12 novembre** (1 600 frasi, `tools/traduzione/en.json`).
-2. **Glossario** (circa 8 100 parole): **prossimo**. Da fare: termini e spiegazioni in inglese (probabilmente un elenco parallelo nel modulo `Glossary`, scelto con `I18N.en`); `decorate` deve trovare i termini anche nel testo inglese; i `title` dei comandi oggi in inglese ricevono ancora la spiegazione italiana del Glossario; «Che cos'è: …» e il pulsante «Glossario» (già nel dizionario).
-3. **Guida** (circa 7 000 parole, 64 argomenti): stesso metodo; titoli dei gruppi, pulsanti «Mostrami dove», «← Tutti gli argomenti».
+2. **Glossario: FATTO il 12 novembre sera** (233 voci, `tools/traduzione/glossario-en.json`; come funziona: `RIPARTENZA.md`, punto «Lingua»).
+3. **Guida** (circa 7 000 parole, 64 argomenti): **prossima**, stesso metodo del Glossario; titoli dei gruppi, pulsanti «Mostrami dove», «← Tutti gli argomenti». Così si sistema anche il pulsante «Come si fa: …» del Glossario in inglese, che oggi mostra il titolo italiano dell'argomento (a volte tradotto a metà).
 4. **Manuale PDF in inglese**, con le schermate rifatte in inglese (capitoli scritti a mano in `tools/manuale/build.py`, più Guida e Glossario tradotti). Il README inglese va riscritto con i nomi inglesi dei comandi.
 5. **Convertitore DWG** in inglese e prova finale: `npm run test:lingua` con 0 frasi mancanti anche per Glossario e Guida (togliere l'esclusione in `tools/traduzione/mancanti.js`).
 

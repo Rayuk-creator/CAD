@@ -1597,5 +1597,15 @@
  "1 entità": "1 entity",
  "1 mesh": "1 mesh",
  "{#} facce · {}": "{} faces · {}",
- "{#} faccia · {}": "{} face · {}"
+ "{#} faccia · {}": "{} face · {}",
+ "Tutte": "All",
+ "Nessun termine trovato.": "No term found.",
+ "Come si fa →": "How to →",
+ "Come si fa: {} →": "How to: {} →",
+ "Apri il glossario": "Open the glossary",
+ "Cerca un termine (es. sformo, lamatura, tangente)": "Search for a term (e.g. draft, counterbore, tangent)",
+ "Cerca nel glossario": "Search the glossary",
+ "Il significato di ogni termine del programma": "The meaning of every term in the program",
+ "Il significato di tutti i termini del programma. Le stesse spiegazioni compaiono con il pulsante {} accanto ai titoli dei pannelli e nei suggerimenti dei comandi.": "The meaning of all the terms of the program. The same explanations appear with the {} button next to the panel titles and in the command tooltips.",
+ "LibreDWG": "LibreDWG"
 }

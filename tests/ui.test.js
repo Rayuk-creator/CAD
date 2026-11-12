@@ -2895,6 +2895,86 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
       && it.file === 'Progetto' && it.name === 'Parte1' && it.feats === en.feats && /Piano frontale/.test(it.tree) && /Estrusione1/.test(it.tree) && it.dc === ',';
     rec('Lingua: Progetto › Language: English traduce la pagina e tiene il progetto; poi si torna in italiano', ok, `${JSON.stringify(en)} ${JSON.stringify(it)} ${lerr.join()}`);
   } catch (e) { rec('Lingua: Progetto › Language: English traduce la pagina e tiene il progetto; poi si torna in italiano', false, e.message.split('\n')[0]); }
+  /* ---------- lingua: il Glossario in inglese (comandi, ⓘ dei pannelli, finestrella, pannello, ricerca) ---------- */
+  try {
+    // voce trovata da ogni termine italiano, nella pagina italiana: in inglese deve restare la stessa
+    const itFind = await page.evaluate(() => Glossary.entries.map(e => Glossary.entries.indexOf(Glossary.find(e[1]))));
+    const gctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await gctx.addInitScript(() => { try { localStorage.setItem('banco-cad-lang', 'en'); } catch (e) { /* niente */ } });
+    const gp = await gctx.newPage(); const gerr = []; gp.on('pageerror', e => gerr.push(e.message));
+    await gp.goto('file://' + page_); await gp.waitForFunction(() => window.App && App.r && window.I18N && I18N.en && window.Glossary && document.querySelector('#btnGloss'));
+    await gp.waitForTimeout(300);
+    const r = await gp.evaluate(async (itFind) => {
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const G = Glossary, E = G.entries, out = [];
+      const itDesc = new Set(E.map(e => e[3]));
+      // 1. ogni comando, in inglese, ha la sua voce; il suggerimento ha la spiegazione inglese, non quella italiana
+      let tools = 0;
+      for (const tab of ['features', 'evaluate', 'sketch', 'drawing', 'assembly']) {
+        App.setCmdTab(tab); await wait(150);
+        document.querySelectorAll('#cmdBar .tool').forEach(b => {
+          const lab = b.querySelector('span') ? b.querySelector('span').textContent : b.textContent, e = G.find(lab);
+          tools++;
+          if (!e) { out.push('comando senza voce: ' + lab); return; }
+          if (/[àèéìòù]/.test(lab)) out.push('comando ancora in italiano: ' + lab);
+          if (!b.title.includes(G.desc(e)) || b.title.includes(e[3])) out.push('suggerimento non inglese: ' + lab);
+        });
+      }
+      App.setCmdTab('features'); await wait(100);
+      // 2. pannelli: ogni titolo ha la ⓘ, con spiegazione e nome in inglese
+      const s = Sketch.newSketch(); s.ents.push({ id: 'a', t: 'pt', x: 0, y: 0 }, { id: 'b', t: 'pt', x: 20, y: 0 }, { id: 'c', t: 'pt', x: 20, y: 10 }, { id: 'd', t: 'pt', x: 0, y: 10 }, { id: 'l1', t: 'ln', a: 'a', b: 'b' }, { id: 'l2', t: 'ln', a: 'b', b: 'c' }, { id: 'l3', t: 'ln', a: 'c', b: 'd' }, { id: 'l4', t: 'ln', a: 'd', b: 'a' }, { id: 'm', t: 'ln', a: 'a', b: 'd', cons: true, center: true }); s.next = 10;
+      App.change(() => { App.doc.features.push({ id: 'F1', name: 'Schizzo1', type: 'sketch', plane: { kind: 'std', id: 'front' }, sk: s }, { id: 'F2', name: 'Estrusione1', type: 'extrude', sketch: 'F1', end: 'blind', depth: 10 }); App.doc.next = 3; });
+      let heads = 0, pop = null;
+      for (const t of ['extrude', 'revolve', 'hole', 'fillet', 'lpattern', 'mirror']) {
+        App.select(null); Features.create(t); await wait(200);
+        document.querySelectorAll('#pm .grp > h3').forEach(h => {
+          heads++;
+          const i = h.querySelector('.gl-i');
+          if (!i) { out.push('titolo senza ⓘ: ' + h.textContent); return; }
+          if (itDesc.has(i.title) || !/^What is it: /.test(i.getAttribute('aria-label'))) out.push('ⓘ non in inglese: ' + h.textContent);
+        });
+        // 3. la finestrella della prima ⓘ del raccordo
+        if (t === 'fillet') {
+          const i = document.querySelector('#pm .grp > h3 .gl-i'); i.click(); await wait(100);
+          const p = document.querySelector('.gl-pop'), e = G.find(i.getAttribute('aria-label').replace('What is it: ', ''));
+          pop = p && { b: p.querySelector('b').textContent, cat: p.querySelector('.gl-cat').textContent, p: p.querySelector('p').textContent,
+            btns: [...p.querySelectorAll('button')].map(x => x.textContent), ok: !!e && p.querySelector('p').textContent === G.desc(e) && p.querySelector('b').textContent === G.name(e) };
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        }
+        if (App.pm) App.closePM(false);
+        if (App.mode === 'sketch') Sketcher.exit(false);
+      }
+      // 4. pannello del glossario: titolo, categorie, voci e ricerca in inglese
+      G.open('Lamatura'); await wait(150);
+      const panel = {
+        title: document.querySelector('#rightTitle').textContent,
+        cats: [...document.querySelectorAll('.gl-cats button')].map(b => b.textContent),
+        first: document.querySelector('.gl-item summary').textContent,
+        heads: [...document.querySelectorAll('.gl-h')].map(h => h.textContent).slice(0, 3),
+        open: [...document.querySelectorAll('.gl-item[open] summary')].map(x => x.textContent),
+        ph: document.querySelector('.gl-search').placeholder,
+        note: document.querySelector('.gl-panel .note').textContent,
+      };
+      const q = document.querySelector('.gl-search');
+      const search = async v => { q.value = v; q.dispatchEvent(new Event('input')); await wait(60); return [...document.querySelectorAll('.gl-item summary')].map(x => x.textContent); };
+      panel.counterbore = await search('counterbore');
+      panel.nothing = (await search('zzqx')).length + ' ' + document.querySelector('.gl-list').textContent;
+      // 5. ogni termine italiano porta ancora alla sua voce (la Guida li chiama per nome italiano)
+      const same = E.map((e, k) => E.indexOf(G.find(e[1])) === itFind[k]).filter(x => !x).length;
+      // 6. nessun testo del glossario tra le frasi senza traduzione
+      const miss = [...I18N.missing].filter(m => E.some(e => m.includes(e[3].slice(0, 30)) || m === e[1]) || /^(Tutte|Nessun termine|Apri il glossario|Come si fa →|Cerca)/.test(m));
+      return { out, tools, heads, pop, panel, same, miss };
+    }, itFind);
+    await gp.screenshot({ path: path.join(require('os').tmpdir(), 'glossario-en.png') });
+    await gctx.close();
+    const P = r.panel;
+    const ok = !gerr.length && !r.out.length && r.tools > 40 && r.heads > 10 && r.pop && r.pop.ok && r.pop.cat === 'Features' && r.pop.btns.includes('Open the glossary')
+      && P.title === 'Glossary' && P.cats[0] === 'All' && P.cats.includes('Sketch') && P.cats.includes('Holes') && P.first === 'Solid Bodies' && P.heads[0] === 'Features'
+      && P.open.includes('Counterbore') && /^Search for a term/.test(P.ph) && /^The meaning of all the terms/.test(P.note)
+      && P.counterbore.includes('Counterbore') && P.nothing === '0 No term found.' && r.same === 0 && !r.miss.length;
+    rec('Lingua: il Glossario in inglese (comandi, ⓘ dei pannelli, finestrella, pannello, ricerca; i termini italiani portano alla stessa voce)', ok,
+      `${r.out.slice(0, 6).join(' | ')} comandi ${r.tools}, titoli ${r.heads}; finestrella ${JSON.stringify(r.pop)}; pannello ${JSON.stringify(P)}; voci diverse ${r.same}; mancanti ${r.miss.slice(0, 4).join(' | ')}; errori ${gerr.join()}`);
+  } catch (e) { rec('Lingua: il Glossario in inglese (comandi, ⓘ dei pannelli, finestrella, pannello, ricerca; i termini italiani portano alla stessa voce)', false, e.message.split('\n')[0]); }
   if (process.env.TEST_LANG) await grabMissing();
   await browser.close();
   const f = results.filter(r => !r.ok).length;

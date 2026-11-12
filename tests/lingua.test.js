@@ -44,6 +44,29 @@ rec('In inglese il separatore decimale è il punto', en.dc === '.' && en.dec('2.
 rec('Testi di un SVG tradotti (tavola salvata), il resto non cambia',
   en.svg('<svg><text x="1">Scala</text><text>1:2</text><path d="M0 0"/></svg>') === '<svg><text x="1">Scale</text><text>1:2</text><path d="M0 0"/></svg>');
 
+// 4. Glossario in inglese: blocco in index.html uguale a tools/traduzione/glossario-en.json, una voce inglese per ogni voce italiana
+{
+  const { glossary, GA, GB } = require('../tools/traduzione/incorpora.js');
+  const ga = page.indexOf(GA), gb = page.indexOf(GB);
+  rec('Glossario inglese in index.html uguale a tools/traduzione/glossario-en.json', ga >= 0 && gb > ga && page.slice(ga + GA.length, gb) === glossary());
+  const gl = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'tools', 'traduzione', 'glossario-en.json'), 'utf8'));
+  const lines = page.split('\n'), s = lines.findIndex(l => /^  const E = \[/.test(l)), e = lines.findIndex((l, i) => i > s && /^  \];/.test(l));
+  const E = vm.runInNewContext('[' + lines.slice(s + 1, e).join('\n') + ']');
+  const twice = new Set(E.map(x => x[1]).filter((t, i, a) => a.indexOf(t) !== i));
+  const keys = E.map(x => twice.has(x[1]) ? x[0] + '/' + x[1] : x[1]);
+  const bad = [];
+  keys.forEach((k, i) => {
+    const v = gl.voci[k];
+    if (!v) { bad.push('manca: ' + k); return; }
+    if (!v.t || !v.d || !Array.isArray(v.a)) bad.push('voce incompleta: ' + k);
+    // la spiegazione inglese è una traduzione: niente parole italiane frequenti rimaste
+    else if (/\b(della|degli|delle|nella|sono|anche|questo|quando|perché|oppure|viene)\b/i.test(v.d + ' ' + v.t)) bad.push('italiano rimasto: ' + k);
+    if (!gl.categorie[E[i][0]]) bad.push('categoria senza traduzione: ' + E[i][0]);
+  });
+  for (const k in gl.voci) if (!keys.includes(k)) bad.push('voce inglese senza voce italiana: ' + k);
+  rec(`Glossario inglese: tutte le ${E.length} voci (termine, altri nomi, spiegazione) e le categorie`, E.length > 200 && !bad.length, bad.slice(0, 8).join(' | '));
+}
+
 const fail = rows.filter(x => !x).length;
 console.log(`\n${rows.length - fail}/${rows.length} superati`);
 process.exit(fail ? 1 : 0);

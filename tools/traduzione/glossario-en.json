@@ -1,0 +1,1787 @@
+{
+ "categorie": {
+  "Funzioni": "Features",
+  "Interfaccia": "Interface",
+  "Riferimenti": "References",
+  "Schizzo": "Sketch",
+  "Relazioni": "Relations",
+  "Opzioni": "Options",
+  "Fori": "Holes",
+  "Valuta": "Evaluate",
+  "Assieme": "Assembly",
+  "Messa in tavola": "Drawing",
+  "Importazione": "Import"
+ },
+ "voci": {
+  "Corpi solidi": {
+   "t": "Solid Bodies",
+   "a": [
+    "bodies",
+    "solid body",
+    "solid bodies"
+   ],
+   "d": "The separate solids of a part, listed in the \"Solid Bodies\" folder of the tree. A part can have more than one: they can be kept apart and then combined, subtracted, moved or deleted."
+  },
+  "Ambito funzione": {
+   "t": "Feature Scope",
+   "a": [
+    "scope",
+    "selected bodies",
+    "all bodies"
+   ],
+   "d": "In a part with several solid bodies: which bodies a feature works on (cut, hole, extrusion, revolve, sweep, rib, imported body). A new feature starts from \"Selected bodies\" with \"Auto-select\" checked, as in SolidWorks. If you clear the check box you check the bodies in the panel, click them in the view or click their name in the tree above the view, and the others are not touched. \"All bodies\" works on all of them, including those added later. A feature that adds material merges only with the chosen bodies it touches: if it touches none, it becomes a new body, with a warning. With \"Merge result\" cleared the scope is not needed and is not shown. The patterns and mirrors of that feature work on the same bodies if you chose them by hand; with Auto-select each copy works on the bodies it touches."
+  },
+  "Selezione automatica": {
+   "t": "Auto-select",
+   "a": [
+    "auto select"
+   ],
+   "d": "Inside \"Feature Scope\", already checked in new features and when you choose \"Selected bodies\" (as in SolidWorks): it checks by itself the bodies the feature touches; clear it to choose them by hand. The list is updated while the panel is open, then it stays saved in the feature: if you add other bodies later, reopen the feature or use \"All bodies\" to include them."
+  },
+  "Corpi da ripetere": {
+   "t": "Bodies to Pattern",
+   "a": [
+    "bodies to mirror",
+    "body pattern",
+    "body mirror"
+   ],
+   "d": "In the linear pattern, the circular pattern and the mirror: repeats whole bodies instead of single features. Each copy is a new body, with its holes and cosmetic threads too."
+  },
+  "Unisci i solidi": {
+   "t": "Merge solids",
+   "a": [],
+   "d": "In the mirror of a body: merges the copy with the original. The body must touch the mirror plane; otherwise the copy stays a separate body, with a warning."
+  },
+  "Unisci risultato": {
+   "t": "Merge result",
+   "a": [
+    "merge"
+   ],
+   "d": "Check box of the features that add material. When checked, the material merges with the bodies it touches; when cleared, a new body is created, even if it touches the others."
+  },
+  "Combina": {
+   "t": "Combine",
+   "a": [
+    "add",
+    "subtract",
+    "common",
+    "operation type",
+    "operation",
+    "bodies to combine",
+    "bodies to subtract",
+    "main body"
+   ],
+   "d": "Works on bodies that already exist. Add merges them into one; Subtract removes the material of the others from the main body; Common keeps only the material they all share. The bodies used disappear and one remains."
+  },
+  "Sposta/Copia corpo": {
+   "t": "Move/Copy Bodies",
+   "a": [
+    "move body",
+    "copy body",
+    "copy the body",
+    "translation",
+    "translation x",
+    "translation y",
+    "translation z",
+    "rotation",
+    "number of copies",
+    "axis through the origin",
+    "body-move/copy"
+   ],
+   "d": "Rotates a body around an axis through the origin and then moves it. With \"Copy the body\" the original stays and copies are created, each moved with respect to the previous one."
+  },
+  "Elimina/Mantieni corpo": {
+   "t": "Delete/Keep Body",
+   "a": [
+    "delete body",
+    "keep body",
+    "chosen bodies",
+    "body-delete/keep"
+   ],
+   "d": "Removes the chosen bodies, or keeps only those. Like any feature it can be suppressed or deleted: the bodies come back."
+  },
+  "Informazioni e licenze": {
+   "t": "About and licenses",
+   "a": [
+    "about",
+    "licenses"
+   ],
+   "d": "Project › About and licenses: who wrote the program, its license, the parts by other authors and the trademarks mentioned."
+  },
+  "Lingua": {
+   "t": "Language",
+   "a": [
+    "english",
+    "italian",
+    "language: english",
+    "lingua: italiano"
+   ],
+   "d": "The program is in Italian; with Project › Language: English it becomes English, with the command names of the English version of SolidWorks. To go back, choose Project › Lingua: italiano. The project stays the same; in English numbers use the decimal point."
+  },
+  "GNU GPL 3": {
+   "t": "GNU GPL 3",
+   "a": [
+    "gpl",
+    "gpl 3",
+    "gpl license"
+   ],
+   "d": "The license of Banco CAD. It lets anyone use, study, modify and redistribute the program, as long as the distributed versions keep the same license and the source code is available."
+  },
+  "CommandManager": {
+   "t": "CommandManager",
+   "a": [
+    "command bar"
+   ],
+   "d": "The bar at the top with the Features, Sketch, Evaluate, Drawing and Assembly tabs. Each tab shows the commands of that group, as in SolidWorks."
+  },
+  "Albero di progettazione": {
+   "t": "FeatureManager design tree",
+   "a": [
+    "featuremanager",
+    "design tree",
+    "tree"
+   ],
+   "d": "The list on the left with the planes, the origin and all the features in the order they were created. The part is rebuilt following the tree from top to bottom: double-click a feature to edit it, right-click for the other commands."
+  },
+  "PropertyManager": {
+   "t": "PropertyManager",
+   "a": [
+    "property panel"
+   ],
+   "d": "The panel that opens on the left when you create or edit a feature: it contains the parameters (depth, radius, number of instances…). ✓ confirms, ✕ cancels."
+  },
+  "Angolo di conferma": {
+   "t": "Confirmation Corner",
+   "a": [
+    "confirm"
+   ],
+   "d": "The ✓ and ✕ buttons at the top right of the view: they confirm or cancel the open feature or sketch, like the PropertyManager."
+  },
+  "Barra di ripristino": {
+   "t": "Rollback bar",
+   "a": [
+    "rollback",
+    "roll back to here"
+   ],
+   "d": "The orange line in the tree. The features below the bar are not calculated: it is used to insert a feature in the middle of the part's history or to see how it was before."
+  },
+  "Sopprimi": {
+   "t": "Suppress",
+   "a": [
+    "suppressed",
+    "unsuppress"
+   ],
+   "d": "A suppressed feature stays in the tree (struck through) but is not calculated, as if it were not there. It is useful for trying variants without deleting anything."
+  },
+  "Rigenerazione": {
+   "t": "Rebuild",
+   "a": [
+    "rebuilt",
+    "regeneration"
+   ],
+   "d": "Recalculating the solid from the tree. It happens by itself every time you change a dimension or a feature (in SolidWorks it is the Rebuild \"traffic light\")."
+  },
+  "Annulla / Ripeti": {
+   "t": "Undo / Redo",
+   "a": [
+    "undo",
+    "redo"
+   ],
+   "d": "They go back or forward by one operation (Ctrl+Z and Ctrl+Y). Inside a sketch they undo the single strokes."
+  },
+  "Anteprima": {
+   "t": "Preview",
+   "a": [
+    "orange preview",
+    "red preview"
+   ],
+   "d": "While the PropertyManager is open, the material that will be added is shown in orange and the material that will be removed in red. The part really changes only when you confirm with ✓."
+  },
+  "Manuale d'uso": {
+   "t": "User manual",
+   "a": [
+    "manual",
+    "pdf manual",
+    "user manual (pdf)"
+   ],
+   "d": "Project › User manual (PDF) opens the complete manual of the program, to read or print: guided exercise, all the commands and the glossary. It is a separate file, so an Internet connection is needed; it can be downloaded and kept."
+  },
+  "Guida": {
+   "t": "Guide",
+   "a": [
+    "how to",
+    "how-to"
+   ],
+   "d": "The panel with step-by-step instructions for every command: what it is for, how to do it, tips and terms. The \"Show me where\" button opens the right tab and makes the command blink."
+  },
+  "Comandi del mouse": {
+   "t": "Mouse controls",
+   "a": [
+    "wheel",
+    "zoom",
+    "pan",
+    "rotate"
+   ],
+   "d": "Wheel: zoom toward the pointer (forward zooms in, backward zooms out), in the drawing too. Ctrl + wheel: rotates the model around the vertical. Dragging: left button in empty space rotates, right button (or Shift + left) pans. On a tablet: two fingers always zoom; to rotate and pan touch the part first, then one finger rotates and two fingers pan. Touch empty space to let it go."
+  },
+  "Isometrica": {
+   "t": "Isometric",
+   "a": [
+    "isometric view",
+    "iso"
+   ],
+   "d": "View in which the three axes X, Y, Z form equal angles on the screen: three faces of the part are seen together. It is the standard view for the 3D model."
+  },
+  "Normale a": {
+   "t": "Normal To",
+   "a": [
+    "normal view"
+   ],
+   "d": "Turns the view perpendicular to the chosen plane or face, so you see it \"straight on\". When you enter a sketch the view turns by itself normal to its plane."
+  },
+  "Adatta alla finestra": {
+   "t": "Zoom to Fit",
+   "a": [
+    "fit",
+    "fit the sheet"
+   ],
+   "d": "Zoom that makes the whole part (or the whole sheet, in the drawing) fit in the window. In SolidWorks it is the F key."
+  },
+  "Terna degli assi": {
+   "t": "Triad",
+   "a": [
+    "x y z axes",
+    "reference triad"
+   ],
+   "d": "The three arrows at the bottom left: X red, Y green, Z blue. They show how the part is oriented in the view. The same colors are used for the dashed axes of the planes."
+  },
+  "Origine": {
+   "t": "Origin",
+   "a": [
+    "origin point"
+   ],
+   "d": "The point (0, 0, 0) of the part, where the three standard planes meet. It is best to draw the first sketch starting from the origin: the part stays well placed and symmetries and dimensions become simpler."
+  },
+  "Piano frontale": {
+   "t": "Front Plane",
+   "a": [
+    "front"
+   ],
+   "d": "Vertical standard plane containing the X and Y axes (you look at it from the front). It is used for the main profile of parts seen from the front."
+  },
+  "Piano superiore": {
+   "t": "Top Plane",
+   "a": [
+    "top"
+   ],
+   "d": "Horizontal standard plane containing the X and Z axes (you look at it from above). It is used for plates, bases and flanges lying flat."
+  },
+  "Piano destro": {
+   "t": "Right Plane",
+   "a": [
+    "right"
+   ],
+   "d": "Vertical standard plane containing the Z and Y axes (you look at it from the right). It is perpendicular to the other two."
+  },
+  "Piano di riferimento": {
+   "t": "Reference Plane",
+   "a": [
+    "plane",
+    "reference"
+   ],
+   "d": "An extra plane, parallel to a standard plane or to a flat face, at a given distance. It is used to make sketches \"in mid-air\": for example the end profile of a sweep or a rib halfway along the part."
+  },
+  "Asse": {
+   "t": "Axis",
+   "a": [
+    "x axis",
+    "y axis",
+    "z axis"
+   ],
+   "d": "Reference line: for circular patterns it is the axis of rotation; it can be taken from one of the X, Y, Z axes or from the part (a cylindrical face or a circular edge)."
+  },
+  "Faccia": {
+   "t": "Face",
+   "a": [
+    "flat face",
+    "cylindrical face"
+   ],
+   "d": "A surface of the solid bounded by edges. Flat faces can be used for sketches, planes and holes; cylindrical ones give the axis for circular patterns."
+  },
+  "Spigolo": {
+   "t": "Edge",
+   "a": [
+    "edges"
+   ],
+   "d": "The line where two faces meet. Fillets and chamfers are made on edges; a straight edge can also give the direction of a linear pattern."
+  },
+  "Vertice": {
+   "t": "Vertex",
+   "a": [
+    "vertices"
+   ],
+   "d": "The point where three or more edges meet. It is used to measure distances."
+  },
+  "Schizzo": {
+   "t": "Sketch",
+   "a": [
+    "new sketch",
+    "2d sketch"
+   ],
+   "d": "2D drawing on a plane or on a flat face: it is the basis of almost all features. First you draw the shape roughly, then you make it precise with relations and dimensions until the sketch turns black."
+  },
+  "Completamente definito": {
+   "t": "Fully Defined",
+   "a": [
+    "black",
+    "black sketch"
+   ],
+   "d": "The sketch is black: shape and position are fixed by relations and dimensions, no point can be dragged any more. It is the right state for a good model (in SolidWorks: \"Fully Defined\")."
+  },
+  "Sotto definito": {
+   "t": "Under Defined",
+   "a": [
+    "blue",
+    "underdefined"
+   ],
+   "d": "The sketch (or a part of it) is blue: some dimension or relation is still missing, so something can be moved by dragging it. The part can be built anyway, but it is fragile if you change the measurements."
+  },
+  "Sovradefinito": {
+   "t": "Over Defined",
+   "a": [
+    "red",
+    "over-defined",
+    "overdefined",
+    "conflicting"
+   ],
+   "d": "The sketch is red: there are extra dimensions or relations, or ones that contradict each other. The extra dimension or relation must be removed."
+  },
+  "Esci dallo schizzo": {
+   "t": "Exit Sketch",
+   "a": [
+    "confirm the sketch"
+   ],
+   "d": "Closes the sketch and saves it in the tree. You can also press a feature command directly (Extruded Boss/Base…): the sketch is confirmed by itself and used."
+  },
+  "Linea": {
+   "t": "Line",
+   "a": [],
+   "d": "Consecutive segments: one click for each vertex, double-click or Esc to finish. With numeric input you can type length and angle."
+  },
+  "Rettangolo": {
+   "t": "Corner Rectangle",
+   "a": [
+    "rectangle"
+   ],
+   "d": "Rectangle given by two opposite corners. The horizontal and vertical relations are added by themselves."
+  },
+  "Rettangolo centrale": {
+   "t": "Center Rectangle",
+   "a": [],
+   "d": "Rectangle given by the center and a corner: it is symmetric about the center, handy for parts centered on the origin."
+  },
+  "Cerchio": {
+   "t": "Circle",
+   "a": [],
+   "d": "Circle given by the center and a point on the circumference. It is dimensioned with the diameter (Ø)."
+  },
+  "Arco centro-estremi": {
+   "t": "Centerpoint Arc",
+   "a": [
+    "arc"
+   ],
+   "d": "Arc given by the center, the start point and the end point."
+  },
+  "Arco 3 punti": {
+   "t": "3 Point Arc",
+   "a": [],
+   "d": "Arc passing through three points: start, end and a point in between."
+  },
+  "Arco tangente": {
+   "t": "Tangent Arc",
+   "a": [],
+   "d": "Arc that starts from the end of a line or an arc and continues without a corner (tangent). It is the right way to make sweep paths and slots."
+  },
+  "Poligono": {
+   "t": "Polygon",
+   "a": [
+    "regular polygon"
+   ],
+   "d": "Regular polygon (hexagon, octagon…) inscribed in a construction circle: center and one vertex. The number of sides is chosen in the panel."
+  },
+  "Asola": {
+   "t": "Straight Slot",
+   "a": [
+    "slot"
+   ],
+   "d": "Two semicircles joined by tangent lines: it is the shape of the slots used to adjust the position of screws."
+  },
+  "Punto": {
+   "t": "Point",
+   "a": [],
+   "d": "Sketch point: it is used as a reference for dimensions or as the position of a hole."
+  },
+  "Linea di mezzeria": {
+   "t": "Centerline",
+   "a": [
+    "sketch centerline"
+   ],
+   "d": "Dash-dot construction line: it creates no material. It is used as the axis of a revolve, as the symmetry axis for \"Mirror Entities\" and for the Symmetric relation."
+  },
+  "Geometria di costruzione": {
+   "t": "Construction Geometry",
+   "a": [
+    "construction",
+    "construction line"
+   ],
+   "d": "Dashed entities that help you draw (axes, reference circles) but do not become faces of the solid. The \"Construction Geometry\" command converts the selected entities and back."
+  },
+  "Raccordo di schizzo": {
+   "t": "Sketch Fillet",
+   "a": [],
+   "d": "Rounds the corner between two lines with a tangent arc of given radius (click the vertex). Different from the 3D Fillet, which works on the edges of the solid."
+  },
+  "Smusso di schizzo": {
+   "t": "Sketch Chamfer",
+   "a": [],
+   "d": "Cuts the corner between two lines with an inclined segment (click the vertex)."
+  },
+  "Taglia entità": {
+   "t": "Trim Entities",
+   "a": [
+    "trim"
+   ],
+   "d": "Removes the part of an entity between two intersections: click the piece to remove. It is used to get closed contours without crossings."
+  },
+  "Specchia entità": {
+   "t": "Mirror Entities",
+   "a": [],
+   "d": "Copies the selected entities symmetrically about a centerline and adds the symmetry relations."
+  },
+  "Converti entità": {
+   "t": "Convert Entities",
+   "a": [],
+   "d": "Copies the selected edges of the part (in gray) into the sketch, linked to the model: if the part changes, they change too."
+  },
+  "Geometria esterna": {
+   "t": "External geometry",
+   "a": [
+    "gray edges",
+    "in gray"
+   ],
+   "d": "The edges of the face you are drawing on, shown in gray. You can snap and dimension to them (for example the distance of a hole from the edge)."
+  },
+  "Aggancio": {
+   "t": "Snap",
+   "a": [
+    "snaps",
+    "inference"
+   ],
+   "d": "When you move the pointer close to a notable point (endpoint, midpoint, center, origin) the point \"snaps\" and the right relation is added, for example Coincident."
+  },
+  "Inserimento numerico": {
+   "t": "Numeric input",
+   "a": [
+    "numeric input – length and angle"
+   ],
+   "d": "While you draw you can type the values (length, angle, diameter…) instead of clicking. It also accepts expressions like 40/2. With \"Add dimensions with these values\" the values become dimensions."
+  },
+  "Quota intelligente": {
+   "t": "Smart Dimension",
+   "a": [
+    "dimension",
+    "dimensions"
+   ],
+   "d": "A single command for all dimensions: click a line (length), two lines (distance or angle), a circle (diameter), an arc (radius) or two points; then click where to place the dimension and type the value. It is the SolidWorks dimension."
+  },
+  "Quota condotta": {
+   "t": "Driven dimension",
+   "a": [
+    "reference dimension"
+   ],
+   "d": "Information-only dimension, in parentheses: it shows a measurement but does not impose it. You get it when a normal dimension would over-define the sketch."
+  },
+  "Entità selezionate": {
+   "t": "Selected Entities",
+   "a": [
+    "entities"
+   ],
+   "d": "The sketch entities you have selected (Ctrl+click to pick more than one). The panel shows the relations that can be added between them."
+  },
+  "Parametri": {
+   "t": "Parameters",
+   "a": [],
+   "d": "The values of the selected entity (coordinates, length, radius…). If the entity is not constrained you can change them by typing."
+  },
+  "Aggiungi relazione": {
+   "t": "Add Relation",
+   "a": [
+    "relations",
+    "add relations",
+    "existing relations"
+   ],
+   "d": "Geometric constraints between entities (horizontal, parallel, tangent…). Together with dimensions they make the sketch fully defined. Select the entities (Ctrl+click) and choose the relation."
+  },
+  "Coincidente": {
+   "t": "Coincident",
+   "a": [],
+   "d": "A point lies on another point, on a line or on an arc. It is the relation that closes contours."
+  },
+  "Orizzontale": {
+   "t": "Horizontal",
+   "a": [],
+   "d": "The line (or the line joining two points) is parallel to the X axis of the sketch."
+  },
+  "Verticale": {
+   "t": "Vertical",
+   "a": [],
+   "d": "The line (or the line joining two points) is parallel to the Y axis of the sketch."
+  },
+  "Parallela": {
+   "t": "Parallel",
+   "a": [
+    "parallel (all)"
+   ],
+   "d": "Two or more lines have the same direction."
+  },
+  "Perpendicolare": {
+   "t": "Perpendicular",
+   "a": [],
+   "d": "Two lines form a 90° angle."
+  },
+  "Collineare": {
+   "t": "Collinear",
+   "a": [],
+   "d": "Two lines lie on the same straight line."
+  },
+  "Uguale": {
+   "t": "Equal",
+   "a": [
+    "equal (all)"
+   ],
+   "d": "Lines of the same length, or circles and arcs of the same radius. So one dimension is enough for all of them."
+  },
+  "Relazioni/Tangente": {
+   "t": "Tangent",
+   "a": [],
+   "d": "An arc and a line (or two arcs) touch without a corner, with the same direction at the contact point."
+  },
+  "Concentrica": {
+   "t": "Concentric",
+   "a": [],
+   "d": "Circles or arcs with the same center."
+  },
+  "Punto medio": {
+   "t": "Midpoint",
+   "a": [],
+   "d": "The point lies halfway along a line."
+  },
+  "Nel centro": {
+   "t": "At the center",
+   "a": [],
+   "d": "The point coincides with the center of a circle or an arc."
+  },
+  "Simmetrica": {
+   "t": "Symmetric",
+   "a": [],
+   "d": "Two points (or two entities) are symmetric about a centerline."
+  },
+  "Fissa": {
+   "t": "Fix",
+   "a": [
+    "fixed"
+   ],
+   "d": "The entity can no longer move. Use it sparingly: it is better to define the sketch with dimensions and relations to the origin."
+  },
+  "Punto su linea": {
+   "t": "Point on line",
+   "a": [
+    "point on circle"
+   ],
+   "d": "The point lies on the line (or on the circumference), even outside the drawn segment."
+  },
+  "Funzione": {
+   "t": "Feature",
+   "a": [
+    "features"
+   ],
+   "d": "Every operation that creates or modifies the solid (extrusion, hole, fillet…). The features are in the tree and can be edited at any time: the part updates by itself (parametric modeling)."
+  },
+  "Estrusione base": {
+   "t": "Extruded Boss/Base",
+   "a": [
+    "boss-extrude",
+    "extrude",
+    "extrusion"
+   ],
+   "d": "Takes a closed contour of the sketch and \"pulls\" it perpendicular to the plane, creating material: a rectangle becomes a box, a circle a cylinder."
+  },
+  "Taglio estruso": {
+   "t": "Extruded Cut",
+   "a": [
+    "cut-extrude",
+    "cut"
+   ],
+   "d": "Like the extrusion, but it removes material: pockets, shaped holes, slots."
+  },
+  "Rivoluzione base": {
+   "t": "Revolved Boss/Base",
+   "a": [
+    "revolve"
+   ],
+   "d": "Rotates a closed profile around a centerline: shafts, pins, bushings, knobs. The profile must lie entirely on one side of the axis."
+  },
+  "Taglio rivoluzione": {
+   "t": "Revolved Cut",
+   "a": [
+    "cut-revolve"
+   ],
+   "d": "Removes material by rotating a profile around an axis: grooves, circular slots, seats for rings."
+  },
+  "Estrusione con percorso": {
+   "t": "Sweep",
+   "a": [
+    "swept boss/base",
+    "path"
+   ],
+   "d": "Moves a closed profile along a path (lines and tangent arcs): bent tubes, handles, wire springs, gaskets. Two sketches are needed: the profile and the path, on different planes; the path starts from the plane of the profile, perpendicular to it. The path can also be a \"Helix and Spiral\" curve: this is how coil springs and threads are made. In SolidWorks: \"Swept Boss/Base\"."
+  },
+  "Taglio con percorso": {
+   "t": "Swept Cut",
+   "a": [
+    "sweep cut"
+   ],
+   "d": "Removes material by moving a profile along a path: channels, grooves that turn, seats for tubes."
+  },
+  "Estrusione con loft": {
+   "t": "Loft",
+   "a": [
+    "lofted boss/base"
+   ],
+   "d": "Creates a solid that passes through two or more closed profiles, drawn on different planes: twisted blades, hoppers, transitions between a square and a round section. Each profile is a sketch with a single contour; the order in which you choose them is the order in which the solid passes through them. Between two profiles the faces are straight (ruled); with three or more the solid passes through all of them with a smooth curve. In SolidWorks: \"Lofted Boss/Base\" (here without guide curves)."
+  },
+  "Taglio con loft": {
+   "t": "Lofted Cut",
+   "a": [
+    "loft cut",
+    "cut-loft"
+   ],
+   "d": "Like the Loft, but it removes material: pockets that change shape from the opening to the bottom, ducts that narrow."
+  },
+  "Profili": {
+   "t": "Profiles",
+   "a": [
+    "loft profiles",
+    "order of the profiles"
+   ],
+   "d": "The closed sketches the loft passes through, in the order in which the solid passes through them. They are added with a click in the view or from the \"Add\" list; the ↑ ↓ arrows change the order, × removes a profile. If the profiles have the same number of sides, each vertex is joined to its corresponding one (the one that twists the solid the least); otherwise the points correspond at the same fraction of the perimeter."
+  },
+  "Svergolamento": {
+   "t": "Twist",
+   "a": [
+    "twisted blade",
+    "twisted",
+    "torsion"
+   ],
+   "d": "A blade is twisted when its profile changes inclination from the root to the tip: near the hub it is more inclined, at the tip flatter. It is obtained with a Loft between two or more profiles rotated with respect to each other, on planes at different distances from the axis."
+  },
+  "Elica e spirale": {
+   "t": "Helix and Spiral",
+   "a": [
+    "helix/spiral",
+    "helical curve",
+    "cylindrical helix",
+    "spiral",
+    "helix"
+   ],
+   "d": "Curve in space that starts from a circle drawn in a sketch: the helix turns around the axis of the circle and rises at the same time (springs, threads); the spiral stays on the plane and widens at each turn (spiral springs). It creates no material: it is used as the path of a Sweep or a Swept Cut. In SolidWorks: Insert › Curve › \"Helix/Spiral\"."
+  },
+  "Cerchio di partenza": {
+   "t": "Start circle",
+   "a": [
+    "helix circle"
+   ],
+   "d": "The sketch with the circle from which the helix or the spiral starts: the diameter of the circle is the start diameter of the curve, the center lies on the axis, the plane of the sketch is perpendicular to the axis. The sketch must contain a single circle."
+  },
+  "Definita da": {
+   "t": "Defined by",
+   "a": [
+    "pitch and revolution",
+    "height and revolution",
+    "height and pitch"
+   ],
+   "d": "Which two measurements describe the helix, as in SolidWorks: pitch and revolutions, height and revolutions, or height and pitch; the third one is worked out by itself (height = pitch × revolutions). \"Spiral\" makes a flat curve: the pitch is how much the radius grows at each turn."
+  },
+  "Passo": {
+   "t": "Pitch",
+   "a": [
+    "helix pitch"
+   ],
+   "d": "How far the helix rises along the axis in one complete turn. In the spiral it is how much the radius grows at each turn. For a spring or a thread the pitch must be larger than the profile, otherwise the coils overlap."
+  },
+  "Rivoluzioni": {
+   "t": "Revolutions",
+   "a": [
+    "turns",
+    "coils",
+    "number of coils"
+   ],
+   "d": "How many turns the helix or the spiral makes around the axis. It need not be a whole number: 5.5 revolutions end on the side opposite to the start."
+  },
+  "Angolo iniziale": {
+   "t": "Start angle",
+   "a": [],
+   "d": "The point of the circle where the helix starts, as an angle measured from the X axis of the sketch (0° = on the positive X axis). The profile to sweep must be drawn on a plane passing through this point."
+  },
+  "Senso orario": {
+   "t": "Clockwise",
+   "a": [
+    "counterclockwise",
+    "right-hand helix",
+    "left-hand helix"
+   ],
+   "d": "The direction in which the helix turns, looking at the sketch from the front. Counterclockwise while rising is a right-hand helix, like ordinary screws and bolts; clockwise is a left-hand helix. \"Reverse direction\" makes the helix rise on the other side of the plane, with the same sense of rotation."
+  },
+  "Elica rastremata": {
+   "t": "Taper Helix",
+   "a": [
+    "taper",
+    "conical helix",
+    "taper angle"
+   ],
+   "d": "Helix whose diameter changes as it rises, like a conical spring: the taper angle is the inclination with respect to the axis. Normally the diameter gets smaller; with \"Taper outward\" it gets larger."
+  },
+  "Profilo": {
+   "t": "Profile",
+   "a": [
+    "closed profile"
+   ],
+   "d": "The closed contour that is extruded, revolved or swept: it is the \"section\" of the feature."
+  },
+  "Nervatura": {
+   "t": "Rib",
+   "a": [],
+   "d": "Thin reinforcing wall between two parts of the piece, for example in the corner of an angle bracket. You draw only an open line: the material fills the space between the line and the part, with the chosen thickness. The line is extended by itself up to the part."
+  },
+  "Spessore": {
+   "t": "Thickness",
+   "a": [],
+   "d": "The thickness of the rib, measured perpendicular to the plane of the sketch: half on each side (mid plane) or all on one side."
+  },
+  "Direzione del materiale": {
+   "t": "Material direction",
+   "a": [
+    "flip material side"
+   ],
+   "d": "On which side of the rib line the material goes. It is usually found by itself (toward the part); \"Reverse\" chooses the other side."
+  },
+  "Creazione guidata fori": {
+   "t": "Hole Wizard",
+   "a": [
+    "hole",
+    "holes"
+   ],
+   "d": "Holes according to the standards: you choose the type and the screw (M3…M20) and the diameters are taken from the tables. You click a flat face and place the positions of the centers."
+  },
+  "Raccordo": {
+   "t": "Fillet",
+   "a": [
+    "radius"
+   ],
+   "d": "Rounds the selected edges with a circular surface of given radius. On an outside (convex) edge it removes material, on an inside (concave) one it adds it. All the edges of the same feature are filleted together, as in SolidWorks: where two fillets meet they blend with each other, where three meet at right angles the corner becomes a portion of a sphere. You can fillet straight, circular and arc edges and the boundary of an imported ellipse or spline (curved edge), with a radius smaller than that of the curve."
+  },
+  "Smusso": {
+   "t": "Chamfer",
+   "a": [],
+   "d": "Cuts an edge with an inclined face. Types: equal distance (45°), distance and angle, two distances. On shafts it is specified for example as 1×45°."
+  },
+  "Serie lineare": {
+   "t": "Linear Pattern",
+   "a": [
+    "pattern"
+   ],
+   "d": "Repeats one or more features (holes, cuts, bosses…) along one or two directions, with spacing and number of instances."
+  },
+  "Serie circolare": {
+   "t": "Circular Pattern",
+   "a": [],
+   "d": "Repeats features around an axis, for example the holes of a flange. With \"equal spacing\" the instances are spread over the total angle."
+  },
+  "Specchio": {
+   "t": "Mirror",
+   "a": [
+    "mirror plane"
+   ],
+   "d": "Copies the chosen features symmetrically about a plane or a flat face."
+  },
+  "Funzioni da ripetere": {
+   "t": "Features to Pattern",
+   "a": [
+    "features to mirror"
+   ],
+   "d": "The features (extrusions, cuts, holes, sweeps, ribs…) that the pattern or the mirror copies. They are chosen with a click on one of their faces in the view or on the name in the tree."
+  },
+  "Propagazione tangente": {
+   "t": "Tangent propagation",
+   "a": [
+    "tangent edges",
+    "propagate"
+   ],
+   "d": "Check box of Fillet and Chamfer (checked for new features, as in SolidWorks): with a click on an edge the edges that continue it without a corner are worked too, that is with the same direction at the point where they touch and a face in common. Example: a click on a line of the boundary of a slot fillets all 4 edges (two lines and two arcs). At sharp corners, for example those of a block, the propagation stops."
+  },
+  "Spigolo curvo": {
+   "t": "Curved edge",
+   "a": [
+    "ellipse edge",
+    "spline edge"
+   ],
+   "d": "The boundary of a face made from an ellipse or a spline imported from a DXF file. In the part it is made of many tangent arcs, but as in SolidWorks it counts as a single edge: one click selects all of it (it is colored entirely) and the fillet or chamfer follows it with no lines between one piece and the next. The face of the curve is also selected all together."
+  },
+  "Spigoli da raccordare": {
+   "t": "Edges to Fillet",
+   "a": [
+    "edges to chamfer"
+   ],
+   "d": "The edges the fillet or chamfer is applied to: click the edges in the view (they turn blue); a second click removes them."
+  },
+  "Profilo e percorso": {
+   "t": "Profile and Path",
+   "a": [],
+   "d": "The two sketches of the sweep: the profile (closed contour) and the path (lines and tangent arcs) along which the profile moves. Instead of the path sketch you can choose a Helix/Spiral curve."
+  },
+  "Istanze": {
+   "t": "Instances",
+   "a": [
+    "number of instances"
+   ],
+   "d": "The total number of copies in a pattern, counting the original too."
+  },
+  "Schizzo da estrudere": {
+   "t": "Sketch to extrude",
+   "a": [
+    "sketch to cut",
+    "sketch to revolve",
+    "rib sketch"
+   ],
+   "d": "The sketch used by the feature. It is chosen from the list or with a click on its lines in the view; \"Edit the sketch\" reopens it."
+  },
+  "Asse di rivoluzione": {
+   "t": "Axis of Revolution",
+   "a": [],
+   "d": "The centerline of the sketch around which the profile rotates."
+  },
+  "Angolo": {
+   "t": "Angle",
+   "a": [
+    "total angle"
+   ],
+   "d": "For the revolve: how much the profile rotates (360° = full turn). For the circular pattern: the angle over which the instances are spread."
+  },
+  "Condizione finale": {
+   "t": "End Condition",
+   "a": [
+    "up to"
+   ],
+   "d": "Tells where the extrusion or cut ends: Blind (at a depth), Through All (crosses the whole part), Mid Plane (half the depth on each side)."
+  },
+  "Cieca": {
+   "t": "Blind",
+   "a": [
+    "blind (depth)"
+   ],
+   "d": "The feature stops at the depth typed. A blind hole does not come out on the other side."
+  },
+  "Passante tutto": {
+   "t": "Through All",
+   "a": [
+    "through"
+   ],
+   "d": "The cut crosses the whole part, whatever its thickness: if the part changes, the hole stays through."
+  },
+  "Piano medio": {
+   "t": "Mid Plane",
+   "a": [
+    "mid plane (half on each side)",
+    "mid plane (half the angle on each side)"
+   ],
+   "d": "The feature extends half on one side and half on the other of the sketch plane: the part stays symmetric about the plane."
+  },
+  "Profondità": {
+   "t": "Depth",
+   "a": [],
+   "d": "How far the extrusion or cut extends from the sketch plane, in millimeters."
+  },
+  "Direzione 1": {
+   "t": "Direction 1",
+   "a": [],
+   "d": "The main direction of the feature, normal to the sketch plane."
+  },
+  "Direzione 2": {
+   "t": "Direction 2",
+   "a": [
+    "extrude also in the opposite direction"
+   ],
+   "d": "Extends the feature on the other side of the sketch plane too, with its own depth."
+  },
+  "Inverti la direzione": {
+   "t": "Reverse Direction",
+   "a": [
+    "reverse"
+   ],
+   "d": "Makes the feature go to the opposite side."
+  },
+  "Sformo": {
+   "t": "Draft",
+   "a": [
+    "draft angle",
+    "draft outward"
+   ],
+   "d": "Tilts the walls of the extrusion by the angle typed: the profile narrows as you move away from the sketch plane (or widens with \"outward\"). It is used for molded or cast parts, so they come out of the mold. Flat faces become inclined planes, cylindrical ones cones."
+  },
+  "Distanza": {
+   "t": "Distance",
+   "a": [],
+   "d": "For planes: the distance from the reference. For patterns: the spacing between one instance and the next."
+  },
+  "Tipo di foro": {
+   "t": "Hole type",
+   "a": [],
+   "d": "Simple (free diameter), clearance for screw (ISO 273), counterbore for socket head screws, countersink for countersunk screws, tapped (tap drill hole for tapping)."
+  },
+  "Passante per vite": {
+   "t": "Clearance hole",
+   "a": [
+    "iso 273",
+    "fit (iso 273)",
+    "clearance hole for screw"
+   ],
+   "d": "Hole slightly larger than the screw, so it passes without forcing. The ISO 273 standard gives three series: close (fine), normal (medium), loose (coarse). For M6: Ø6.4 / Ø6.6 / Ø7."
+  },
+  "Lamatura": {
+   "t": "Counterbore",
+   "a": [
+    "counterbored",
+    "counterbore ø",
+    "counterbore depth"
+   ],
+   "d": "Cylindrical enlargement at the top of the hole that takes the head of a socket head screw (ISO 4762), so the head does not stick out. Sizes from DIN 974-1."
+  },
+  "Svasatura": {
+   "t": "Countersink",
+   "a": [
+    "countersunk"
+   ],
+   "d": "90° conical enlargement at the top of the hole for countersunk screws (ISO 10642): the head stays flush with the face. Sizes from ISO 15065."
+  },
+  "Filettato": {
+   "t": "Tapped",
+   "a": [
+    "tapped hole",
+    "threaded hole",
+    "thread",
+    "thread depth"
+   ],
+   "d": "Hole to be tapped: the model shows the tap drill hole (for M6 Ø5), the thread is shown on the drawing with its designation (M6). ISO coarse pitch."
+  },
+  "Punta a 118°": {
+   "t": "118° drill point",
+   "a": [
+    "conical point",
+    "drill point"
+   ],
+   "d": "The conical bottom left by the twist drill in blind holes. The depth of the hole is measured up to the start of the cone."
+  },
+  "Grandezza": {
+   "t": "Size",
+   "a": [
+    "m6",
+    "metric thread"
+   ],
+   "d": "The size of the screw: M6 means metric thread with a nominal diameter of 6 mm."
+  },
+  "Valori di norma": {
+   "t": "Standard values",
+   "a": [],
+   "d": "The diameters and depths taken from the tables of the standards (ISO 273, DIN 974-1, ISO 15065) for the chosen screw. They can be changed by typing a different value."
+  },
+  "Posizioni": {
+   "t": "Positions",
+   "a": [
+    "edit the positions"
+   ],
+   "d": "The sketch points where the centers of the holes go. They are dimensioned as in a normal sketch (for example from the edges of the part)."
+  },
+  "Proprietà di massa": {
+   "t": "Mass Properties",
+   "a": [
+    "mass"
+   ],
+   "d": "Volume, surface area, mass and center of mass of the part, calculated with the exact surfaces (cylinders, cones, spheres, tori), as in SolidWorks."
+  },
+  "Volume": {
+   "t": "Volume",
+   "a": [],
+   "d": "The space taken up by the solid, in mm³ (1 cm³ = 1000 mm³)."
+  },
+  "Area della superficie": {
+   "t": "Surface area",
+   "a": [
+    "area"
+   ],
+   "d": "The sum of the areas of all the faces, in mm²: it is used for example for painting."
+  },
+  "Massa": {
+   "t": "Mass",
+   "a": [],
+   "d": "Volume × density of the material. With the material \"Not specified\" 1 g/cm³ is used."
+  },
+  "Baricentro": {
+   "t": "Center of mass",
+   "a": [
+    "centre of mass",
+    "center of gravity"
+   ],
+   "d": "The point where all the mass can be thought to be concentrated (X, Y, Z with respect to the origin)."
+  },
+  "Materiale": {
+   "t": "Material",
+   "a": [
+    "density"
+   ],
+   "d": "The material of the part (steel, aluminum, brass, plastics…). It sets the density and therefore the mass."
+  },
+  "Misura": {
+   "t": "Measure",
+   "a": [],
+   "d": "Measures distances, diameters and angles between selected faces, edges and vertices."
+  },
+  "Vista in sezione": {
+   "t": "Section View",
+   "a": [
+    "section"
+   ],
+   "d": "Cuts the view of the model with a plane to see the inside (it does not modify the part)."
+  },
+  "Assieme": {
+   "t": "Assembly",
+   "a": [],
+   "d": "Several parts mounted together, each in its place. In Banco CAD the assembly and its parts are all in the same project, so in a single file."
+  },
+  "Componente": {
+   "t": "Component",
+   "a": [
+    "components",
+    "instance",
+    "copy component"
+   ],
+   "d": "A part placed in the assembly, with its position. The same part can appear several times: Screw<1>, Screw<2>. They are copies of the same part: if you modify the part, they all change."
+  },
+  "Inserisci parte": {
+   "t": "Insert Part",
+   "a": [
+    "insert a part"
+   ],
+   "d": "Adds a component to the assembly: a part of the project, or a STEP, IGES, STL, OBJ file or an exported project, which is copied into the project."
+  },
+  "Nuova parte": {
+   "t": "New Part",
+   "a": [
+    "add a part",
+    "parts"
+   ],
+   "d": "Creates an empty part in this project and opens it. The list next to the name, at the top, switches from one part to another."
+  },
+  "Proprietà di massa dell'assieme": {
+   "t": "Assembly mass properties",
+   "a": [
+    "assembly mass",
+    "assembly weight",
+    "assembly center of mass"
+   ],
+   "d": "Mass, volume, area, center of mass and overall size of all the components together. Each part uses its own material; the center of mass is weighted by mass. The volume shared by two interpenetrating components counts twice."
+  },
+  "Distinta base": {
+   "t": "Bill of Materials",
+   "a": [
+    "bom",
+    "parts list"
+   ],
+   "d": "The list of the parts needed to build the assembly: number, name, material, quantity and mass. Components of the same part make a single row."
+  },
+  "Interferenza": {
+   "t": "Interference",
+   "a": [
+    "interpenetration",
+    "collision",
+    "overlap"
+   ],
+   "d": "Two components occupying the same space: in reality they could not be assembled like that (unless it is intended, like a press fit). It is measured by the shared volume. Two faces that only touch are not an interference."
+  },
+  "Verifica interferenze": {
+   "t": "Interference Detection",
+   "a": [
+    "interference check"
+   ],
+   "d": "The command that checks all the components in pairs and shows the shared volume of each pair, also in red in the view. With parts made in the program the volume is calculated on the true surfaces; with imported ones, made of triangles, a very thin layer is marked \"maybe only contact\"."
+  },
+  "Vista esplosa": {
+   "t": "Exploded View",
+   "a": [
+    "explosion",
+    "explode",
+    "collapse",
+    "explode step"
+   ],
+   "d": "The components move apart from each other to show how they are assembled. It is made of steps: which components, in which direction, how far. The true positions and the mates do not change: when you collapse it everything goes back in place."
+  },
+  "Numero di posizione": {
+   "t": "Balloon",
+   "a": [
+    "balloons",
+    "item number"
+   ],
+   "d": "The number in a circle that marks a piece in the assembly drawing: it is the same number as its row in the bill of materials."
+  },
+  "Tavola dell'assieme": {
+   "t": "Assembly drawing",
+   "a": [
+    "assembly drawings",
+    "general arrangement"
+   ],
+   "d": "The drawing of the whole assembly: views, isometric view (exploded too), balloons and bill of materials above the title block. It opens with the Drawing tab when you are in the assembly."
+  },
+  "Viti e bulloni": {
+   "t": "Screws and Bolts",
+   "a": [
+    "fasteners",
+    "screw",
+    "bolt",
+    "nut",
+    "washer",
+    "toolbox",
+    "ISO 4762",
+    "ISO 10642",
+    "ISO 4014",
+    "ISO 4017",
+    "ISO 4032",
+    "ISO 7089"
+   ],
+   "d": "Standard parts ready to insert into the assembly, from M3 to M20. Socket head ISO 4762, countersunk head ISO 10642, hexagon head ISO 4014 (partial thread) and ISO 4017 (full thread), nut ISO 4032, washer ISO 7089. The sizes are the nominal or maximum ones of the standard, without the chamfers. A screw is a normal part: it can be opened and modified."
+  },
+  "Sottoassieme flessibile": {
+   "t": "Flexible subassembly",
+   "a": [
+    "flexible",
+    "make flexible"
+   ],
+   "d": "A subassembly whose pieces move also in the assembly that contains it, according to the mates they have inside. It is chosen with a right-click on the component: Make flexible. Each copy has its own positions and the original assembly does not change. Make rigid puts the pieces back where they are in their own assembly. A subassembly inside a flexible one stays rigid."
+  },
+  "Assieme/Tangente": {
+   "t": "Tangent",
+   "a": [
+    "tangent mate",
+    "free-form surface",
+    "free-form surfaces"
+   ],
+   "d": "Mate that makes two surfaces touch without one entering the other: plane and cylinder, plane and sphere, cylinders and spheres with each other. It also works on the free-form surfaces of a STEP file, which have no axis, against a plane or a sphere: there the contact is on the triangles of the surface, so the precision is that of the triangles, not that of the true curve. Flip side chooses on which side they touch, or whether one is inside the other."
+  },
+  "Vite nel foro": {
+   "t": "Screw in Hole",
+   "a": [
+    "smart fastener",
+    "automatic screw insertion"
+   ],
+   "d": "Assembly command: a click on the wall of a hole opens the screws window with the size already chosen (from the thread of the hole, otherwise the largest one that fits), then the piece goes into place by itself with two mates, Concentric on the axis and Coincident on the mouth nearest to the click. The countersunk head stays flush."
+  },
+  "Smussi della viteria": {
+   "t": "Fastener chamfers",
+   "a": [
+    "screw chamfer",
+    "nut chamfer",
+    "dw"
+   ],
+   "d": "The tip of the screw is chamfered at 45° down to the minor diameter; the hexagon head and the nut have the 30° chamfer starting from a circle of 0.95 times the width across flats. It is the usual drawing, not a value guaranteed by the standard for every manufacturer. It is removed with the check box in the screws window."
+  },
+  "Elica vera": {
+   "t": "True helix",
+   "a": [
+    "true thread",
+    "real thread",
+    "modeled thread"
+   ],
+   "d": "The thread really modeled, with the ISO 68-1 profile turning around the axis, with 32 sides per turn: it is chosen with the check box in the screws window. The part becomes much heavier to calculate and is only useful to see it. On the drawing the thread stays the cosmetic one, as the standard requires."
+  },
+  "Filetto in sezione": {
+   "t": "Thread in section",
+   "a": [
+    "ISO 6410 section"
+   ],
+   "d": "In the section view the thread is drawn with a thin line: at the minor diameter for the screw and at the major diameter for the hole. The hatching goes up to the thick line. Where a screw fills a tapped hole the screw is drawn, covering the hole."
+  },
+  "Filetto indicato": {
+   "t": "Cosmetic thread",
+   "a": [
+    "ISO 6410",
+    "minor diameter"
+   ],
+   "d": "The thread is not a true helix: the part contains the cylinder at the nominal diameter (screw) or the tap drill hole (tapped hole, nut), and the thread is drawn with thin lines. On the drawing, as ISO 6410 requires: thin line on the minor diameter of the screw, d₃ = d − 1.22687 P, or on the nominal diameter of the hole; seen end-on, 3/4 of a thin circle. This keeps the model light. The mass of the screw is a little higher than the real one."
+  },
+  "Nuovo assieme": {
+   "t": "New Assembly",
+   "a": [
+    "more assemblies",
+    "another assembly"
+   ],
+   "d": "Another assembly in the same project, with its own components and mates. You switch from one to the other with the list next to the name; right-click its name in the tree to delete it."
+  },
+  "Sottoassieme": {
+   "t": "Subassembly",
+   "a": [
+    "group"
+   ],
+   "d": "An assembly used as a component of another one: it moves all together, like a rigid part, and its pieces do not move relative to each other. The bill of materials counts the real parts it contains. To modify it, double-click: its assembly opens."
+  },
+  "Parte fissa": {
+   "t": "Fixed part",
+   "a": [
+    "fix",
+    "float",
+    "(f)",
+    "fixed component"
+   ],
+   "d": "A component that does not move: the others are placed with respect to it. In the tree it has (f) in front of the name. The first part inserted is fixed; right-click to choose Fix or Float."
+  },
+  "Accoppiamento": {
+   "t": "Mate",
+   "a": [
+    "mates"
+   ],
+   "d": "A link between two entities of two components (faces, edges or vertices). Each mate removes degrees of freedom: the solver moves the free components as little as possible to satisfy them all."
+  },
+  "Tipo di accoppiamento": {
+   "t": "Mate type",
+   "a": [
+    "entities to mate"
+   ],
+   "d": "The way the two chosen entities are linked: coincident, concentric, parallel, perpendicular, distance or angle. Only the types possible with those entities are active."
+  },
+  "Piani e origine": {
+   "t": "Planes and origin",
+   "a": [
+    "component plane",
+    "component origin",
+    "part planes"
+   ],
+   "d": "The three standard planes of the part (front, top, right), the planes you have created and its origin, used in a mate. They are chosen in the tree above the view, in the Mate panel or, with \"Show them in the view\", in the view itself; the plane is drawn when the mouse is over its button. A plane behaves like a face, but it has no \"outside\": Flip alignment turns it over. The origin behaves like a vertex."
+  },
+  "Vertice dell'accoppiamento": {
+   "t": "Mate vertex",
+   "a": [
+    "vertex found again",
+    "exclamation mark"
+   ],
+   "d": "A vertex chosen in a mate is remembered together with the faces that meet there. If the dimensions of the part change, the program looks for the vertex with those faces, the one closest to where it was. If that vertex no longer exists, for example after a chamfer right there, the mate gets the exclamation mark. In an imported body the position counts, because the body does not change."
+  },
+  "Accoppiamento coincidente": {
+   "t": "Coincident mate",
+   "a": [],
+   "d": "Two entities in the same place: two faces on the same plane, a vertex on a face, two edges on the same line, two vertices at the same point. Two circular edges: same center and same plane."
+  },
+  "Accoppiamento concentrico": {
+   "t": "Concentric mate",
+   "a": [],
+   "d": "Two round entities on the same axis: cylinders, cones, circular edges. Between two spheres: same center. With a vertex: the vertex lies on the axis."
+  },
+  "Accoppiamento parallelo": {
+   "t": "Parallel mate",
+   "a": [],
+   "d": "Two faces, two straight edges or axes, or a face and an edge, parallel to each other. It does not fix the distance."
+  },
+  "Accoppiamento perpendicolare": {
+   "t": "Perpendicular mate",
+   "a": [],
+   "d": "Two faces or two edges at 90°, or an edge perpendicular to a face."
+  },
+  "Accoppiamento a distanza": {
+   "t": "Distance mate",
+   "a": [],
+   "d": "Two entities at a given distance, in millimeters. Two faces also stay parallel. For two faces, Flip side chooses on which side the other entity lies."
+  },
+  "Accoppiamento ad angolo": {
+   "t": "Angle mate",
+   "a": [],
+   "d": "Two faces or two edges at a given angle: the angle is measured between the outward normals of the faces and between the directions of the edges. Between an edge and a face, 0° means the edge is parallel to the face."
+  },
+  "Inverti allineamento": {
+   "t": "Flip alignment",
+   "a": [
+    "alignment",
+    "flip side",
+    "flip angle"
+   ],
+   "d": "Chooses between the two solutions of the same mate: two faces facing each other or facing the same way, a pin turned one way or the other."
+  },
+  "Gradi di libertà dell'assieme": {
+   "t": "Assembly degrees of freedom",
+   "a": [
+    "under defined",
+    "(-)",
+    "defined",
+    "degrees of freedom"
+   ],
+   "d": "The movements a component still has: at most 6 (3 translations and 3 rotations). In the tree (-) means it still has some; without a sign it is defined, that is it no longer moves."
+  },
+  "Sposta parte": {
+   "t": "Move Component",
+   "a": [
+    "movement",
+    "rotate component",
+    "move component",
+    "drag"
+   ],
+   "d": "Moves a component with the mouse or with a finger, only in the degrees of freedom it has left. With the mouse just drag it; the command is for rotating and for the tablet."
+  },
+  "Autoverifica": {
+   "t": "Self-check",
+   "a": [
+    "self-test",
+    "self test"
+   ],
+   "d": "Rebuilds the test parts and compares volume, area, center of mass and overall size with the values calculated by hand. It is used to check that the program calculates correctly (allowed error: 1%)."
+  },
+  "Ingombro": {
+   "t": "Bounding box",
+   "a": [
+    "overall size",
+    "size"
+   ],
+   "d": "The maximum dimensions of the part along X, Y and Z: the smallest box that contains it."
+  },
+  "Messa in tavola": {
+   "t": "Drawing",
+   "a": [
+    "drawings",
+    "technical drawing"
+   ],
+   "d": "The 2D technical drawing obtained from the model: orthographic projection views, dimensions, title block. If the part changes, the drawing updates."
+  },
+  "Metodo E": {
+   "t": "Method E",
+   "a": [
+    "method e, first angle",
+    "first angle",
+    "first-angle projection",
+    "iso 5456-2"
+   ],
+   "d": "European projection method (first angle, ISO 5456-2): the top view goes below the front view, the left view goes on the right. The symbol in the title block is the truncated cone."
+  },
+  "Proiezioni ortogonali": {
+   "t": "Orthographic projections",
+   "a": [
+    "views",
+    "orthographic views"
+   ],
+   "d": "The views of the part obtained by looking at it perpendicularly from the front, from above, from the left… Each view shows two true dimensions."
+  },
+  "Linee nascoste": {
+   "t": "Hidden lines",
+   "a": [
+    "hidden edges",
+    "hidden lines (dashed)"
+   ],
+   "d": "The edges that cannot be seen because they are covered by the part, drawn with a dashed line (ISO 128)."
+  },
+  "Assonometria ombreggiata": {
+   "t": "Shaded isometric view",
+   "a": [
+    "shaded with edges",
+    "color view",
+    "shaded isometric view (with the part colors)"
+   ],
+   "d": "Check box of the drawing: the isometric view is drawn with filled faces and a light, like the \"Shaded With Edges\" style of SolidWorks. Each face has the color of the part in the 3D view, or the one written in the STEP or IGES file. The orthographic views stay as lines, as the standard requires. The colors are seen on screen, in print and in the SVG; the DXF stays as lines."
+  },
+  "Assi": {
+   "t": "Center lines",
+   "a": [
+    "centerlines",
+    "axis lines"
+   ],
+   "d": "The thin dash-dot lines that mark the axes of holes and cylindrical parts (ISO 128)."
+  },
+  "Sezione": {
+   "t": "Section",
+   "a": [
+    "section view (drawing)",
+    "hatch",
+    "hatching"
+   ],
+   "d": "View obtained by cutting the part with a plane: the cut parts are hatched at 45° (ISO 128-50). The cutting plane is shown with a line and two letters (A-A)."
+  },
+  "Quote di ingombro": {
+   "t": "Overall dimensions",
+   "a": [],
+   "d": "The dimensions of the maximum sizes (length, width, height) plus the diameters of the circles, added automatically."
+  },
+  "Cartiglio": {
+   "t": "Title block",
+   "a": [],
+   "d": "The box at the bottom right with title, author, date, scale, projection method and general tolerances (ISO 7200)."
+  },
+  "Scala": {
+   "t": "Scale",
+   "a": [],
+   "d": "The ratio between the measurements on the sheet and the real ones: 1:2 means half the true size, 2:1 double (standard scales ISO 5455)."
+  },
+  "Foglio": {
+   "t": "Sheet",
+   "a": [
+    "size",
+    "a4",
+    "a3",
+    "sheet size"
+   ],
+   "d": "The format of the drawing (A4, A3…) according to ISO 5457, with frame and margins."
+  },
+  "Tolleranze generali": {
+   "t": "General tolerances",
+   "a": [
+    "iso 2768-mk",
+    "iso 2768"
+   ],
+   "d": "The tolerances that apply to all dimensions without a written tolerance. ISO 2768-mK: medium class for sizes, class K for form and position."
+  },
+  "Esporta DXF": {
+   "t": "Export DXF",
+   "a": [
+    "dxf"
+   ],
+   "d": "Exchange format for AutoCAD and the other 2D CAD programs, with ISO layers and line types."
+  },
+  "Esporta SVG": {
+   "t": "Export SVG",
+   "a": [
+    "svg"
+   ],
+   "d": "Vector drawing at 1:1 scale on paper: it opens in the browser and in graphics programs."
+  },
+  "Esporta STL": {
+   "t": "Export STL",
+   "a": [
+    "stl",
+    "3d printing"
+   ],
+   "d": "The format for 3D printing: the solid described by many triangles."
+  },
+  "Salva PDF": {
+   "t": "Save PDF",
+   "a": [
+    "pdf",
+    "save pdf of the drawing",
+    "save pdf of the sketch",
+    "save pdf of the 3d view",
+    "pdf file"
+   ],
+   "d": "Creates a PDF file straight away, which opens and prints on any computer, tablet or phone. In the Drawing it saves the vector drawing on the real sheet (A4–A2) at 1:1 scale; in a sketch it saves the vector sketch on a landscape A4 with a standard scale (2:1, 1:1, 1:2…) written at the bottom; otherwise it saves the 3D view as it is on the screen (an image) on a landscape A4. It is in the Project menu and, in the Drawing, among the commands too."
+  },
+  "Esporta STEP": {
+   "t": "Export STEP",
+   "a": [
+    "export step (for other cad programs)",
+    "save as step",
+    "exported step"
+   ],
+   "d": "Project › Export STEP saves the part in a .step file that opens as a solid in SolidWorks, Inventor, Fusion, FreeCAD and the other 3D CAD programs, in millimeters. Planes, cylinders, cones, spheres and tori (holes, fillets, conical chamfers, spherical corners, revolves) arrive as true surfaces, with circle or ellipse edges: the other CAD program sees a real hole, with its diameter. Where two different surfaces cross (two cylinders of different diameter) the edge is a B-spline: there too the surfaces stay true."
+  },
+  "B-spline": {
+   "t": "B-spline",
+   "a": [
+    "bspline",
+    "b-spline edge",
+    "b-spline curve"
+   ],
+   "d": "A smooth curve defined by a few control points. In the STEP file it describes the edges that are not lines, circles or ellipses, for example the edge between two cylinders of different diameter."
+  },
+  "Superficie vera": {
+   "t": "True surface",
+   "a": [
+    "true surfaces",
+    "analytic surface",
+    "true cylinder"
+   ],
+   "d": "Surface written with its formula (plane, cylinder, cone, sphere, torus) instead of as many flat faces: a Ø10 hole stays a cylinder of radius exactly 5. Banco CAD calculates volume and mass on the true surfaces, but on the screen it shows them faceted; in the exported STEP file it writes them true, so the other CAD program measures exact diameters and volumes."
+  },
+  "Importa STL o OBJ": {
+   "t": "Import STL or OBJ",
+   "a": [
+    "imported",
+    "imported body",
+    "imported file",
+    "import"
+   ],
+   "d": "Brings into Banco CAD a part made with another program (Project › Import STL or OBJ). The \"Imported\" feature appears in the tree: the part can be seen, measured and put on a drawing, and its volume and mass are calculated. The original dimensions cannot be edited, but you can draw sketches and add features on it (cuts, holes, extrusions)."
+  },
+  "STL": {
+   "t": "STL",
+   "a": [
+    "stl file",
+    ".stl"
+   ],
+   "d": "Format that describes only the surface of the part, with many triangles. It is the 3D printing format; it exists in a binary version (more compact) and a text version (ASCII). It does not contain the unit of measurement."
+  },
+  "OBJ": {
+   "t": "OBJ",
+   "a": [
+    "obj file",
+    ".obj"
+   ],
+   "d": "Text format that describes the surface of the part with points and faces (triangles or polygons). Widely used in 3D graphics; like STL it does not contain the unit of measurement."
+  },
+  "Corpo a faccette": {
+   "t": "Faceted body",
+   "a": [
+    "facets",
+    "mesh",
+    "triangles",
+    "mesh body"
+   ],
+   "d": "Solid described by many flat triangles instead of exact surfaces: a cylinder becomes a prism with many sides. The more triangles there are, the more faithful the shape. Where neighboring facets differ by less than 30° the edge is not drawn, so curved surfaces look smooth."
+  },
+  "Unità del file": {
+   "t": "File units",
+   "a": [
+    "units"
+   ],
+   "d": "The unit in which the coordinates of the imported file are written (millimeters, centimeters, meters, inches). STL and OBJ files do not state it: if the part arrives 10 times smaller or larger than expected, the chosen unit is wrong. In STEP and IGES files, instead, the unit is written in the file and is converted to millimeters by itself."
+  },
+  "Asse Z del file verso l'alto": {
+   "t": "File Z axis up",
+   "a": [
+    "z up",
+    "z axis"
+   ],
+   "d": "In Banco CAD (as in SolidWorks) the vertical is the Y axis; many 3D printing programs use Z instead. With this check box the Z of the file becomes the vertical and the part does not arrive lying down."
+  },
+  "Opzioni di importazione": {
+   "t": "Import options",
+   "a": [],
+   "d": "The choices needed to read the file correctly: the unit of measurement and which axis points up. They can be changed at any time by double-clicking \"Imported\" in the tree."
+  },
+  "Corpo chiuso": {
+   "t": "Closed body",
+   "a": [
+    "body not closed",
+    "open body",
+    "free edges"
+   ],
+   "d": "A faceted body is closed when every triangle side is shared with exactly one other triangle: then it encloses a volume. If there are free sides (holes in the surface) volume and mass are not reliable and the features added on it may fail."
+  },
+  "Inserisci DXF o DWG": {
+   "t": "Insert DXF or DWG",
+   "a": [
+    "insert dxf",
+    "insert dwg",
+    "import dxf",
+    "import dwg",
+    "import dxf (sketch)",
+    "import dxf or dwg (sketch)",
+    "import a dxf",
+    "import a dwg"
+   ],
+   "d": "Brings into a sketch the lines, arcs and circles of a 2D drawing made with another program (AutoCAD, DraftSight, LibreCAD, the SolidWorks drawing…). Outside a sketch, or from Project › Import DXF or DWG (sketch), it creates a new sketch on the chosen plane; inside a sketch it adds the geometry to the open one. The entities arrive without dimensions, so blue (under defined): they can be extruded or revolved straight away, or dimensioned. Texts and dimensions of the file can arrive as Drawing background."
+  },
+  "Sfondo del disegno": {
+   "t": "Drawing background",
+   "a": [
+    "background",
+    "reference background",
+    "texts and dimensions of the file",
+    "remove the background",
+    "show the background"
+   ],
+   "d": "The texts, dimensions, leaders, hatches, geometric tolerances and tables of a DXF or DWG file, shown in gray under the sketch, only to look at: they are used to read measurements and notes while you dimension. They are not entities: they cannot be selected, you cannot snap to them, they do not change the contours or the state of the sketch. The dimensions of the file do not drive the shape: the measurement must be set again with Smart Dimension. It is shown only while the sketch is being edited, not in the PDF, the 3D part or the STEP file. In the sketch panel: Show the background check box and Remove the background button. Texts smaller than 3 pixels on the screen are not drawn: they appear when you zoom in. The texts use the program's font, so their width may differ a little from AutoCAD's."
+  },
+  "Tratteggio del disegno": {
+   "t": "Drawing hatch",
+   "a": [
+    "hatch",
+    "file hatches",
+    "solid fill",
+    "light fill",
+    "hatch pattern"
+   ],
+   "d": "An area of the drawing filled with a pattern of lines or with a solid color (HATCH in the DXF or DWG file). In the background it is shown in light gray, with the pattern and the holes of the file. A pattern that is too dense (more than 30,000 strokes, or 200,000 in the whole drawing) and solid fills are shown as a light fill: a pale color, without lines."
+  },
+  "Tolleranza geometrica": {
+   "t": "Geometric tolerance",
+   "a": [
+    "geometric tolerances",
+    "tolerance",
+    "feature control frame",
+    "gd&t"
+   ],
+   "d": "The frame that gives the form or position tolerance (ISO 1101): symbol, value, datums. The file gives only the content, so in the background the frame is rebuilt, 2 times as tall as the text: position and content are those of the file, the widths may differ a little from AutoCAD. The symbols are drawn with strokes."
+  },
+  "Richiamo multiplo": {
+   "t": "Multileader",
+   "a": [
+    "mleader",
+    "multi-leader"
+   ],
+   "d": "A note with one or more leader lines (MULTILEADER in the DXF or DWG file): arrow, lines, landing and text or block. In the background the arrow is always filled, even if in the file it is of another type; spline leaders are shown as broken lines."
+  },
+  "Tabella del disegno": {
+   "t": "Drawing table",
+   "a": [
+    "tables",
+    "acad_table",
+    "file table"
+   ],
+   "d": "An AutoCAD table (ACAD_TABLE), for example a parts list. In the background it is shown as in the DXF file and in DWG files up to 2007. In DWG files saved from 2010 onward the LibreDWG reader does not give the position of the table: it is left out, counted among the skipped items in the message. To get it, save the drawing in AutoCAD as DXF."
+  },
+  "File DXF": {
+   "t": "DXF file",
+   "a": [
+    ".dxf",
+    "dxf format"
+   ],
+   "d": "Exchange format for 2D drawings, born with AutoCAD and read by almost all CAD programs. Here text (ASCII) DXF files are read: lines, arcs, circles, polylines (with curved segments too), ellipses, splines and blocks. Ellipses and splines become arcs tangent to each other (biarcs). Texts, dimensions and hatches are skipped. You can also choose a .zip with the DXF inside. See also DWG file."
+  },
+  "File DWG": {
+   "t": "DWG file",
+   "a": [
+    "dwg",
+    ".dwg",
+    "dwg format",
+    "libredwg"
+   ],
+   "d": "The format of AutoCAD drawings, from version R1.4 to 2018 (the newer ones still use the 2018 format; if it changes, it is tried anyway). It opens directly: the free LibreDWG reader turns it into a DXF inside the page, without sending the file anywhere, then the drawing follows the same path as a DXF file, with preview and layers. Texts and dimensions can arrive as Drawing background; hatches are skipped, and the final message says how many there are. Splines arrive with only their fit points: the curve rebuilt here can differ from AutoCAD's by a few tenths of a millimeter per meter (in the tests 0.1 and 0.3 mm/m). The first reading takes a moment, meanwhile the page stays free."
+  },
+  "Convertitore DWG → DXF": {
+   "t": "DWG → DXF Converter",
+   "a": [
+    "converter",
+    "convert a dwg",
+    "save a dxf"
+   ],
+   "d": "Separate free page that turns AutoCAD drawings (.dwg) into DXF files to save: it is used to pass them to other programs or to convert many at once. To open a DWG here it is not needed: you choose it directly (see DWG file). It uses the same free reader, LibreDWG, and works in the browser, without sending the file anywhere. It shows the preview of each drawing with its overall size (what Banco CAD will read) and can save all the DXF files in a single .zip, from which Banco CAD lets you choose the drawing. It starts with little memory (16 MB) and takes more only for large drawings, so it also works on tablets."
+  },
+  "Ellisse": {
+   "t": "Ellipse",
+   "a": [
+    "ellipses"
+   ],
+   "d": "\"Flattened\" closed curve, like a circle seen at an angle: it has a major semi-axis a and a minor one b; the area is π·a·b. In DXF files it can be whole or only a part (elliptical arc). In Banco CAD, as in many CAD programs, the imported ellipse becomes a chain of tangent arcs (biarcs) very close to the true curve."
+  },
+  "Spline": {
+   "t": "Spline",
+   "a": [
+    "nurbs",
+    "spline curve",
+    "b-spline"
+   ],
+   "d": "Free, smooth curve defined by a few points: the control points \"pull\" it toward themselves (NURBS spline, possibly with weights), or the curve passes exactly through the fit points. It is used for profiles not made of lines and arcs (car bodies, cams, templates). Imported from a DXF it becomes a chain of tangent arcs (biarcs)."
+  },
+  "Biarco": {
+   "t": "Biarc",
+   "a": [
+    "biarcs",
+    "tangent arcs"
+   ],
+   "d": "Pair of arcs tangent to each other, which starts and ends with the same direction as the curve to imitate. With many biarcs one after the other an ellipse or a spline is followed without corners: each biarc goes as far as possible along the curve, with the joining point of the two arcs chosen to stay closer to the curve, as long as the deviation stays below 1/10,000 of the smallest dimension of the curve (a 100 × 60 ellipse becomes about 36 arcs). The spline always passes exactly through its fit points. In the part the faces of these arcs look like a single surface, without lines between them, and their centers do not appear in the sketch."
+  },
+  "Scostamento dalla curva": {
+   "t": "Curve deviation",
+   "a": [
+    "deviation",
+    "curve tolerance"
+   ],
+   "d": "The largest distance between the true curve (ellipse or spline of the DXF file) and the arcs that replace it. The import message says how much it is, in millimeters: usually a few thousandths, so volume and mass stay exact well within 1%."
+  },
+  "Layer": {
+   "t": "Layer",
+   "a": [
+    "layers"
+   ],
+   "d": "In a DXF (or DWG) drawing each entity lies on a \"layer\", as on a transparent sheet: for example PART, DIMENSIONS, TITLEBLOCK. In the DXF import window you choose with the check boxes which layers to import; those turned off or frozen in the file start unchecked. The entities of a block lying on layer \"0\" take the layer of the inserted block, as in AutoCAD."
+  },
+  "Tipo di linea": {
+   "t": "Line type",
+   "a": [
+    "dash-dot",
+    "dashed",
+    "linetype"
+   ],
+   "d": "The way a line is drawn: continuous, dashed (hidden edges) or dash-dot (axes). In the DXF import, dash-dot lines become centerlines, dashed ones construction geometry; continuous ones form the contours."
+  },
+  "File importato": {
+   "t": "Imported file",
+   "a": [],
+   "d": "The name and format of the file the body comes from, with the number of triangles (for STEP and IGES: of faces of the original model), the flat faces recognized and the overall size. The flat faces (made of several triangles on the same plane) can be used for sketches, like the faces of a part drawn here."
+  },
+  "Corpi di un assieme": {
+   "t": "Bodies of an assembly",
+   "a": [
+    "choice of bodies",
+    "body selection"
+   ],
+   "d": "A STEP file can contain several separate solids, for example the pieces of an assembly. After reading, Banco CAD lists them with the number of faces and the volume: with the check boxes you choose which ones to import. With the check box \"One «Imported» for each body\" (checked) each body arrives in its own feature, with the name of the body if the file has it; without it, they arrive together in a single \"Imported\". In an IGES file the surfaces that touch form a single body."
+  },
+  "Colori del file": {
+   "t": "File colors",
+   "a": [
+    "step colors",
+    "face colors"
+   ],
+   "d": "The colors that the original program wrote in the STEP or IGES file (of the part or of single faces). Banco CAD shows them on the faces of the imported body; they are removed with the \"File colors\" check box (double-click \"Imported\"). They change neither the material nor the mass."
+  },
+  "Importa STEP o IGES": {
+   "t": "Import STEP or IGES",
+   "a": [
+    "import step",
+    "import iges",
+    "import a step",
+    "import an iges"
+   ],
+   "d": "Brings into Banco CAD a part, or a small assembly, made with another CAD program (Project › Import STEP or IGES). The file is read from its true surfaces; the \"Imported\" feature appears in the tree: the part can be seen, measured and put on a drawing, its volume and mass are calculated, and sketches and features can be added on it. Curved surfaces are divided into very dense triangles: the error on volume, area and mass stays well below 1%. The unit of measurement is read from the file."
+  },
+  "STEP": {
+   "t": "STEP",
+   "a": [
+    "step file",
+    ".step",
+    ".stp",
+    "ap203",
+    "ap214",
+    "iso 10303"
+   ],
+   "d": "Exchange format for 3D models (ISO 10303 standard): it describes solids with their exact surfaces (planes, cylinders, cones, spheres, free-form surfaces) and the unit of measurement. All CAD programs write it; in SolidWorks: File › Save As › STEP AP214. It is the best format to pass a part from one program to another."
+  },
+  "IGES": {
+   "t": "IGES",
+   "a": [
+    "iges file",
+    ".iges",
+    ".igs"
+   ],
+   "d": "Exchange format older than STEP (born in the 1980s): it describes the surfaces of the part, often one by one without saying how they are joined. Banco CAD stitches them together; if some gap remains, the body-not-closed warning appears. When possible, STEP is better."
+  },
+  "Facce del modello d'origine": {
+   "t": "Faces of the original model",
+   "a": [
+    "true faces",
+    "true face",
+    "b-rep",
+    "true surfaces"
+   ],
+   "d": "The faces of the part as the original program created them: a flat face, the wall of a hole, a fillet. In STEP and IGES files Banco CAD knows them: the edge is drawn only where one face ends and another begins, even between two tangent faces (like the tangent edges of SolidWorks), while the seam of a cylinder is not shown."
+  },
+  "OpenCascade": {
+   "t": "OpenCascade",
+   "a": [
+    "open cascade",
+    "occt"
+   ],
+   "d": "Free library (LGPL license) that reads the solids of STEP and IGES files; FreeCAD uses it too. In Banco CAD it is contained in the page, compressed, and gets ready at the first import (a few seconds): it works without internet too."
+  }
+ }
+}
