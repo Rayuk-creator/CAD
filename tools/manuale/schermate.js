@@ -3,7 +3,7 @@ const fs=require('fs');const IMG=process.argv[2];const doc=fs.readFileSync(IMG+'
 (async()=>{const b=await chromium.launch({executablePath:process.env.CHROMIUM_PATH,args:['--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist']});
 const c=await b.newContext({viewport:{width:1280,height:780},deviceScaleFactor:1.5,colorScheme:'light'});const page=await c.newPage();
 page.on('pageerror',e=>console.log('ERR',e.message));
-await page.goto('file://'+require('path').resolve(__dirname,'../../index.html'));await page.waitForFunction(()=>window.App&&App.r);await page.waitForTimeout(800);
+await page.goto('file://'+require('path').resolve(__dirname,'../../index.html')+(process.env.MANUALE_LINGUA==='en'?'?lang=en':''));await page.waitForFunction(()=>window.App&&App.r);await page.waitForTimeout(800);
 const shot=async(n,p=page)=>{await p.addStyleTag({content:'.toast,#toast{display:none!important}'}).catch(()=>{});await p.waitForTimeout(300);await p.screenshot({path:IMG+'/'+n+'.png'});console.log('shot',n);};
 const load=async()=>{await page.evaluate(d=>{App.change(()=>{App.doc=JSON.parse(d);App.sel=[];});App.setCmdTab('features');App.r.setView(GLView.Renderer.viewQ('iso'));},doc);await page.waitForTimeout(700);await page.evaluate(()=>App.r.fit());await page.waitForTimeout(500);};
 const T=async(n,f)=>{try{await f();}catch(e){console.log('FALLITO',n,e.message.split('\n')[0]);await page.evaluate(()=>{try{App.closeModal&&App.closeModal();if(App.pm)App.closePM(false);}catch(x){}});}};
@@ -32,7 +32,7 @@ await T('elica',async()=>{await page.evaluate(()=>{const s=Sketch.newSketch();s.
 await c.close();
 // assieme
 const c2=await b.newContext({viewport:{width:1280,height:780},deviceScaleFactor:1.5,colorScheme:'light'});const p=await c2.newPage();p.on('pageerror',e=>console.log('ERR',e.message));
-await p.goto('file://'+require('path').resolve(__dirname,'../../index.html'));await p.waitForFunction(()=>window.App&&App.r);await p.waitForTimeout(600);
+await p.goto('file://'+require('path').resolve(__dirname,'../../index.html')+(process.env.MANUALE_LINGUA==='en'?'?lang=en':''));await p.waitForFunction(()=>window.App&&App.r);await p.waitForTimeout(600);
 await p.evaluate(()=>{const mk=(name,fill,depth)=>{const d=Model.newDoc();d.name=name;const s=Sketch.newSketch();const pt=(x,y)=>{const id='p'+s.next++;s.ents.push({id,t:'pt',x,y});return id;};fill(s,pt);const a=(f)=>{f.id=Model.uid(d,'F');f.name=Model.defaultName(d,f.type);d.features.push(f);return f.id;};a({type:'extrude',sketch:a({type:'sketch',plane:{kind:'std',id:'top'},sk:s}),end:'blind',depth});return d;};
 const circ=(s,pt,x,y,r)=>{const c=pt(x,y);s.ents.push({id:'c'+s.next++,t:'ci',c,r});};const rect=(s,pt)=>{const P=[[0,0],[80,0],[80,50],[0,50]].map(([x,y])=>pt(x,y));for(let i=0;i<4;i++)s.ents.push({id:'l'+s.next++,t:'ln',a:P[i],b:P[(i+1)%4]});};
 const a=mk('Piastra',(s,pt)=>{rect(s,pt);circ(s,pt,40,25,10);},10),bb=mk('Perno',(s,pt)=>circ(s,pt,0,0,10),30);a.material='s235';bb.material='al6082';

@@ -3,8 +3,9 @@ const IMG=process.argv[2];
 (async()=>{const b=await chromium.launch({executablePath:process.env.CHROMIUM_PATH,args:['--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist']});
 const c=await b.newContext({viewport:{width:1280,height:780},deviceScaleFactor:1.5,colorScheme:'light'});const page=await c.newPage();
 page.on('pageerror',e=>console.log('ERR',e.message));
-await page.goto('file://'+require('path').resolve(__dirname,'../../index.html'));await page.waitForFunction(()=>window.App&&App.r);await page.waitForTimeout(800);
+await page.goto('file://'+require('path').resolve(__dirname,'../../index.html')+(process.env.MANUALE_LINGUA==='en'?'?lang=en':''));await page.waitForFunction(()=>window.App&&App.r);await page.waitForTimeout(800);
 const shot=async n=>{await page.addStyleTag({content:'.toast,#toast{display:none!important}'});await page.waitForTimeout(300);await page.screenshot({path:IMG+'/'+n+'.png'});console.log('shot',n);};
+const tr=s=>page.evaluate(s=>window.I18N&&I18N.en?I18N.t(s):s,s); // testo come lo mostra la pagina
 const helpers=()=>page.evaluate(()=>{window.__scr=(u,v)=>{const F=Sketcher.frame();const p=App.r.project(Geom.to3(F,[u,v]));const c=document.querySelector('.view canvas').getBoundingClientRect();return [c.left+p[0],c.top+p[1]];};});
 const click=async(u,v)=>{const [x,y]=await page.evaluate(([u,v])=>__scr(u,v),[u,v]);await page.mouse.move(x,y);await page.waitForTimeout(40);await page.mouse.click(x,y);await page.waitForTimeout(100);};
 const tool=async id=>{if(await page.evaluate(id=>App.mode==='sketch'&&Sketcher.session().tool===id,id))return;await page.click(`#cmdBar [data-cmd="${id}"]`);await page.waitForTimeout(100);};
@@ -16,7 +17,7 @@ const atW=async w=>{const [x,y]=await page.evaluate(q=>{const p=App.r.project(q)
 await shot('schermo-vuoto');
 // 1 schizzo
 await page.evaluate(()=>App.setCmdTab('sketch'));
-await page.locator('.tnode',{hasText:'Piano superiore'}).first().click();await tool('sketch');
+await page.locator('.tnode',{hasText:await tr('Piano superiore')}).first().click();await tool('sketch');
 await page.waitForFunction(()=>App.mode==='sketch');await page.waitForTimeout(1300);await helpers();
 await tool('rect');await click(0,0);await click(70,40);await page.keyboard.press('Escape');await page.waitForTimeout(100);
 console.log('stato dopo rettangolo',await stat());await shot('es-1-rettangolo');
@@ -25,7 +26,7 @@ await click(80,20);await click(92,20);await val(50);
 console.log('stato dopo quote',await stat());await page.keyboard.press('Escape');await shot('es-2-quote');
 // 2 estrusione
 await page.evaluate(()=>App.setCmdTab('features'));await tool('extrude');await page.waitForTimeout(300);
-const dep=page.locator('.pm-body .row',{hasText:'Profondità'}).first().locator('input');await dep.fill('10');await dep.press('Tab');await page.waitForTimeout(300);
+const dep=page.locator('.pm-body .row',{hasText:await tr('Profondità')}).first().locator('input');await dep.fill('10');await dep.press('Tab');await page.waitForTimeout(300);
 await shot('es-3-estrusione');await page.click('.pm-ok');await page.waitForFunction(()=>!App.pm);await page.waitForTimeout(400);
 console.log('V estr',await props());await page.evaluate(()=>App.r.fit());await page.waitForTimeout(500);await shot('es-4-piastra');
 // 3 schizzo sulla faccia alta, cerchio
@@ -47,7 +48,7 @@ await page.click('.pm-ok');await page.waitForFunction(()=>!App.pm);await page.wa
 // 5 raccordi
 await page.evaluate(()=>App.r.setView(GLView.Renderer.viewQ('iso')));await page.waitForTimeout(700);await page.evaluate(()=>App.r.fit());await page.waitForTimeout(600);
 await tool('fillet');await page.waitForTimeout(300);
-const rr=page.locator('.pm-body .row',{hasText:'Raggio'}).first().locator('input');await rr.fill('5');await rr.press('Tab');
+const rr=page.locator('.pm-body .row',{hasText:await tr('Raggio')}).first().locator('input');await rr.fill('5');await rr.press('Tab');
 for(const w of [[0,5,0],[80,5,0],[80,5,-50]]){await atW(w);console.log(w,await page.evaluate(()=>App.doc.features[App.doc.features.length-1].edges.length));}
 await shot('es-7-raccordo');
 {const cv=await page.evaluate(()=>{const c=document.querySelector('.view canvas').getBoundingClientRect();return [c.left,c.top,c.width,c.height]});const y=cv[1]+cv[3]-60,x=cv[0]+cv[2]-120;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x-220,y-10,{steps:12});await page.mouse.up();await page.waitForTimeout(500);}

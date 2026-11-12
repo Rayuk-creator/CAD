@@ -708,7 +708,7 @@
    ],
    "tips": [
     "A screw in a tapped hole or in a nut shows up in Interference Detection marked «thread»: this is normal, because the thread is only indicated.",
-    "On the drawing, threads are drawn with the thin lines of ISO 6410. In section views they are not drawn yet.",
+    "On the drawing, threads are drawn with the thin lines of ISO 6410, in section views too: there the hatching goes up to the thick line.",
     "A countersunk screw rests on its cone: use Coincident between the top face of the head and the face of the part, with a countersunk hole of the same size."
    ]
   },
@@ -727,7 +727,7 @@
     "If two mates contradict each other, the message is red and ✓ does not confirm. A mate that becomes impossible after a change stays in the tree with an exclamation mark.",
     "[[Piani e origine]]: in the panel choose the component and press the plane or **Origin**. No faces are needed: a part can be placed on the plane of another.",
     "When you change the sizes of a part, a chosen [[Vertice dell'accoppiamento|vertex]] is found again by itself. The exclamation mark stays only if it really disappears, for example after a chamfer right on that vertex.",
-    "Among the curved faces of a STEP file, cylinders, cones and spheres are recognized. The others (a torus, a free-form surface) cannot be used: choose an edge or a vertex."
+    "Among the curved faces of a STEP file, cylinders, cones, spheres and tori are recognized. A free-form surface can only be used with **Tangent**, against a plane or a sphere: for the other mates choose an edge or a vertex."
    ]
   },
   "sposta": {
@@ -770,7 +770,7 @@
    "tips": [
     "The real positions do not change: mass and interferences are calculated on the assembled machine.",
     "In the exploded view the mouse turns the view. Mate and Move Component collapse the view by themselves.",
-    "The direction is an axis of the assembly: it is not chosen from a face.",
+    "For a slanted direction press **Direction from a face** and click a face: flat, it goes along the normal; cylindrical or conical, along the axis.",
     "Export STEP and Save PDF work on what you see."
    ]
   },
@@ -784,7 +784,7 @@
    ],
    "tips": [
     "Each balloon number is the same as its row in the bill of materials. Row 1 sits right above the header, as the ISO 7573 standard requires.",
-    "The balloons place themselves along the sides of the isometric view and cannot be dragged yet. Choose the scale with the isometric view already in place.",
+    "The balloons place themselves along the sides of the isometric view. To move one, drag it with the mouse: the line that links it to the part follows it. Choose the scale with the isometric view already in place.",
     "In the section all the components have the same hatch."
    ]
   },

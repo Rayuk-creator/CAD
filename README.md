@@ -109,7 +109,9 @@ Linea, rettangolo e rettangolo centrale, cerchio, archi (centro-estremi, 3 punti
 
 - **Estrusione base** e **Taglio estruso**: cieca, passante tutto, piano medio, due direzioni, **sformo**.
 - **Rivoluzione base** e **Taglio rivoluzione** per i pezzi da tornio.
-- **Estrusione con percorso** e **Taglio con percorso** (sweep) lungo linee e archi tangenti.
+- **Estrusione con percorso** e **Taglio con percorso** (sweep) lungo linee e archi tangenti, oppure lungo un'elica: molle e filetti veri.
+- **Estrusione con loft** e **Taglio con loft**: un solido che passa per due o più profili su piani diversi (pale svergolate, tramogge, passaggi da quadro a tondo).
+- **Elica e spirale**: la curva per molle, filetti e spirali, da un cerchio dello schizzo.
 - **Nervatura** da una linea aperta, prolungata da sola fino al pezzo.
 - **Creazione guidata fori** secondo le norme: passanti per vite (ISO 273), lamati (DIN 974-1), svasati (ISO 15065), filettati (foro di preparazione), da M3 a M20.
 - **Raccordo** e **Smusso** degli spigoli, lavorati **tutti insieme** come in SolidWorks: dove due raccordi si incontrano si raccordano tra loro, dove se ne incontrano tre ad angolo retto l'angolo diventa una porzione di sfera. Si raccordano anche gli archi (asole) e il bordo di un'ellisse o di una spline importata, che con un clic si sceglie tutto. Con la **propagazione tangente** (come in SolidWorks) un clic su uno spigolo lavora anche quelli che lo continuano senza angolo, per esempio tutto il bordo di un'asola.
@@ -137,20 +139,21 @@ Proprietà di massa (volume, area, massa, baricentro, ingombro) calcolate sulle 
 
 ![Tavola della flangia: viste in metodo E, quote, cartiglio](docs/img/messa-in-tavola.png)
 
-Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nascoste, assi, viste in sezione tratteggiate, quote (anche automatiche), cartiglio, fogli da A4 ad A2 con scale unificate. L'assonometria si può avere **ombreggiata**, con i colori del pezzo (anche quelli di un file STEP). **Salva PDF** (un file PDF vettoriale della tavola sul foglio vero, in scala 1:1), stampa in scala, esportazione **SVG** e **DXF** (per AutoCAD). Dal menu Progetto anche **Salva PDF** dello schizzo (vettoriale, con la scala unificata più grande che lo fa entrare in un A4) o della vista 3D, l'esportazione **STEP** del pezzo per aprirlo in SolidWorks, Inventor, Fusion o FreeCAD (solido in millimetri; le superfici curve divise in facce piane) e l'esportazione **STL** per la stampa 3D.
+Proiezioni ortogonali con il **metodo E** (primo diedro, ISO 5456-2), linee nascoste, assi, viste in sezione tratteggiate, quote (anche automatiche), cartiglio, fogli da A4 ad A2 con scale unificate. L'assonometria si può avere **ombreggiata**, con i colori del pezzo (anche quelli di un file STEP). **Salva PDF** (un file PDF vettoriale della tavola sul foglio vero, in scala 1:1), stampa in scala, esportazione **SVG** e **DXF** (per AutoCAD). Dal menu Progetto anche **Salva PDF** dello schizzo (vettoriale, con la scala unificata più grande che lo fa entrare in un A4) o della vista 3D, l'esportazione **STEP** del pezzo per aprirlo in SolidWorks, Inventor, Fusion o FreeCAD (solido in millimetri, con le superfici vere: piani, cilindri, coni, sfere e tori) e l'esportazione **STL** per la stampa 3D.
 
 ## Guida e glossario
 
-**Manuale d'uso in PDF, da scaricare e stampare:** [Manuale-Banco-CAD.pdf](https://rayuk-creator.github.io/CAD/docs/Manuale-Banco-CAD.pdf) (A4, 60 pagine circa: esercizio guidato, tutti i comandi, glossario).
+**Manuale d'uso in PDF, da scaricare e stampare:** [Manuale-Banco-CAD.pdf](https://rayuk-creator.github.io/CAD/docs/Manuale-Banco-CAD.pdf) (A4, 64 pagine: esercizio guidato, tutti i comandi, glossario). In inglese: [Manual-Banco-CAD.pdf](https://rayuk-creator.github.io/CAD/docs/Manual-Banco-CAD.pdf), con le schermate in inglese.
 
 ![Guida «Come si fa»: raccordo e smusso degli spigoli](docs/img/guida.png)
 
-- **Guida** (pulsante in alto): 60 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
-- **Glossario**: oltre 190 termini spiegati in parole semplici (comandi, relazioni, opzioni, norme). La piccola **ⓘ** accanto ai titoli dei pannelli apre la spiegazione della voce.
+- **Guida** (pulsante in alto): 66 argomenti «come si fa», con i passi numerati, i consigli e i termini. **Mostrami dove** apre la scheda giusta e fa lampeggiare il comando.
+- **Glossario**: 233 termini spiegati in parole semplici (comandi, relazioni, opzioni, norme). La piccola **ⓘ** accanto ai titoli dei pannelli apre la spiegazione della voce.
+- Guida, Glossario e manuale ci sono anche in inglese.
 
 ## Calcoli verificati
 
-Ogni calcolo del programma è controllato da prove automatiche: oltre 120 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, su archi, sul bordo di ellissi e spline e con la propagazione tangente, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 14 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, assiemi con colori, file danneggiati), e 14 rileggono gli STEP esportati dal Banco CAD: con le superfici vere il volume riletto è quello esatto (sfera, cono, tubo, piastra forata).
+Ogni calcolo del programma è controllato da prove automatiche: oltre 120 pezzi di prova (estrusioni, rivoluzioni, tagli, raccordi e smussi anche su più spigoli, su archi, sul bordo di ellissi e spline e con la propagazione tangente, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL, OBJ, STEP e IGES, schizzi importati da DXF anche con ellissi e spline, schizzi quotati) vengono ricostruiti e il loro volume, area, baricentro e ingombro sono confrontati con i valori calcolati a mano con le formule della geometria. L'errore ammesso è l'**1 %**; oggi è praticamente zero. Altre 51 prove leggono con il lettore vero file STEP e IGES scritti apposta (blocchi, cilindro, piastra forata, unità diverse, assiemi con colori, file danneggiati); 21 di queste rileggono gli STEP esportati dal Banco CAD: con le superfici vere il volume riletto è quello esatto (sfera, cono, tubo, piastra forata).
 
 Le stesse prove si possono lanciare dentro il programma: **Valuta › Autoverifica**.
 
@@ -164,8 +167,9 @@ Il programma è un solo file, `index.html` (circa 9 MB), con HTML, CSS e JavaScr
 npm install
 npx playwright install chromium   # solo la prima volta
 npm test                          # tutte le prove
-npm run test:kernel               # solo i calcoli (178 + 35 prove STEP/IGES e STEP esportati + 21 del lettore e del convertitore DWG, circa un minuto)
-npm run test:ui                   # solo l'interfaccia in Chromium (52 prove)
+npm run test:kernel               # solo i calcoli (342 + 51 prove STEP/IGES e STEP esportati + 22 del lettore e del convertitore DWG + 12 della lingua, circa un minuto)
+npm run test:ui                   # solo l'interfaccia in Chromium (100 prove)
+npm run test:lingua               # frasi dell'interfaccia senza traduzione inglese
 ```
 
 Se hai già un Chromium installato puoi indicarlo con `CHROMIUM_PATH=/percorso/chrome npm run test:ui`. In caso di errore, le immagini di controllo finiscono in `tests/output/`.
@@ -180,6 +184,9 @@ tests/pdfcheck.py     rilegge i PDF salvati con pdfplumber (Python) e ne dà le 
 tests/step.test.js    prove del lettore STEP/IGES vero e degli STEP esportati (riletti con OpenCascade)
 tests/stepgen.js      scrive piccoli file STEP di prova (igesgen.js: IGES)
 tests/dwg.test.js     prove del Convertitore DWG → DXF (DWG da R11 a 2018, confronto con DXF di riferimento)
+tests/lingua.test.js  prove della traduzione inglese
+tools/traduzione/     traduzione inglese: dizionario, Glossario e Guida (incorpora.js li mette nella pagina)
+tools/manuale/        programmi che rifanno i manuali PDF (fai.sh; con en quello inglese)
 tools/incorpora-occt.js  inserisce o aggiorna il lettore STEP/IGES nella pagina
 tools/copia-lettore-dwg.js  copia nella pagina il lettore DWG del Convertitore
 tools/incorpora-caratteri.js  inserisce o aggiorna i caratteri IBM Plex nelle due pagine
