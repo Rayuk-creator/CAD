@@ -635,6 +635,73 @@ T('Ambito funzione: la serie di un taglio lavora sugli stessi corpi', () => { co
 // due blocchi sovrapposti: il foro passante lavora su uno solo, l'altro resta pieno
 T('Ambito funzione: anche il foro lavora solo sul corpo scelto: Ø8 su 1000, area del cerchio × 10', () => { const d = D0('c'); const a = blk(d, 0, 0, 10, 10, 10); blk(d, 0, 0, 10, 10, 10, false); const b = SB(); b.pt(5, 5, { hole: true }); const s = sketch(d, face(d, nearW([0, 1, 0], 10)), b); feat(d, { type: 'hole', sketch: s, kind: 'simple', dia: 8, end: 'through', scope: [a] }); return d; }, { V: 2000 - Math.PI * 16 * 10 });
 
+/* ---------- elica e spirale, estrusione con percorso lungo la curva ---------- */
+// cerchio sul piano superiore (asse Y), profilo sul piano frontale (contiene l'asse): il profilo gira attorno all'asse,
+// quindi il volume è area × strada del baricentro attorno all'asse (Pappo-Guldino): salire non aggiunge volume
+const planeAt = (d, off, base = 'top') => ({ kind: 'plane', id: feat(d, { type: 'plane', base: STD(base), offset: off }) });
+const helixDoc = (R, cv, prof, type = 'sweep', pre, plane = STD('top')) => {
+  const d = pre ? pre() : D0('e'); const a = SB(); a.circle(0, 0, R); const sa = sketch(d, typeof plane === 'function' ? plane(d) : plane, a);
+  const c = feat(d, { type: 'curve', sketch: sa, ...cv });
+  const b = SB(); prof(b); const sb = sketch(d, STD('front'), b); feat(d, { type, sketch: sb, curve: c }); return d;
+};
+T('Molla a elica: filo Ø4 su Ø40, passo 10, 5 giri: π·2²·2π·20·5', () => helixDoc(20, { def: 'pr', pitch: 10, revs: 5 }, b => b.circle(20, 0, 2)),
+  { V: PI * 4 * 2 * PI * 20 * 5, C: [0, 25, 0], bb: [[-22, -2, -22], [22, 52, 22]] });
+T('Molla a elica data con altezza 30 e 4 rivoluzioni (passo 7,5), filo quadrato 3×3', () => helixDoc(15, { def: 'hr', height: 30, revs: 4 }, b => b.rect(13.5, -1.5, 16.5, 1.5)),
+  { V: 9 * 2 * PI * 15 * 4, bb: [[-16.5, -1.5, -16.5], [16.5, 31.5, 16.5]] });
+T('Molla a elica data con altezza 24 e passo 8 (3 giri), direzione invertita: scende', () => helixDoc(12, { def: 'hp', height: 24, pitch: 8, flip: true }, b => b.circle(12, 0, 1.5)),
+  { V: PI * 2.25 * 2 * PI * 12 * 3, C: [0, -12, 0], bb: [[-13.5, -25.5, -13.5], [13.5, 1.5, 13.5]] });
+// spirale: il raggio cresce di un passo a giro; ∫ r dθ = 10·6π + (6/2π)·(6π)²/2 = 114π
+T('Molla a spirale piana: nastro 2×2, raggio da 10 a 28 (passo 6, 3 giri)', () => helixDoc(10, { def: 'spiral', pitch: 6, revs: 3 }, b => b.rect(9, -1, 11, 1)),
+  { V: 4 * 114 * PI, bb: [[-26, -1, -24.5], [29, 1, 27.5]] });
+// rastremata 10° verso l'interno: il raggio scende da 20 a 20 − 32·tan 10°; ∫ r dθ = raggio medio × angolo
+T('Molla conica: elica rastremata di 10°, passo 8, 4 giri, filo Ø3', () => helixDoc(20, { def: 'pr', pitch: 8, revs: 4, taperOn: true, taper: 10 }, b => b.circle(20, 0, 1.5)),
+  { V: PI * 2.25 * (20 + 20 - 32 * Math.tan(10 * PI / 180)) / 2 * 8 * PI });
+// filetto vero: solco a triangolo (profondo 1,5, largo 1,5 sul cilindro R10) lungo un'elica di passo 3, 5 giri.
+// Area tolta 1,125 mm², baricentro a 8,5 + 2/3·1,5 = 9,5 dall'asse
+T('Taglio con percorso lungo un\'elica (filetto): 1,125 · 2π·9,5 · 5', () => helixDoc(10, { def: 'pr', pitch: 3, revs: 5 }, b => b.poly([[8.5, 5], [10.5, 4], [10.5, 6]]), 'sweepcut',
+  () => { const d = D0('f'); const b = SB(); b.circle(0, 0, 10); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 30 }); return d; }, d => planeAt(d, 5)),
+  { D: -1.125 * 2 * PI * 9.5 * 5 });
+
+/* ---------- loft ---------- */
+const loftDoc = (profs, type = 'loft', pre) => {
+  const d = pre ? pre() : D0('l'); const ids = [];
+  for (const [h, draw] of profs) { const b = SB(); draw(b); ids.push(sketch(d, typeof h === 'object' ? h : h ? planeAt(d, h) : STD('top'), b)); }
+  feat(d, { type, profiles: ids }); return d;
+};
+const sqL = a => [[-a, -a], [a, -a], [a, a], [-a, a]];
+const turnL = (pts, deg) => pts.map(([x, y]) => [x * Math.cos(deg * PI / 180) - y * Math.sin(deg * PI / 180), x * Math.sin(deg * PI / 180) + y * Math.cos(deg * PI / 180)]);
+// tronco di piramide: V = h/3·(A₁ + A₂ + √(A₁A₂)); facce laterali trapezi con apotema √(30² + 5²); baricentro a h/4·(A₁ + 2√(A₁A₂) + 3A₂)/(A₁ + √(A₁A₂) + A₂)
+T('Loft tra due quadrati 20 e 10, alto 30: tronco di piramide con 6 facce piane', () => loftDoc([[0, b => b.poly(sqL(10))], [30, b => b.poly(sqL(5))]]),
+  { V: 7000, A: 500 + 4 * 15 * Math.sqrt(925), C: [0, 30 / 4 * 1100 / 700, 0], E: 12, bb: [[-10, 0, -10], [10, 30, 10]] });
+T('Loft tra due cerchi R10 e R5, alto 20: tronco di cono', () => loftDoc([[0, b => b.circle(0, 0, 10)], [20, b => b.circle(0, 0, 5)]]),
+  { V: PI * 20 / 3 * 175, A: PI * 125 + PI * 15 * Math.sqrt(425), C: [0, 20 / 4 * (100 + 100 + 75) / 175, 0] });
+// stesso quadrato girato di 30°: ogni vertice va al suo corrispondente; la sezione a quota t ha area a²·((1−t)² + t² + 2t(1−t)·cos 30°)
+T('Loft svergolato: quadrato 20 girato di 30° in 40 mm: 40·400·(2 + cos 30°)/3', () => loftDoc([[0, b => b.poly(sqL(10))], [40, b => b.poly(turnL(sqL(10), 30))]]),
+  { V: 40 * 400 * (2 + Math.cos(PI / 6)) / 3, C: [0, 20, 0] });
+// i vertici partono da punti diversi e in verso opposto: il loft li riallinea da solo (stesso solido di prima)
+T('Loft svergolato con i profili disegnati partendo da vertici diversi e in versi opposti', () => loftDoc([[0, b => b.poly(sqL(10))], [40, b => { const p = turnL(sqL(10), 30); b.poly([p[2], p[1], p[0], p[3]]); }]]),
+  { V: 40 * 400 * (2 + Math.cos(PI / 6)) / 3 });
+// tre cerchi R10, R6, R10 a 0, 20, 40: il raggio segue una parabola in ogni tratto, r = 4s² − 8s + 10; ∫₀¹ r² ds = 55,2
+T('Loft per tre cerchi R10, R6, R10 (curva morbida): 40π·55,2', () => loftDoc([[0, b => b.circle(0, 0, 10)], [20, b => b.circle(0, 0, 6)], [40, b => b.circle(0, 0, 10)]]),
+  { V: 40 * PI * 55.2, C: [0, 20, 0], bb: [[-10, 0, -10], [10, 40, 10]] });
+// tre quadrati uguali in fila: i tratti sono dritti, resta un parallelepipedo con le facce piane (8 spigoli dei tappi + 4 verticali, ognuno in due tratti)
+T('Loft per tre quadrati uguali: parallelepipedo 20×20×50 con 6 facce piane', () => loftDoc([[0, b => b.poly(sqL(10))], [20, b => b.poly(sqL(10))], [50, b => b.poly(sqL(10))]]),
+  { V: 20000, A: 2 * 400 + 4 * 1000, E: 16 });
+// quadrato → cerchio: i punti si corrispondono alla stessa frazione del perimetro; l'area delle sezioni è un polinomio di
+// secondo grado nella quota, quindi V = h/6·(A₀ + 4·A_metà + A₁), con la sezione di mezzo calcolata qui a parte
+T('Loft da un quadrato 20 a un cerchio R10, alto 30 (sezione di mezzo calcolata a parte)', () => loftDoc([[0, b => b.poly(sqL(10))], [30, b => b.circle(0, 0, 10)]]),
+  { V: (() => { const N = 8000, M = []; for (let i = 0; i < N; i++) { const u = i / N, d = u * 80, k = Math.floor(d / 20), t = d / 20 - k, P = sqL(10), a = P[k], b = P[(k + 1) % 4], an = (225 + 360 * u) * PI / 180; M.push([(a[0] + (b[0] - a[0]) * t + 10 * Math.cos(an)) / 2, (a[1] + (b[1] - a[1]) * t + 10 * Math.sin(an)) / 2]); } let A = 0; for (let i = 0; i < N; i++) { const p = M[i], q = M[(i + 1) % N]; A += (p[0] * q[1] - q[0] * p[1]) / 2; } return 30 / 6 * (400 + 4 * A + 100 * PI); })() });
+// tasca a tronco di piramide: 20×20 sulla faccia alta, 10×10 a 10 mm di profondità
+T('Taglio con loft: tasca a tronco di piramide in un blocco 40×40×20: 10/3·(400 + 100 + 200)', () => loftDoc([[{ kind: 'plane', id: 'PA' }, b => b.poly(sqL(10))], [{ kind: 'plane', id: 'PB' }, b => b.poly(sqL(5))]], 'loftcut',
+  () => { const d = D0('t'); const b = SB(); b.rect(-20, -20, 20, 20); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 20 }); feat(d, { id: 'PA', type: 'plane', base: STD('top'), offset: 20 }); feat(d, { id: 'PB', type: 'plane', base: STD('top'), offset: 10 }); return d; }),
+  { V: 32000 - 7000 / 3, D: -7000 / 3 });
+// pala a tronco di piramide (8×2 → 4×1 in 30 mm, lungo X) ripetuta tre volte attorno all'asse Y: le superfici si copiano con lei
+T('Serie circolare di un loft: tre pale da 30/3·(16 + 4 + 8)', () => {
+  const d = D0('p'); const ids = [];
+  for (const [x, a, c] of [[10, 4, 1], [40, 2, 0.5]]) { const b = SB(); b.rect(-a, -c, a, c); ids.push(sketch(d, planeAt(d, x, 'right'), b)); }
+  const l = feat(d, { type: 'loft', profiles: ids }); feat(d, { type: 'cpattern', feats: [l], axis: { kind: 'axis', id: 'y' }, n: 3, angle: 360, equal: true }); return d;
+}, { V: 3 * 280, C: [0, 0, 0] });
+
 const SK = [];
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
   const b = SB(); const [p1, p2, p3, p4] = b.rect(0, 0, 70, 45); const s = b.s;
@@ -1215,6 +1282,56 @@ SK.push(['Sfondo DXF nello schizzo: stessa origine e scala; geometria, stato e c
   const back = JSON.parse(JSON.stringify(a.s));
   return { ok: true, exp: [1, 1, 1, 1, 1, 1, 1, 6000, 1, 1], got: [same ? 1 : 0, near(t.x, 20) * near(t.y, 30), near(t.h, 5) * near(t.w, 0.8), l.p.join() === '0,-20,100,-20' ? 1 : 0, c.c.join() === '20,30' && near(c.r, 10) ? 1 : 0,
     an.dof === an0.dof && an.status === an0.status ? 1 : 0, b.s.bg === undefined ? 1 : 0, pr.regions.reduce((s, x) => s + x.area, 0), pr.regions.length === pr0.regions.length ? 1 : 0, back.bg.length === 2 * nBg ? 1 : 0] };
+}]);
+
+/* ---------- elica e spirale: punti, lunghezze, messaggi d'errore; loft: messaggi d'errore, STEP ---------- */
+const curveDoc = (R, cv, plane = 'top') => { const d = D0('c'); const a = SB(); a.circle(0, 0, R); const id = feat(d, { type: 'curve', sketch: sketch(d, STD(plane), a), ...cv }); return { d, id }; };
+const errOf = d => { const st = Model.regen(d); return [...st.errors.values()].join(' | '); };
+// piano superiore: X dello schizzo = X, Y dello schizzo = −Z, normale = Y. Antiorario: dopo un quarto di giro il punto è a −Z
+SK.push(['Elica R20, passo 10: punti a ¼ di giro (antiorario, orario, invertita, angolo iniziale 90°) e punto finale dopo 2,5 giri', () => {
+  const pt = (cv, th) => { const { d, id } = curveDoc(20, { def: 'pr', pitch: 10, revs: 2.5, ...cv }); return Model.regen(d).curves.get(id).point(th); };
+  const got = [...pt({}, PI / 2), ...pt({ cw: true }, PI / 2), ...pt({ flip: true }, PI / 2), ...pt({ start: 90 }, PI / 2), ...pt({}, 5 * PI)];
+  return { ok: true, got, exp: [0, 2.5, -20, 0, 2.5, 20, 0, -2.5, -20, -20, 2.5, 0, -20, 25, 0] };
+}]);
+// lunghezze: elica giri·√((2πR)² + p²); spirale ed elica rastremata ∫√(r² + c²)dθ con r = R + bθ: [r√(r² + c²) + c²·asinh(r/c)]/(2b)
+SK.push(['Elica, spirale ed elica rastremata: lunghezza, altezza, passo e raggio finale', () => {
+  const info = cv => { const { d, id } = curveDoc(20, cv); return Model.regen(d).info.get(id); };
+  const F = (r, c) => r * Math.sqrt(r * r + c * c) + c * c * Math.asinh(r / c);
+  const a = info({ def: 'pr', pitch: 10, revs: 5 }), b = info({ def: 'hr', height: 30, revs: 4 }), c = info({ def: 'hp', height: 24, pitch: 8 });
+  const s = info({ def: 'spiral', pitch: 6, revs: 3 }), bs = 6 / (2 * PI);
+  const t = info({ def: 'pr', pitch: 8, revs: 4, taperOn: true, taper: 10 }), bt = -Math.tan(10 * PI / 180) * 8 / (2 * PI), ct = Math.hypot(bt, 8 / (2 * PI)), r1 = 20 - 32 * Math.tan(10 * PI / 180);
+  const o = info({ def: 'pr', pitch: 8, revs: 4, taperOn: true, taper: 10, taperOut: true });
+  return { ok: true, got: [a.length, a.height, b.length, b.pitch, c.length, c.revs, s.length, s.r1, s.height, t.length, t.r1, o.r1],
+    exp: [5 * Math.hypot(40 * PI, 10), 50, 4 * Math.hypot(40 * PI, 7.5), 7.5, 3 * Math.hypot(40 * PI, 8), 3, (F(38, bs) - F(20, bs)) / (2 * bs), 38, 0, (F(r1, ct) - F(20, ct)) / (2 * bt), r1, 20 + 32 * Math.tan(10 * PI / 180)] };
+}]);
+SK.push(['Elica e sweep lungo l\'elica: gli errori sono spiegati (cerchio mancante, passo zero, spire che si compenetrano, profilo fuori posto, profilo sull\'asse)', () => {
+  const noCircle = (() => { const d = D0('c'); const a = SB(); a.rect(0, 0, 5, 5); feat(d, { type: 'curve', sketch: sketch(d, STD('top'), a), def: 'pr', pitch: 10, revs: 5 }); return errOf(d); })();
+  const zero = errOf(curveDoc(20, { def: 'pr', pitch: 0, revs: 5 }).d), closes = errOf(curveDoc(5, { def: 'pr', pitch: 10, revs: 5, taperOn: true, taper: 10 }).d);
+  const tight = errOf(helixDoc(20, { def: 'pr', pitch: 3, revs: 5 }, b => b.circle(20, 0, 2)));           // filo Ø4, passo 3
+  const one = errOf(helixDoc(20, { def: 'pr', pitch: 3, revs: 1 }, b => b.circle(20, 0, 2)));             // un giro solo: nessuna spira sopra
+  const away = errOf(helixDoc(20, { def: 'pr', pitch: 10, revs: 5, start: 90 }, b => b.circle(20, 0, 2))); // l'elica parte a Z = −20: il piano frontale non ci passa
+  const axis = errOf(helixDoc(2, { def: 'pr', pitch: 10, revs: 3 }, b => b.circle(2, 0, 3)));
+  const spir = errOf(helixDoc(10, { def: 'spiral', pitch: 2, revs: 3 }, b => b.rect(9, -1, 11.5, 1)));
+  return { ok: true, got: [/un cerchio/.test(noCircle), /passo deve essere/.test(zero), /si chiude sull.asse/.test(closes), /spire si compenetrano/.test(tight), one === '', /partire dal piano del profilo/.test(away), /arriva all.asse/.test(axis), /larghezza del profilo/.test(spir)].map(Number), exp: [1, 1, 1, 1, 1, 1, 1, 1] };
+}]);
+SK.push(['Loft: gli errori sono spiegati (un profilo solo, stesso piano, contorno aperto, due contorni, schizzo ripetuto)', () => {
+  const mk = profs => { const d = D0('l'); const ids = profs.map(([h, draw]) => { const b = SB(); draw(b); return sketch(d, h ? planeAt(d, h) : STD('top'), b); }); return { d, ids }; };
+  const e = (profs, pick = ids => ids) => { const { d, ids } = mk(profs); feat(d, { type: 'loft', profiles: pick(ids) }); return errOf(d); };
+  const S = b => b.poly(sqL(10)), open = b => { const p = [b.pt(0, 0), b.pt(10, 0), b.pt(10, 10)]; b.line(p[0], p[1]); b.line(p[1], p[2]); };
+  return { ok: true, got: [/almeno due profili/.test(e([[0, S]])), /stesso piano/.test(e([[0, S], [0, b => b.poly(sqL(5))]])), /aperto/.test(e([[0, S], [20, open]])), /solo contorno/.test(e([[0, S], [20, b => { b.circle(0, 0, 3); b.circle(20, 0, 3); }]])),
+    /due volte/.test(e([[0, S], [20, S]], ids => [ids[0], ids[1], ids[0]])), e([[0, S], [20, S]]) === ''].map(Number), exp: [1, 1, 1, 1, 1, 1] };
+}]);
+// le facce: un loft tra due quadrati ha 4 lati piani veri (ci si può disegnare sopra), uno svergolato ha 4 facce curve (bf) senza spigoli in mezzo
+SK.push(['Loft: facce piane vere quando i lati sono piani, facce curve senza spigoli in mezzo quando è svergolato; corpo chiuso', () => {
+  const run = deg => { const st = Model.regen(loftDoc([[0, b => b.poly(sqL(10))], [40, b => b.poly(turnL(sqL(deg ? 10 : 5), deg))]])); const tg = st.body.map(p => st.tags.get(p.t));
+    return [tg.filter(t => !t.mesh).length, new Set(tg.filter(t => t.mesh).map(t => t.bf)).size, st.topo.edges.filter(e => e.sharp).length, st.topo.edges.filter(e => e.polys.length !== 2).length]; };
+  const a = run(0), b = run(30);
+  // svergolato: 30°/2,5° = 12 righe; spigoli vivi = 4 bordi × 12 tratti + 8 dei tappi
+  return { ok: true, got: [...a, ...b], exp: [6, 0, 12, 0, 2, 4, 4 * 12 + 8, 0] };
+}]);
+SK.push(['Molla e loft svergolato esportati in STEP: solidi chiusi, senza lati aperti', () => {
+  const one = d => { const r = stepX(d); return [r.stats.badEdges, r.stats.openLoops, /MANIFOLD_SOLID_BREP/.test(r.text) ? 1 : 0]; };
+  return { ok: true, got: [...one(helixDoc(20, { def: 'pr', pitch: 10, revs: 2 }, b => b.circle(20, 0, 2))), ...one(loftDoc([[0, b => b.poly(sqL(10))], [40, b => b.poly(turnL(sqL(10), 30))]]))], exp: [0, 0, 1, 0, 0, 1] };
 }]);
 
 /* ---------- assiemi: posizioni e gradi di libertà calcolati a mano ---------- */

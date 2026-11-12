@@ -5366,7 +5366,7 @@ self.postMessage({ hello: true });`;
   function uid(doc, p) { return p + (doc.next++); }
 
   // nome predefinito delle funzioni
-  const FEAT_LABEL = { helix: 'Filetto', sketch: 'Schizzo', extrude: 'Estrusione', cut: 'Taglio-Estrusione', revolve: 'Rivoluzione', revcut: 'Taglio-Rivoluzione', hole: 'Foro', fillet: 'Raccordo', chamfer: 'Smusso', lpattern: 'Serie lineare', cpattern: 'Serie circolare', mirror: 'Specchio', plane: 'Piano', sweep: 'Estrusione con percorso', sweepcut: 'Taglio con percorso', rib: 'Nervatura', import: 'Importato', combine: 'Combina', movebody: 'Sposta/Copia corpo', delbody: 'Elimina/Mantieni corpo' };
+  const FEAT_LABEL = { helix: 'Filetto', sketch: 'Schizzo', extrude: 'Estrusione', cut: 'Taglio-Estrusione', revolve: 'Rivoluzione', revcut: 'Taglio-Rivoluzione', hole: 'Foro', fillet: 'Raccordo', chamfer: 'Smusso', lpattern: 'Serie lineare', cpattern: 'Serie circolare', mirror: 'Specchio', plane: 'Piano', sweep: 'Estrusione con percorso', sweepcut: 'Taglio con percorso', rib: 'Nervatura', curve: 'Elica/Spirale', loft: 'Estrusione con loft', loftcut: 'Taglio con loft', import: 'Importato', combine: 'Combina', movebody: 'Sposta/Copia corpo', delbody: 'Elimina/Mantieni corpo' };
   function defaultName(doc, type) {
     const base = FEAT_LABEL[type] || type;
     let k = 1;
@@ -5378,7 +5378,7 @@ self.postMessage({ hello: true });`;
   /* ---------------- rigenerazione ---------------- */
   function regen(doc, opts = {}) {
     const tags = new G.Tags();
-    const st = { body: [], bodies: [], bodySeq: 0, tags, frames: new Map(), errors: new Map(), warn: new Map(), info: new Map(), holes: [], tools: new Map(), topo: null, planes: new Map() };
+    const st = { body: [], bodies: [], bodySeq: 0, tags, frames: new Map(), errors: new Map(), warn: new Map(), info: new Map(), holes: [], tools: new Map(), topo: null, planes: new Map(), curves: new Map() };
     const stopAt = opts.stopAt !== undefined ? opts.stopAt : (doc.rollback !== null && doc.rollback !== undefined ? doc.rollback : doc.features.length);
     for (let i = 0; i < doc.features.length && i < stopAt; i++) {
       const f = doc.features[i];
@@ -5595,6 +5595,18 @@ self.postMessage({ hello: true });`;
         applyOp(st, tool, f.type === 'sweepcut' ? 'sub' : 'add', f);
         return;
       }
+      case 'curve': {
+        const cv = curveOf(doc, f, st);
+        st.curves.set(f.id, cv);
+        st.info.set(f.id, { length: cv.length, height: cv.height, pitch: cv.pitch, revs: cv.revs, r0: cv.R, r1: cv.r1 });
+        return;
+      }
+      case 'loft': case 'loftcut': {
+        const tool = loftTool(doc, f, st);
+        st.tools.set(f.id, { polys: tool, op: f.type === 'loftcut' ? 'sub' : 'add' });
+        applyOp(st, tool, f.type === 'loftcut' ? 'sub' : 'add', f);
+        return;
+      }
       case 'helix': {
         const tool = helixTool(f, st);
         st.tools.set(f.id, { polys: tool, op: f.ext ? 'add' : 'sub' });
@@ -5731,6 +5743,15 @@ self.postMessage({ hello: true });`;
   function sweepTool(doc, f, st) {
     const pf = doc.features.find(x => x.id === f.sketch), pa = doc.features.find(x => x.id === f.path);
     if (!pf || pf.suppressed) throw userErr('Manca lo schizzo del profilo (chiuso)');
+    if (f.curve) {
+      // percorso = curva Elica/Spirale
+      const Fq = st.frames.get(pf.id);
+      if (!Fq) throw userErr('Lo schizzo del profilo deve venire prima della funzione');
+      const pq = S.profiles(pf.sk);
+      if (pq.errors.length) throw userErr('Profilo: ' + pq.errors[0]);
+      if (!pq.regions.length) throw userErr('Il profilo deve essere un contorno chiuso');
+      return curveSweepTool(doc, f, st, pf, Fq, pq);
+    }
     if (!pa || pa.suppressed) throw userErr('Manca lo schizzo del percorso');
     if (pf === pa) throw userErr('Profilo e percorso devono stare in due schizzi diversi');
     const Fp = st.frames.get(pf.id), Fa = st.frames.get(pa.id);
@@ -5828,6 +5849,335 @@ self.postMessage({ hello: true });`;
       if (ds > far && Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]) < near) return false;
     }
     return true;
+  }
+
+  /* ---------------- elica e spirale (curva) ---------------- */
+  // Come «Elica/Spirale» di SolidWorks: parte dal cerchio di uno schizzo. L'asse è la normale dello schizzo per il centro del cerchio;
+  // il punto di partenza sta sul cerchio, all'angolo iniziale misurato dall'asse X dello schizzo. def: 'pr' passo e rivoluzioni,
+  // 'hr' altezza e rivoluzioni, 'hp' altezza e passo, 'spiral' spirale piana (il passo è quanto cresce il raggio a ogni giro).
+  // cw = senso orario guardando lo schizzo di fronte (dalla punta della sua normale). La rastremazione cambia il raggio con la quota.
+  const CURVE_MAX_REVS = 200;
+  function curveOf(doc, f, st) {
+    const skf = doc.features.find(x => x.id === f.sketch);
+    if (!skf || skf.suppressed) throw userErr('Manca lo schizzo con il cerchio dell\'elica');
+    const F = st.frames.get(skf.id);
+    if (!F) throw userErr('Lo schizzo del cerchio deve venire prima della curva');
+    const E = S.byId(skf.sk);
+    const cis = skf.sk.ents.filter(e => e.t === 'ci' && !e.cons && !e.ext);
+    if (cis.length !== 1) throw userErr(cis.length ? 'Lo schizzo deve contenere un solo cerchio: il suo diametro è quello di partenza dell\'elica' : 'Lo schizzo deve contenere un cerchio: il suo diametro è quello di partenza dell\'elica');
+    const c2 = E.get(cis[0].c), R = +cis[0].r;
+    if (!c2 || !(R > 1e-6)) throw userErr('Il cerchio dell\'elica non è valido');
+    const def = f.def || 'pr';
+    let pitch = +f.pitch, revs = +f.revs, height = +f.height;
+    if (def === 'hr') {
+      if (!(height > 0)) throw userErr('L\'altezza deve essere maggiore di zero');
+      if (!(revs > 0)) throw userErr('Le rivoluzioni devono essere maggiori di zero');
+      pitch = height / revs;
+    } else if (def === 'hp') {
+      if (!(height > 0)) throw userErr('L\'altezza deve essere maggiore di zero');
+      if (!(pitch > 0)) throw userErr('Il passo deve essere maggiore di zero');
+      revs = height / pitch;
+    } else {
+      if (!(pitch > 0)) throw userErr('Il passo deve essere maggiore di zero');
+      if (!(revs > 0)) throw userErr('Le rivoluzioni devono essere maggiori di zero');
+      height = def === 'spiral' ? 0 : pitch * revs;
+    }
+    if (revs > CURVE_MAX_REVS) throw userErr('Troppe rivoluzioni (' + (+revs.toFixed(2)) + '): il massimo è ' + CURVE_MAX_REVS);
+    const spiral = def === 'spiral';
+    const tdeg = !spiral && f.taperOn ? (+f.taper || 0) : 0;
+    if (tdeg < 0 || tdeg >= 89) throw userErr('L\'angolo di rastremazione deve stare tra 0° e 89°');
+    const tp = Math.tan(tdeg * Math.PI / 180) * (f.taperOut ? 1 : -1);
+    const axis = mul(F.z, f.flip ? -1 : 1);
+    const a0 = (+f.start || 0) * Math.PI / 180, sg = f.cw ? -1 : 1;
+    const C = G.to3(F, [c2.x, c2.y]);
+    const th1 = TAU * revs;
+    const dr = spiral ? pitch / TAU : tp * pitch / TAU;   // quanto cresce il raggio per radiante
+    const dz = spiral ? 0 : pitch / TAU;                  // quanto sale per radiante
+    const rOf = th => R + dr * th, zOf = th => dz * th;
+    if (rOf(th1) <= 1e-6) throw userErr('Con questa rastremazione l\'elica si chiude sull\'asse prima della fine: riduci l\'angolo o l\'altezza');
+    const dirOf = th => { const a = a0 + sg * th; return add(mul(F.x, Math.cos(a)), mul(F.y, Math.sin(a))); };
+    const perpOf = th => { const a = a0 + sg * th; return add(mul(F.x, -Math.sin(a) * sg), mul(F.y, Math.cos(a) * sg)); };
+    const point = th => add(add(C, mul(dirOf(th), rOf(th))), mul(axis, zOf(th)));
+    const tan = th => norm(add(add(mul(perpOf(th), rOf(th)), mul(dirOf(th), dr)), mul(axis, dz)));
+    // lunghezza: integrale della velocità (Simpson); per l'elica cilindrica vale giri · √((2πR)² + passo²)
+    const speed = th => Math.sqrt(rOf(th) * rOf(th) + dr * dr + dz * dz);
+    const nI = 2 * Math.max(8, Math.ceil(revs * 64));
+    let L = speed(0) + speed(th1);
+    for (let i = 1; i < nI; i++) L += (i % 2 ? 4 : 2) * speed(th1 * i / nI);
+    L *= th1 / nI / 3;
+    const nP = Math.max(8, Math.ceil(revs * 72)), pts = [];
+    for (let i = 0; i <= nP; i++) pts.push(point(th1 * i / nP));
+    return { F, C, axis, R, r1: rOf(th1), th1, sg, a0, dr, dz, rOf, zOf, dirOf, point, tan, pitch, revs, height, spiral, length: L, pts };
+  }
+
+  /* ---------------- estrusione con percorso lungo un'elica o una spirale ---------------- */
+  // Il profilo segue il percorso girando attorno all'asse dell'elica («Segui percorso» di SolidWorks): ogni sezione è il profilo
+  // ruotato attorno all'asse, alzato della quota dell'elica e spostato in fuori quanto cambia il raggio. La superficie è a faccette:
+  // i tappi sono piani veri, i fianchi sono triangoli riuniti per entità del profilo (bf), come le facce di un file STEP.
+  const CURVE_SWEEP_MAX = 60000;
+  function curveSweepTool(doc, f, st, pf, Fp, pr) {
+    const cf = doc.features.find(x => x.id === f.curve);
+    if (!cf || cf.suppressed) throw userErr('Manca la curva del percorso (Elica/Spirale)');
+    const cv = st.curves.get(cf.id);
+    if (!cv) throw userErr(st.errors.get(cf.id) ? 'La curva del percorso ha un errore: ' + st.errors.get(cf.id) : 'La curva del percorso deve venire prima della funzione');
+    const Fc = cv.F, P0 = cv.point(0), T0 = cv.tan(0);
+    if (Math.abs(dot(sub(P0, Fp.o), Fp.z)) > 1e-4) throw userErr('Il percorso deve partire dal piano del profilo: disegna il profilo su un piano che passa per l\'inizio dell\'elica (dove il cerchio incontra l\'angolo iniziale)');
+    if (Math.abs(dot(T0, Fp.z)) < Math.sin(5 * Math.PI / 180)) throw userErr('All\'inizio l\'elica corre lungo il piano del profilo: disegna il profilo su un piano che l\'elica attraversa');
+    // contorni: esterno antiorario e fori orari nel piano del profilo
+    const loops = [];
+    let ent = 0;
+    for (const rg of pr.regions) [rg.outer, ...rg.holes].forEach((lp, i) => {
+      const t = G.tessLoop(lp);
+      let pts = t.pts, src = t.src.map(s => s.id);
+      if (Math.sign(G.area2(pts)) !== (i === 0 ? 1 : -1)) { pts = pts.slice().reverse(); src = src.slice().reverse(); src.push(src.shift()); }
+      const ids = new Map();
+      loops.push({ pts, bf: src.map(id => { if (!ids.has(id)) ids.set(id, ent++); return ids.get(id); }), hole: i > 0, rg });
+    });
+    const nPts = loops.reduce((s, l) => s + l.pts.length, 0);
+    // il profilo rispetto all'asse: raggio minimo e massimo, quote lungo l'asse
+    // (il raggio minimo si misura dalla parte del punto di partenza: un profilo a cavallo dell'asse ha punti dall'altra parte)
+    let rMin = Infinity, rMax = 0, zMin = Infinity, zMax = -Infinity, rho = 0;
+    const P3 = loops.map(l => l.pts.map(p => G.to3(Fp, p))), d0 = cv.dirOf(0);
+    for (const l of P3) for (const p of l) {
+      const q = sub(p, cv.C), z = dot(q, Fc.z), r = len(sub(q, mul(Fc.z, z)));
+      rMin = Math.min(rMin, dot(q, d0)); rMax = Math.max(rMax, r); zMin = Math.min(zMin, z); zMax = Math.max(zMax, z);
+      rho = Math.max(rho, len(sub(p, P0)));
+    }
+    const fmt = x => String(+x.toFixed(3)).replace('.', ',');
+    if (rMin + Math.min(0, cv.r1 - cv.R) <= 1e-6) throw userErr('Il profilo arriva all\'asse dell\'elica: rimpicciolisci il profilo o allarga il cerchio');
+    if (cv.revs > 1 + 1e-9) {
+      if (!cv.spiral && zMax - zMin >= cv.pitch - 1e-6) throw userErr('Il passo (' + fmt(cv.pitch) + ' mm) non è più grande dell\'altezza del profilo (' + fmt(zMax - zMin) + ' mm): le spire si compenetrano. Aumenta il passo o rimpicciolisci il profilo');
+      if (cv.spiral && rMax - rMin >= cv.pitch - 1e-6) throw userErr('Il passo (' + fmt(cv.pitch) + ' mm) non è più grande della larghezza del profilo (' + fmt(rMax - rMin) + ' mm): le spire si compenetrano. Aumenta il passo o rimpicciolisci il profilo');
+    }
+    // passi per giro: come i cerchi del programma (da 48 a 96), di meno se le facce sarebbero troppe
+    let perTurn = Math.min(96, G.segsFor(Math.max(cv.R, cv.r1) + rho, TAU));
+    while (perTurn > 24 && perTurn * cv.revs * nPts > CURVE_SWEEP_MAX) perTurn -= 4;
+    if (perTurn * cv.revs * nPts > CURVE_SWEEP_MAX) throw userErr('Il solido avrebbe troppe facce: riduci le rivoluzioni dell\'elica o semplifica il profilo');
+    const N = Math.max(2, Math.ceil(cv.revs * perTurn - 1e-9));
+    const at = (p, th) => add(add(add(cv.C, rotV(sub(p, cv.C), Fc.z, cv.sg * th)), mul(cv.axis, cv.zOf(th))), mul(cv.dirOf(th), cv.rOf(th) - cv.R));
+    const rows = [];
+    for (let k = 0; k <= N; k++) { const th = cv.th1 * k / N; rows.push(P3.map(l => l.map(p => k ? at(p, th) : p.slice()))); }
+    const raw = [];   // { v, cap: 0|1 } oppure { v, bf }
+    loops.forEach((l, li) => {
+      const n = l.pts.length;
+      for (let k = 0; k < N; k++) for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n, a = rows[k][li][i], b = rows[k][li][j], b1 = rows[k + 1][li][j], a1 = rows[k + 1][li][i];
+        raw.push({ v: [a, b, b1], bf: l.bf[i] }, { v: [a, b1, a1], bf: l.bf[i] });
+      }
+    });
+    // tappi: la stessa triangolazione del profilo all'inizio e alla fine
+    let li0 = 0;
+    for (const rg of pr.regions) {
+      const mine = loops.slice(li0, li0 + 1 + rg.holes.length), base = li0;
+      li0 += mine.length;
+      const outer = mine[0].pts, holes = mine.slice(1).map(l => l.pts);
+      const tris = G.triangulate(outer, holes), bridged = G.bridgedPoints(outer, holes), convex = G.mergeConvex(bridged, tris);
+      // ogni punto del poligono «a ponte» torna al suo vertice del contorno
+      const where = new Map();
+      mine.forEach((l, m) => l.pts.forEach((p, i) => where.set(p[0] + ',' + p[1], [base + m, i])));
+      for (const c of convex) {
+        const ix = c.map(i => where.get(bridged[i][0] + ',' + bridged[i][1]));
+        if (ix.some(x => !x)) throw userErr('Il profilo non si riesce a chiudere con i tappi: controlla lo schizzo');
+        raw.push({ v: ix.map(([m, i]) => rows[0][m][i]).reverse(), cap: 0 }, { v: ix.map(([m, i]) => rows[N][m][i]), cap: 1 });
+      }
+    }
+    // così i fianchi guardano in fuori se il percorso esce dal lato della normale del profilo; altrimenti si gira tutto
+    if (dot(T0, Fp.z) < 0) for (const p of raw) p.v.reverse();
+    return meshPolys(raw, f.id, st);
+  }
+  // poligoni «grezzi» → poligoni con le loro superfici: i tappi (cap) sono piani veri, su cui si può disegnare; i lati piani (side)
+  // anche; gli altri sono faccette di una superficie curva, riunite per faccia (bf)
+  function meshPolys(raw, base, st) {
+    const out = [], shared = new Map();
+    let k = 0;
+    for (const r of raw) {
+      const v = r.v.map(q => q.slice()), p = CSG.planeOf(v);
+      if (!p || !isFinite(p.w) || !isFinite(p.n[0])) continue;
+      let id;
+      const key = r.cap !== undefined ? 'cap' + r.cap : r.side !== undefined ? 'side|' + r.side : null;
+      if (key) {
+        id = shared.get(key);
+        if (id === undefined) { id = st.tags.add({ kind: 'plane', n: p.n.slice(), w: p.w, name: base + '|' + key, feature: base }); shared.set(key, id); }
+      } else id = st.tags.add({ kind: 'plane', n: p.n.slice(), w: p.w, name: base + ':L' + (++k), feature: base, mesh: true, bf: r.bf });
+      out.push({ v, p, t: id });
+    }
+    return out;
+  }
+
+  /* ---------------- loft ---------------- */
+  // Come «Estrusione/Base con loft» di SolidWorks, senza curve guida: il solido passa per due o più profili chiusi, uno per schizzo,
+  // su piani diversi, nell'ordine in cui sono scelti. Tra due profili le superfici sono rigate (rette tra i punti corrispondenti);
+  // con tre o più i punti corrispondenti stanno su una curva liscia che passa per tutti i profili.
+  // Punti corrispondenti: se i profili hanno lo stesso numero di tratti, tratto con tratto (vertice con vertice); altrimenti
+  // alla stessa frazione del perimetro. Il punto di partenza di ogni profilo è quello che torce di meno il solido.
+  const LOFT_ROWS = 12, LOFT_TWIST = 2.5 * Math.PI / 180;
+  function loftTool(doc, f, st) {
+    const ids = (f.profiles || []).filter(Boolean);
+    if (ids.length < 2) throw userErr('Servono almeno due profili: scegli gli schizzi nell\'ordine in cui il solido li attraversa');
+    if (new Set(ids).size !== ids.length) throw userErr('Lo stesso schizzo è scelto due volte tra i profili');
+    const segLen = s => s.type === 'line' ? Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]) : s.r * Math.abs(s.a1 - s.a0);
+    const segAt = (s, t) => { if (s.type === 'line') return [s.a[0] + (s.b[0] - s.a[0]) * t, s.a[1] + (s.b[1] - s.a[1]) * t]; const a = s.a0 + (s.a1 - s.a0) * t; return [s.c[0] + s.r * Math.cos(a), s.c[1] + s.r * Math.sin(a)]; };
+    const revSeg = s => s.type === 'line' ? { ...s, a: s.b, b: s.a } : { ...s, a0: s.a1, a1: s.a0 };
+    const P = ids.map((id, k) => {
+      const skf = doc.features.find(x => x.id === id);
+      if (!skf || skf.suppressed) throw userErr('Il profilo ' + (k + 1) + ' non esiste o è soppresso');
+      const F = st.frames.get(id);
+      if (!F) throw userErr('Gli schizzi dei profili devono venire prima della funzione');
+      const pr = S.profiles(skf.sk);
+      if (pr.errors.length) throw userErr(skf.name + ': ' + pr.errors[0]);
+      if (!pr.regions.length) throw userErr(skf.name + ': il profilo deve essere un contorno chiuso');
+      if (pr.regions.length !== 1 || pr.regions[0].holes.length) throw userErr(skf.name + ': ogni profilo deve essere un solo contorno chiuso, senza fori');
+      const segs = pr.regions[0].outer.map(s => ({ ...s }));
+      // baricentro dell'area (sul contorno campionato)
+      const sp = S.sampleLoop(segs); let A = 0, cx = 0, cy = 0;
+      for (let i = 0; i < sp.length; i++) { const p = sp[i], q = sp[(i + 1) % sp.length], w = p[0] * q[1] - q[0] * p[1]; A += w; cx += (p[0] + q[0]) * w; cy += (p[1] + q[1]) * w; }
+      return { skf, F, segs, c2: [cx / (3 * A), cy / (3 * A)], c: G.to3(F, [cx / (3 * A), cy / (3 * A)]), circle: segs.length === 1 && segs[0].type === 'arc' };
+    });
+    const n = P.length;
+    // verso di ogni contorno: antiorario attorno alla direzione in cui il solido avanza
+    for (let k = 0; k < n; k++) {
+      const p = P[k], D = k + 1 < n ? sub(P[k + 1].c, p.c) : sub(p.c, P[k - 1].c);
+      if (k + 1 < n && Math.abs(dot(sub(P[k + 1].c, p.c), p.F.z)) < 1e-6 && Math.abs(dot(P[k + 1].F.z, p.F.z)) > 1 - 1e-9) throw userErr(p.skf.name + ' e ' + P[k + 1].skf.name + ' sono sullo stesso piano: metti ogni profilo su un piano diverso (Piano di riferimento)');
+      if (len(D) < 1e-7) throw userErr('Due profili vicini hanno lo stesso centro: metti ogni profilo su un piano diverso (Piano di riferimento)');
+      const h = dot(p.F.z, D);
+      p.D = norm(D);
+      const up = Math.abs(h) > 1e-9 ? Math.sign(h) : (k ? P[k - 1].up : 1);
+      p.up = up;
+      if (Math.sign(S.loopArea(p.segs)) * up < 0) p.segs = p.segs.slice().reverse().map(revSeg);
+      p.L = p.segs.map(segLen); p.len = p.L.reduce((a, b) => a + b, 0);
+    }
+    // punto del profilo alla frazione u del perimetro, dal suo punto di partenza
+    const atU = (p, u) => {
+      u -= Math.floor(u);
+      let d = u * p.len;
+      for (let j = 0; j < p.segs.length; j++) { if (d <= p.L[j] || j === p.segs.length - 1) return G.to3(p.F, segAt(p.segs[j], Math.min(1, d / p.L[j]))); d -= p.L[j]; }
+    };
+    const rotate = (p, j0) => { if (j0) { p.segs = p.segs.slice(j0).concat(p.segs.slice(0, j0)); p.L = p.L.slice(j0).concat(p.L.slice(0, j0)); } };
+    // allineamento dei punti di partenza: dal primo profilo con dei vertici, in avanti e all'indietro
+    const M = 96, us = Array.from({ length: M }, (_, i) => i / M);
+    const rel = p => us.map(u => sub(atU(p, u), p.c));
+    const align = (ref, p) => {
+      const A = rel(ref);
+      if (p.circle) {
+        // cerchio: l'angolo di partenza che avvicina di più i punti corrispondenti (in forma chiusa)
+        const s = p.segs[0], dir = s.a1 > s.a0 ? 1 : -1; let X = 0, Y = 0;
+        us.forEach((u, j) => { const a = s.a0 + dir * TAU * u, vx = dot(A[j], p.F.x), vy = dot(A[j], p.F.y); X += vx * Math.cos(a) + vy * Math.sin(a); Y += -vx * Math.sin(a) + vy * Math.cos(a); });
+        const off = Math.atan2(Y, X);
+        p.segs = [{ ...s, a0: s.a0 + off, a1: s.a1 + off }];
+        return;
+      }
+      let best = 0, bd = Infinity;
+      const segs0 = p.segs, L0 = p.L;
+      for (let j0 = 0; j0 < segs0.length; j0++) {
+        p.segs = segs0.slice(j0).concat(segs0.slice(0, j0)); p.L = L0.slice(j0).concat(L0.slice(0, j0));
+        const B = rel(p); let d = 0;
+        for (let j = 0; j < M; j++) { const w = sub(A[j], B[j]); d += dot(w, w); }
+        if (d < bd - 1e-9) { bd = d; best = j0; }
+      }
+      p.segs = segs0; p.L = L0; rotate(p, best);
+    };
+    let anchor = P.findIndex(p => !p.circle); if (anchor < 0) anchor = 0;
+    for (let k = anchor + 1; k < n; k++) align(P[k - 1], P[k]);
+    for (let k = anchor - 1; k >= 0; k--) align(P[k + 1], P[k]);
+    // colonne: i punti corrispondenti lungo i contorni, con la faccia (bf) a cui appartengono
+    const cols = [];   // { bf, pts: [punto 3D per ogni profilo] }
+    const same = P.every(p => p.segs.length === P[0].segs.length);
+    if (same) {
+      for (let j = 0; j < P[0].segs.length; j++) {
+        const m = Math.max(...P.map(p => p.segs[j].type === 'line' ? 1 : G.segsFor(p.segs[j].r, p.segs[j].a1 - p.segs[j].a0)));
+        for (let i = 0; i < m; i++) cols.push({ bf: j, pts: P.map(p => G.to3(p.F, segAt(p.segs[j], i / m))) });
+      }
+    } else {
+      // frazioni del perimetro: i vertici di tutti i profili, più una divisione uniforme abbastanza fitta
+      const rich = P.reduce((a, p) => p.segs.length > a.segs.length ? p : a, P[0]);
+      const brk = p => { const out = []; let d = 0; for (let j = 0; j < p.segs.length; j++) { out.push(d / p.len); d += p.L[j]; } return out; };
+      const m = Math.max(48, ...P.map(p => p.segs.reduce((s, g) => s + (g.type === 'line' ? 1 : G.segsFor(g.r, g.a1 - g.a0)), 0)));
+      let U = []; for (const p of P) if (!p.circle) U.push(...brk(p));
+      const fixed = U.slice().sort((a, b) => a - b);
+      for (let i = 0; i < m; i++) { const u = i / m; if (!fixed.some(x => Math.abs(x - u) < 0.25 / m || Math.abs(x - u) > 1 - 0.25 / m)) U.push(u); }
+      U.sort((a, b) => a - b); U = U.filter((u, i) => !i || u - U[i - 1] > 1e-9);
+      const rb = brk(rich);
+      for (const u of U) { let bf = 0; for (let j = 0; j < rb.length; j++) if (u >= rb[j] - 1e-9) bf = j; cols.push({ bf, pts: P.map(p => atU(p, u)) }); }
+    }
+    const nc = cols.length;
+    if (nc < 3) throw userErr('I profili sono troppo semplici per un loft');
+    // righe: le sezioni dal primo all'ultimo profilo
+    let size = 0; for (const c of cols) for (const q of c.pts) size = Math.max(size, len(sub(q, P[0].c)));
+    const tol = 1e-8 * (1 + size);
+    const t = [0]; for (let k = 1; k < n; k++) t.push(t[k - 1] + len(sub(P[k].c, P[k - 1].c)));
+    const tang = c => {   // tangenti lungo il solido in ogni profilo (Catmull-Rom; agli estremi curva di secondo grado)
+      const m = []; for (let k = 1; k < n - 1; k++) m[k] = mul(sub(c.pts[k + 1], c.pts[k - 1]), 1 / (t[k + 1] - t[k - 1]));
+      m[0] = sub(mul(sub(c.pts[1], c.pts[0]), 2 / (t[1] - t[0])), m[1]);
+      m[n - 1] = sub(mul(sub(c.pts[n - 1], c.pts[n - 2]), 2 / (t[n - 1] - t[n - 2])), m[n - 2]);
+      return m;
+    };
+    const rows = [cols.map(c => c.pts[0])];
+    const isPlanar = (a, b, c, d) => { const nn = cross(sub(b, a), sub(c, a)), l = len(nn); if (l < 1e-14) return true; return Math.abs(dot(sub(d, a), nn)) / l < tol; };
+    if (n === 2) {
+      // rigate: una sola riga se tutte le facce vengono piane, altrimenti tante righe quanta è la torsione
+      let flat = true, twist = 0;
+      for (let i = 0; i < nc; i++) {
+        const j = (i + 1) % nc, a = cols[i].pts[0], b = cols[j].pts[0], a1 = cols[i].pts[1], b1 = cols[j].pts[1];
+        if (!isPlanar(a, b, b1, a1)) flat = false;
+        const e0 = sub(b, a), e1 = sub(b1, a1), l0 = len(e0), l1 = len(e1);
+        if (l0 > 1e-9 && l1 > 1e-9) twist = Math.max(twist, Math.acos(Math.max(-1, Math.min(1, dot(e0, e1) / (l0 * l1)))));
+      }
+      const K = flat ? 1 : Math.min(64, Math.max(4, Math.ceil(twist / LOFT_TWIST)));
+      for (let r = 1; r <= K; r++) rows.push(cols.map(c => r === K ? c.pts[1] : add(mul(c.pts[0], 1 - r / K), mul(c.pts[1], r / K))));
+    } else {
+      const T = cols.map(tang);
+      for (let k = 0; k + 1 < n; k++) {
+        const h = t[k + 1] - t[k];
+        const H = (c, m, s) => { const s2 = s * s, s3 = s2 * s; return add(add(mul(c.pts[k], 2 * s3 - 3 * s2 + 1), mul(m[k], (s3 - 2 * s2 + s) * h)), add(mul(c.pts[k + 1], -2 * s3 + 3 * s2), mul(m[k + 1], (s3 - s2) * h))); };
+        // tratto dritto (i punti a metà stanno sulle corde): basta una riga
+        let straight = true;
+        for (let i = 0; i < nc && straight; i++) if (len(sub(H(cols[i], T[i], 0.5), mul(add(cols[i].pts[k], cols[i].pts[k + 1]), 0.5))) > tol) straight = false;
+        const K = straight ? 1 : LOFT_ROWS;
+        for (let r = 1; r <= K; r++) rows.push(cols.map((c, i) => r === K ? c.pts[k + 1] : H(c, T[i], r / K)));
+      }
+    }
+    const nr = rows.length - 1;
+    // facce: una faccia (bf) tutta su un piano è un piano vero; le altre sono faccette
+    const raw = [], groups = new Map();
+    for (let i = 0; i < nc; i++) { if (!groups.has(cols[i].bf)) groups.set(cols[i].bf, []); groups.get(cols[i].bf).push(i); }
+    for (const [bf, list] of groups) {
+      // i punti della faccia: stanno tutti su un piano?
+      const Q = [];
+      for (let r = 0; r <= nr; r++) for (const i of list) Q.push(rows[r][i], rows[r][(i + 1) % nc]);
+      let b = Q[0], bd = 0, pn = null, pa = 0;
+      for (const q of Q) { const d = len(sub(q, Q[0])); if (d > bd) { bd = d; b = q; } }
+      for (const q of Q) { const nn = cross(sub(b, Q[0]), sub(q, Q[0])), l = len(nn); if (l > pa) { pa = l; pn = nn; } }
+      let planar = pa > 1e-9 * (1 + size) * (1 + size);
+      if (planar) { pn = norm(pn); for (const q of Q) if (Math.abs(dot(sub(q, Q[0]), pn)) > tol) { planar = false; break; } }
+      for (let r = 0; r < nr; r++) for (const i of list) {
+        const j = (i + 1) % nc, a = rows[r][i], b = rows[r][j], b1 = rows[r + 1][j], a1 = rows[r + 1][i];
+        if (planar) raw.push({ v: [a, b, b1, a1], side: bf });
+        else if (isPlanar(a, b, b1, a1) && len(sub(a, b)) > 1e-9 && len(sub(a1, b1)) > 1e-9) raw.push({ v: [a, b, b1, a1], bf });
+        else {
+          // faccetta storta: quattro triangoli attorno al punto di mezzo, che sta sulla superficie rigata (due soli la tirerebbero da una parte)
+          const m = mul(add(add(a, b), add(b1, a1)), 0.25);
+          raw.push({ v: [a, b, m], bf }, { v: [b, b1, m], bf }, { v: [b1, a1, m], bf }, { v: [a1, a, m], bf });
+        }
+      }
+    }
+    // tappi sul primo e sull'ultimo profilo
+    const cap = (p, row, which) => {
+      let pts = row.map(q => { const w = sub(q, p.F.o); return [dot(w, p.F.x), dot(w, p.F.y)]; }), idx = row.map((_, i) => i);
+      if (G.area2(pts) < 0) { pts = pts.slice().reverse(); idx.reverse(); }
+      const tris = G.triangulate(pts, []), convex = G.mergeConvex(pts, tris);
+      const want = mul(p.D, which ? 1 : -1);
+      for (const c of convex) {
+        const v = c.map(i => row[idx[i]]), pn = CSG.planeOf(v);
+        if (pn && dot(pn.n, want) < 0) v.reverse();
+        raw.push({ v, cap: which });
+      }
+    };
+    cap(P[0], rows[0], 0); cap(P[n - 1], rows[nr], 1);
+    // i lati sono costruiti antiorari attorno alla direzione di avanzamento: il volume deve venire positivo, altrimenti si gira tutto
+    let vol = 0;
+    for (const r of raw) for (let i = 1; i + 1 < r.v.length; i++) vol += dot(r.v[0], cross(r.v[i], r.v[i + 1]));
+    if (vol < 0) for (const r of raw) r.v.reverse();
+    return meshPolys(raw, f.id, st);
   }
 
   /* ---------------- nervatura ---------------- */
@@ -6992,9 +7342,9 @@ self.postMessage({ hello: true });`;
     return { volume: m.volume, area, centroid: m.centroid, mass: m.volume * mat.rho / 1000, material: mat, bbox: bb };
   }
 
-  // schizzi usati da una funzione (lo sweep ne usa due: profilo e percorso)
-  const sketchesOf = f => [f.sketch, f.path].filter(Boolean);
-  const api = { facePatches, pieceOf, autoScope, helixMesh, FAST, FAST_TYPES, fastenerDoc, fastenerName, fastenerLengths, threadsOf, threadMinor, bodyProps, bodyOfPoly, stepBodies, sketchesOf, STD_PLANES, MATERIALS, HOLE, newDoc, uid, defaultName, regen, resolvePlane, findFaceTag, frameFromPlane, edgeGroups, edgeGeometry, resolveEdge, massProperties, FEAT_LABEL, rotMatrix, Import: IM, importInfo };
+  // schizzi usati da una funzione (lo sweep ne usa due: profilo e percorso; il loft uno per profilo)
+  const sketchesOf = f => [f.sketch, f.path, ...(f.profiles || [])].filter(Boolean);
+  const api = { facePatches, pieceOf, autoScope, helixMesh, curveOf, FAST, FAST_TYPES, fastenerDoc, fastenerName, fastenerLengths, threadsOf, threadMinor, bodyProps, bodyOfPoly, stepBodies, sketchesOf, STD_PLANES, MATERIALS, HOLE, newDoc, uid, defaultName, regen, resolvePlane, findFaceTag, frameFromPlane, edgeGroups, edgeGeometry, resolveEdge, massProperties, FEAT_LABEL, rotMatrix, Import: IM, importInfo };
   if (isNode) module.exports = api; else root.Model = api;
 })(this);
 
@@ -8954,6 +9304,9 @@ self.postMessage({ hello: true });`;
     sweep: I('<path d="M4 19h6a8 8 0 008-8V4"/><path d="M4 15.5v7" stroke-width="2.6"/><circle cx="18" cy="4" r="1.4" fill="currentColor"/>'),
     sweepcut: I('<path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M6 13h4a5 5 0 005-5V6" stroke-width="2.4" opacity=".7"/>'),
     rib: I('<path d="M4 20V4h4v12h12v4z"/><path d="M8 9l7 7" stroke-width="2.6"/>'),
+    loft: I('<path d="M4 20h16l-4-16h-8z" opacity=".55"/><ellipse cx="12" cy="20" rx="8" ry="2.2"/><ellipse cx="12" cy="4" rx="4" ry="1.4"/>'),
+    loftcut: I('<path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M8 16l2-7h4l2 7z" stroke-width="2.2" opacity=".7"/>'),
+    curve: I('<path d="M6 21c8 0 12-1.5 12-3s-4-2.5-6-2.5-6-1-6-2.5 4-2.5 6-2.5 6-1 6-2.5-4-2.5-6-2.5-6-1-6-2.5S10 3 18 3"/>'),
     import: I('<path d="M5 9l7-4 7 4v8l-7 4-7-4z" stroke-dasharray="2 1.6"/><path d="M12 1v11M8.5 8.5L12 12l3.5-3.5"/>'),
     assembly: I('<path d="M3 10l5-2.5L13 10v6l-5 2.5L3 16z"/><path d="M13 8l4-2 4 2v5l-4 2-4-2z"/><path d="M3 10l5 2.5L13 10M8 12.5v6"/>'),
     insertPart: I('<path d="M4 10l6-3 6 3v7l-6 3-6-3z"/><path d="M4 10l6 3 6-3M10 13v7"/><path d="M19 3v6M16 6h6"/>'),
@@ -9230,16 +9583,24 @@ self.postMessage({ hello: true });`;
       out.faces.push(quadFace(P, col, sel || hov ? 0.22 : 0.10));
     }
     {
-      const pmSk = App.pm && App.pm.sketchId ? App.pm.sketchId() : null, pmSk2 = App.pm && App.pm.sketchId2 ? App.pm.sketchId2() : null;
+      const pmSk = pmSketches();
       for (const f of visibleSketches()) {
         const hov = App.hover && App.hover.kind === 'feature' && App.hover.id === f.id;
-        const sel = f.id === pmSk || f.id === pmSk2 || App.sel.some(s => s.kind === 'feature' && s.id === f.id);
+        const sel = pmSk.includes(f.id) || App.sel.some(s => s.kind === 'feature' && s.id === f.id);
         const col = hov ? C_HOV : sel ? C_SEL : [0.30, 0.36, 0.44];
         for (const pl of sketchPolylines(f)) {
           const pts = [];
           for (let i = 0; i + 1 < pl.pts.length; i++) pts.push(pl.pts[i], pl.pts[i + 1]);
           out.lines.push({ pts, color: pl.cons ? [0.55, 0.6, 0.68] : col, dash: pl.cons, xray: true });
         }
+      }
+      // curve (Elica/Spirale): si vedono e si scelgono come gli schizzi
+      for (const f of visibleCurves()) {
+        const hov = App.hover && App.hover.kind === 'feature' && App.hover.id === f.id;
+        const sel = pmSk.includes(f.id) || App.sel.some(s => s.kind === 'feature' && s.id === f.id);
+        const P = st.curves.get(f.id).pts, pts = [];
+        for (let i = 0; i + 1 < P.length; i++) pts.push(P[i], P[i + 1]);
+        out.lines.push({ pts, color: hov ? C_HOV : sel ? C_SEL : [0.30, 0.36, 0.44], xray: true });
       }
     }
     if (App.pm && App.pm.preview) { const pv = App.pm.preview(); if (pv) { if (pv.lines) out.lines.push(...pv.lines); if (pv.faces) out.faces.push(...pv.faces); } }
@@ -9274,11 +9635,31 @@ self.postMessage({ hello: true });`;
     if (App.mode === 'drawing' || App.mode === 'assembly') return [];
     const doc = App.doc, used = new Set(doc.features.flatMap(Model.sketchesOf));
     const cur = App.mode === 'sketch' && Sketcher.session() ? Sketcher.session().f.id : null;
-    const pmSk = App.pm && App.pm.sketchId ? App.pm.sketchId() : null, pmSk2 = App.pm && App.pm.sketchId2 ? App.pm.sketchId2() : null;
+    const pmSk = pmSketches();
     return doc.features.filter(f => f.type === 'sketch' && !f.holeSketch && !f.suppressed && f.id !== cur &&
-      (!used.has(f.id) || f.id === pmSk || f.id === pmSk2 || App.sel.some(s => s.kind === 'feature' && s.id === f.id) || (App.pm && App.pm.sketchChoices)));
+      (!used.has(f.id) || pmSk.includes(f.id) || App.sel.some(s => s.kind === 'feature' && s.id === f.id) || (App.pm && App.pm.sketchChoices)));
   }
   App.visibleSketches = visibleSketches;
+  // schizzi e curve della funzione aperta nel pannello
+  function pmSketches() {
+    const pm = App.pm, out = [];
+    if (!pm) return out;
+    if (pm.sketchId) out.push(pm.sketchId());
+    if (pm.sketchId2) out.push(pm.sketchId2());
+    if (pm.sketchIds) out.push(...pm.sketchIds());
+    if (pm.curveId) out.push(pm.curveId());
+    return out.filter(Boolean);
+  }
+  // curve da mostrare: quelle non ancora usate come percorso, quella della funzione aperta e quelle selezionate
+  function visibleCurves() {
+    if (App.mode === 'drawing' || App.mode === 'assembly') return [];
+    const doc = App.doc, st = App.st;
+    if (!st || !st.curves || !st.curves.size) return [];
+    const used = new Set(doc.features.map(f => f.curve).filter(Boolean)), pmSk = pmSketches();
+    return doc.features.filter(f => f.type === 'curve' && !f.suppressed && st.curves.has(f.id) &&
+      (!used.has(f.id) || pmSk.includes(f.id) || App.sel.some(s => s.kind === 'feature' && s.id === f.id) || (App.pm && App.pm.sketchChoices)));
+  }
+  App.visibleCurves = visibleCurves;
   function pickSketch(sx, sy) {
     const r = App.r; let best = null, bd = 7;
     for (const f of visibleSketches()) for (const pl of sketchPolylines(f)) {
@@ -9301,7 +9682,13 @@ self.postMessage({ hello: true });`;
         if (best) break;
       }
     }
-    return best ? { kind: 'feature', id: best.id, label: best.name, sketch: true } : null;
+    if (best) return { kind: 'feature', id: best.id, label: best.name, sketch: true };
+    // curve (Elica/Spirale)
+    for (const f of visibleCurves()) {
+      const P = App.st.curves.get(f.id).pts.map(q => r.project(q));
+      for (let i = 0; i + 1 < P.length; i++) { const d = GLView.Renderer.segDist(sx, sy, P[i], P[i + 1]); if (d.d < bd) { bd = d.d; best = f; } }
+    }
+    return best ? { kind: 'feature', id: best.id, label: best.name, sketch: true, curve: true } : null;
   }
   // rettangolo di un piano: copre l'ingombro del pezzo (con margine) e contiene l'origine del piano
   function planeCorners(F) {
@@ -9666,7 +10053,7 @@ self.postMessage({ hello: true });`;
   }
 
   /* ================= albero di progettazione ================= */
-  const FICON = { sketch: 'sketch', extrude: 'extrude', cut: 'cut', revolve: 'revolve', revcut: 'revcut', hole: 'hole', fillet: 'fillet', chamfer: 'chamfer', lpattern: 'lpattern', cpattern: 'cpattern', mirror: 'mirror', plane: 'plane', sweep: 'sweep', sweepcut: 'sweepcut', rib: 'rib', import: 'import', helix: 'import', combine: 'combine', movebody: 'movebody', delbody: 'delbody' };
+  const FICON = { sketch: 'sketch', extrude: 'extrude', cut: 'cut', revolve: 'revolve', revcut: 'revcut', hole: 'hole', fillet: 'fillet', chamfer: 'chamfer', lpattern: 'lpattern', cpattern: 'cpattern', mirror: 'mirror', plane: 'plane', sweep: 'sweep', sweepcut: 'sweepcut', rib: 'rib', loft: 'loft', loftcut: 'loftcut', curve: 'curve', import: 'import', helix: 'import', combine: 'combine', movebody: 'movebody', delbody: 'delbody' };
   App.renderTree = function () {
     const t = $('#tree');
     const doc = App.doc, st = App.st;
@@ -9724,7 +10111,7 @@ self.postMessage({ hello: true });`;
     if (f.type === 'sketch') items.push(['Modifica schizzo', () => Sketcher.edit(f)], ['Modifica il piano dello schizzo', () => editSketchPlane(f)]);
     else items.push(['Modifica funzione', () => App.editFeature(f)]);
     for (const child of Model.sketchesOf(f).map(id => App.doc.features.find(x => x.id === id)).filter(Boolean)) {
-      const tag = f.path ? (child.id === f.path ? ' (percorso)' : ' (profilo)') : '';
+      const tag = f.path ? (child.id === f.path ? ' (percorso)' : ' (profilo)') : f.profiles ? ' (profilo ' + (f.profiles.indexOf(child.id) + 1) + ')' : '';
       items.push(['Modifica schizzo' + tag, () => Sketcher.edit(child)], ['Modifica il piano dello schizzo' + tag, () => editSketchPlane(child)]);
     }
     items.push('-');
@@ -9750,7 +10137,7 @@ self.postMessage({ hello: true });`;
   function deleteFeature(f) {
     const doc = App.doc;
     // dipendenze: funzioni che usano questo schizzo o questa funzione
-    const deps = doc.features.filter(x => x !== f && (Model.sketchesOf(x).includes(f.id) || (x.feats || []).includes(f.id)));
+    const deps = doc.features.filter(x => x !== f && (Model.sketchesOf(x).includes(f.id) || (x.feats || []).includes(f.id) || x.curve === f.id));
     const childs = Model.sketchesOf(f).map(id => doc.features.find(x => x.id === id && x.type === 'sketch')).filter(Boolean);
     const go = () => App.change(() => {
       const kill = new Set([f.id, ...deps.map(d => d.id)]);
@@ -9814,6 +10201,8 @@ self.postMessage({ hello: true });`;
       ['revcut', 'Taglio rivoluzione', 'Toglie materiale ruotando un profilo'],
       ['sweep', 'Estrusione con percorso', 'Fa scorrere un profilo chiuso lungo un percorso (linee e archi tangenti): tubi, molle piegate, maniglie'],
       ['sweepcut', 'Taglio con percorso', 'Toglie materiale facendo scorrere un profilo lungo un percorso: canali, gole'],
+      ['loft', 'Estrusione con loft', 'Unisce due o più profili chiusi su piani diversi: pale svergolate, raccordi tra sezioni diverse, tramogge'],
+      ['loftcut', 'Taglio con loft', 'Toglie materiale passando per due o più profili chiusi su piani diversi'],
       ['rib', 'Nervatura', 'Parete di rinforzo sottile da una linea aperta fino al pezzo'],
       ['hole', 'Creazione guidata fori', 'Fori semplici, passanti per viti, lamati, svasati e filettati (ISO)'],
       '-',
@@ -9829,6 +10218,7 @@ self.postMessage({ hello: true });`;
       ['delbody', 'Elimina/Mantieni corpo', 'Toglie dei corpi, oppure tiene solo quelli scelti'],
       '-',
       ['plane', 'Piano di riferimento', 'Piano parallelo a un piano o a una faccia, a una certa distanza'],
+      ['curve', 'Elica e spirale', 'Curva a elica o a spirale che parte da un cerchio: è il percorso di molle e filetti'],
       ['sketch', 'Schizzo', 'Nuovo schizzo sul piano o sulla faccia selezionati'],
     ],
     sketch: null, // riempita da Sketcher
@@ -9903,7 +10293,7 @@ self.postMessage({ hello: true });`;
         App.pickPlaneFor('Scegli il piano o la faccia piana su cui disegnare lo schizzo', ref => Sketcher.start(ref));
         return;
       }
-      case 'extrude': case 'cut': case 'revolve': case 'revcut': case 'hole': case 'fillet': case 'chamfer': case 'lpattern': case 'cpattern': case 'mirror': case 'plane': case 'sweep': case 'sweepcut': case 'rib': case 'combine': case 'movebody': case 'delbody':
+      case 'extrude': case 'cut': case 'revolve': case 'revcut': case 'hole': case 'fillet': case 'chamfer': case 'lpattern': case 'cpattern': case 'mirror': case 'plane': case 'sweep': case 'sweepcut': case 'rib': case 'loft': case 'loftcut': case 'curve': case 'combine': case 'movebody': case 'delbody':
         Features.create(id); return;
       case 'insertPart': return App.asm.insertDialog();
       case 'fastener': return App.asm.fastenerDialog();
@@ -14125,8 +14515,38 @@ self.postMessage({ hello: true });`;
       let prof = pool.find(isClosed) || null;
       let path = pool.find(f => f !== prof && isPath(f)) || pool.find(f => f !== prof && !isClosed(f)) || null;
       if (prof && path && doc.features.indexOf(path) > doc.features.indexOf(prof) && isClosed(path) && !isPath(prof)) { const t = prof; prof = path; path = t; }
-      if (!prof || !path) App.toast('Servono due schizzi: il profilo chiuso (per esempio un cerchio) e il percorso (linee e archi tangenti) che parte dal piano del profilo.', 6000);
-      return open({ type, sketch: prof ? prof.id : null, path: path ? path.id : null }, true);
+      // percorso a elica o a spirale: la curva selezionata, oppure l'ultima non ancora usata se manca lo schizzo del percorso
+      const usedCv = new Set(doc.features.map(f => f.curve).filter(Boolean));
+      const selCv = App.sel.filter(x => x.kind === 'feature').map(x => doc.features.find(f => f.id === x.id)).find(f => f && f.type === 'curve');
+      const curve = selCv || (!path ? doc.features.filter(f => f.type === 'curve' && !f.suppressed && !usedCv.has(f.id)).pop() : null) || null;
+      if (curve) path = null;
+      if (!prof || !(path || curve)) App.toast('Servono il profilo chiuso (per esempio un cerchio) e il percorso che parte dal piano del profilo: uno schizzo di linee e archi tangenti, oppure una curva Elica/Spirale.', 6000);
+      return open({ type, sketch: prof ? prof.id : null, path: path ? path.id : null, ...(curve ? { curve: curve.id } : {}) }, true);
+    }
+    if (type === 'loft' || type === 'loftcut') {
+      if (type === 'loftcut' && !Model.regen(doc).body.length) { App.toast('Non c\'è ancora materiale da tagliare: crea prima un solido.'); return; }
+      // profili: gli schizzi selezionati, nell'ordine in cui sono stati scelti; altrimenti tutti gli schizzi chiusi non ancora usati, nell'ordine dell'albero
+      const used = new Set(doc.features.flatMap(Model.sketchesOf));
+      const isClosed = f => { try { const p = Sketch.profiles(f.sk); return !p.errors.length && p.regions.length > 0; } catch (e) { return false; } };
+      const selSk = App.sel.filter(x => x.kind === 'feature').map(x => doc.features.find(f => f.id === x.id)).filter(f => f && f.type === 'sketch' && !f.holeSketch);
+      const list = selSk.length >= 2 ? selSk : doc.features.filter(f => f.type === 'sketch' && !f.holeSketch && !f.suppressed && !used.has(f.id) && isClosed(f));
+      if (list.length < 2) App.toast('Servono almeno due schizzi chiusi su piani diversi (usa Piano di riferimento): sceglili nell\'ordine in cui il solido li attraversa.', 6000);
+      return open({ type, profiles: list.map(f => f.id) }, true);
+    }
+    if (type === 'curve') {
+      const hasCircle = f => f.sk.ents.some(e => e.t === 'ci' && !e.cons && !e.ext);
+      const s = App.sel.map(x => x.kind === 'feature' && doc.features.find(f => f.id === x.id)).find(f => f && f.type === 'sketch' && !f.holeSketch);
+      const used = new Set(doc.features.flatMap(Model.sketchesOf));
+      const sk = s || doc.features.filter(f => f.type === 'sketch' && !f.holeSketch && !f.suppressed && !used.has(f.id) && hasCircle(f)).pop();
+      if (!sk) {
+        App.toast('Serve uno schizzo con un cerchio: il suo diametro è quello dell\'elica. Scegli il piano e disegnalo; poi la curva si apre da sola.', 5000);
+        App.pickPlaneFor('Scegli il piano o la faccia per il cerchio dell\'elica', ref => Sketcher.start(ref, { onExit: (ok, f) => { if (ok && App.doc.features.includes(f)) { App.select({ kind: 'feature', id: f.id, label: f.name }); F.create('curve'); } } }));
+        return;
+      }
+      const pm = open({ type: 'curve', sketch: sk.id, def: 'pr', pitch: 10, revs: 5, height: 50, start: 0 }, true);
+      const Fr = App.st && App.st.frames && App.st.frames.get(sk.id);
+      if (Fr && Math.abs(dot3(Fr.z, App.r.basis().back)) > 0.95) { App.r.setView(GLView.Renderer.viewQ('iso')); App.r.fit(true); }
+      return pm;
     }
     if (type === 'rib') {
       if (!Model.regen(doc).body.length) { App.toast('La nervatura rinforza un pezzo che c\'è già: crea prima un solido.'); return; }
@@ -14225,9 +14645,10 @@ self.postMessage({ hello: true });`;
         App.save();
       },
     };
-    if (['extrude', 'cut', 'revolve', 'revcut', 'rib', 'sweep', 'sweepcut'].includes(f.type)) {
+    if (['extrude', 'cut', 'revolve', 'revcut', 'rib', 'sweep', 'sweepcut', 'loft', 'loftcut', 'curve'].includes(f.type)) {
       pm.sketchId = () => f.sketch;
-      if (f.path !== undefined) pm.sketchId2 = () => f.path;
+      if (f.path !== undefined) { pm.sketchId2 = () => f.path; pm.curveId = () => f.curve; }
+      if (f.profiles) pm.sketchIds = () => f.profiles;
       pm.sketchChoices = true; // durante la scelta si vedono tutti gli schizzi
     }
     pm.setPick = m => { pickMode = m; App.refreshPM(); App.recolor(); };
@@ -14250,6 +14671,9 @@ self.postMessage({ hello: true });`;
       if (box) { box.textContent = err || warn || ''; box.className = 'note ' + (err ? 'err' : warn ? '' : ''); box.hidden = !(err || warn); }
       if (pm.okBtn) pm.okBtn.disabled = !!err;
       pm._preview = previewSt;
+      // Elica/Spirale: le misure della curva, aggiornate a ogni modifica
+      const ci = document.querySelector('#pmCurveInfo');
+      if (ci) { const nf = previewSt.info.get(f.id), n3 = x => (+x.toFixed(3)).toLocaleString('it-IT', { maximumFractionDigits: 3 }); ci.textContent = nf ? 'Lunghezza della curva: ' + n3(nf.length) + ' mm · altezza ' + n3(nf.height) + ' mm · passo ' + n3(nf.pitch) + ' mm · ' + n3(nf.revs) + ' rivoluzioni' + (Math.abs(nf.r1 - nf.r0) > 1e-9 ? ' · diametro finale ' + n3(2 * nf.r1) + ' mm' : '') : ''; }
       App.redraw();
     }
     pm.refresh = refresh;
@@ -14262,9 +14686,9 @@ self.postMessage({ hello: true });`;
   }
   /* ---------------- corpi solidi: «Unisci risultato», scelta dei corpi ---------------- */
   const BODY_FEATS = ['combine', 'movebody', 'delbody'];
-  const SCOPE_FEATS = ['cut', 'revcut', 'sweepcut', 'hole', 'extrude', 'revolve', 'sweep', 'rib', 'import'];
-  const PATTERN_FEATS = ['lpattern', 'cpattern', 'mirror'], REPEATABLE = ['extrude', 'cut', 'revolve', 'revcut', 'hole', 'sweep', 'sweepcut', 'rib'];
-  const SKETCH_FEATS = ['extrude', 'cut', 'revolve', 'revcut', 'rib', 'sweep', 'sweepcut'];
+  const SCOPE_FEATS = ['cut', 'revcut', 'sweepcut', 'loftcut', 'hole', 'extrude', 'revolve', 'sweep', 'loft', 'rib', 'import'];
+  const PATTERN_FEATS = ['lpattern', 'cpattern', 'mirror'], REPEATABLE = ['extrude', 'cut', 'revolve', 'revcut', 'hole', 'sweep', 'sweepcut', 'loft', 'loftcut', 'rib'];
+  const SKETCH_FEATS = ['extrude', 'cut', 'revolve', 'revcut', 'rib', 'sweep', 'sweepcut', 'loft', 'loftcut', 'curve'];
   const pickedBodies = f => f.type === 'combine' ? [f.main, ...(f.tools || [])].filter(Boolean) : BODY_FEATS.includes(f.type) || PATTERN_FEATS.includes(f.type) ? (f.bodies || []) : (f.scope || []);
   function toggleBody(f, id) {
     if (SCOPE_FEATS.includes(f.type)) { const i = f.scope.indexOf(id); if (i >= 0) f.scope.splice(i, 1); else f.scope.push(id); return; }
@@ -14298,7 +14722,10 @@ self.postMessage({ hello: true });`;
     if (sketches.length) {
       box.append(el('div', { class: 'asm-fly-h' }, 'Schizzi'));
       const two = f.type === 'sweep' || f.type === 'sweepcut';   // nello sweep si vede quale fa da profilo e quale da percorso
-      for (const x of sketches) box.append(item('data-fly-sketch', x.id, x.name + (two && x.id === f.sketch ? ' (profilo)' : two && x.id === f.path ? ' (percorso)' : ''), x.id === f.sketch || x.id === f.path, { kind: 'feature', id: x.id, label: x.name, sketch: true }));
+      const nth = id => f.profiles ? f.profiles.indexOf(id) : -1;
+      for (const x of sketches) box.append(item('data-fly-sketch', x.id, x.name + (two && x.id === f.sketch ? ' (profilo)' : two && x.id === f.path ? ' (percorso)' : nth(x.id) >= 0 ? ' (profilo ' + (nth(x.id) + 1) + ')' : ''), x.id === f.sketch || x.id === f.path || nth(x.id) >= 0, { kind: 'feature', id: x.id, label: x.name, sketch: true }));
+      const curves = two ? curveCandidates(f).filter(x => !x.suppressed || x.id === f.curve) : [];
+      if (curves.length) { box.append(el('div', { class: 'asm-fly-h' }, 'Curve')); for (const x of curves) box.append(item('data-fly-curve', x.id, x.name + (x.id === f.curve ? ' (percorso)' : ''), x.id === f.curve, { kind: 'feature', id: x.id, label: x.name, sketch: true, curve: true })); }
     }
     const idx = doc.features.indexOf(f);
     if (wantBodies) {
@@ -14314,7 +14741,7 @@ self.postMessage({ hello: true });`;
   }
   // casella «Unisci risultato» (come in SolidWorks), quando c'è già un solido
   function appendMerge(body, f, pm) {
-    if (!['extrude', 'revolve', 'sweep', 'import'].includes(f.type)) return;
+    if (!['extrude', 'revolve', 'sweep', 'loft', 'import'].includes(f.type)) return;
     const App = A(), idx = App.doc.features.indexOf(f);
     if (!Model.regen(App.doc, { stopAt: idx }).body.length) return;
     const i = App.el('input', { type: 'checkbox', id: 'pmMerge' }); i.checked = f.merge !== false;
@@ -14356,7 +14783,8 @@ self.postMessage({ hello: true });`;
       case 'cpattern': return f.feats.length || (f.bodies || []).length ? 'axis' : 'feats';
       case 'mirror': return f.feats.length || (f.bodies || []).length ? 'mirrorPlane' : 'feats';
       case 'plane': return 'base';
-      case 'sweep': case 'sweepcut': return !f.sketch ? 'profile' : !f.path ? 'path' : null;
+      case 'sweep': case 'sweepcut': return !f.sketch ? 'profile' : !(f.path || f.curve) ? 'path' : null;
+      case 'loft': case 'loftcut': return 'profiles';
     }
     return null;
   }
@@ -14369,7 +14797,7 @@ self.postMessage({ hello: true });`;
       case 'dir': return ['edge'];
       case 'axis': return ['face', 'edge'];
       case 'mirrorPlane': case 'base': return ['face', 'plane'];
-      case 'profile': case 'path': return ['sketch'];
+      case 'profile': case 'path': case 'profiles': return ['sketch'];
     }
     return ['sketch', 'face', 'edge'];
   }
@@ -14466,14 +14894,67 @@ self.postMessage({ hello: true });`;
           s.addEventListener('change', () => { if (s.value) setSketch(f, s.value, pm, key); });
           return el('div', { class: 'row' }, el('label', { for: id }, label), s);
         };
-        const g = grp('Profilo e percorso', pickSel('sketch', 'Profilo'), pickSel('path', 'Percorso'),
+        // il percorso può essere uno schizzo oppure una curva Elica/Spirale
+        const pathSel = () => {
+          const s = el('select', { id: 'pm_path' });
+          s.append(el('option', { value: '', selected: !f.path && !f.curve }, '— scegli —'));
+          for (const c of cands) s.append(el('option', { value: c.id, selected: c.id === f.path && !f.curve }, c.name));
+          for (const c of curveCandidates(f)) s.append(el('option', { value: 'cv:' + c.id, selected: c.id === f.curve }, c.name + ' (curva)'));
+          s.addEventListener('change', () => { if (s.value.startsWith('cv:')) setCurve(f, s.value.slice(3), pm); else if (s.value) { delete f.curve; setSketch(f, s.value, pm, 'path'); } });
+          return el('div', { class: 'row' }, el('label', { for: 'pm_path' }, 'Percorso'), s);
+        };
+        const g = grp('Profilo e percorso', pickSel('sketch', 'Profilo'), pathSel(),
           el('div', { class: 'btnrow' },
             el('button', { class: 'relbtn' + (pm.getPick() === 'profile' ? ' sel' : ''), type: 'button', onclick: () => pm.setPick('profile') }, pm.getPick() === 'profile' ? 'Clic sul profilo nella vista…' : 'Scegli il profilo nella vista'),
             el('button', { class: 'relbtn', type: 'button', onclick: () => pm.setPick('path') }, pm.getPick() === 'path' ? 'Clic sul percorso nella vista…' : 'Scegli il percorso nella vista')),
-          el('p', { class: 'note' }, 'Il profilo è un contorno chiuso; il percorso è una catena di linee e archi tangenti che parte dal piano del profilo, perpendicolare a esso. Lo schizzo del percorso si fa di solito su un piano perpendicolare a quello del profilo.'));
+          el('p', { class: 'note' }, f.curve ? 'Il percorso è una curva Elica/Spirale: il profilo, chiuso, va disegnato su un piano che passa per il punto di partenza della curva (per esempio il piano frontale, con il cerchio dell\'elica sul piano superiore). Il profilo gira attorno all\'asse seguendo la curva.' : 'Il profilo è un contorno chiuso; il percorso è una catena di linee e archi tangenti che parte dal piano del profilo, perpendicolare a esso, oppure una curva Elica/Spirale. Lo schizzo del percorso si fa di solito su un piano perpendicolare a quello del profilo.'));
         body.append(g);
         if (f.type === 'sweepcut') body.append(el('p', { class: 'note' }, 'L\'anteprima rossa mostra il materiale che verrà tolto.'));
         else body.append(el('p', { class: 'note' }, 'L\'anteprima arancione mostra il materiale che verrà aggiunto.'));
+        break;
+      }
+      case 'loft': case 'loftcut': {
+        const cands = sketchCandidates(f), name = id => { const x = doc.features.find(q => q.id === id); return x ? x.name : '(schizzo eliminato)'; };
+        const list = el('div', { class: 'selbox' + (pm.getPick() === 'profiles' ? ' active' : ''), id: 'pmProfiles', title: 'Fai clic qui e poi scegli gli schizzi nella vista' });
+        if (!f.profiles.length) list.append(el('span', { class: 'empty' }, 'Nessun profilo: fai clic sugli schizzi nella vista, nell\'ordine'));
+        const move = (i, d) => { const j = i + d; if (j < 0 || j >= f.profiles.length) return; const t = f.profiles[i]; f.profiles[i] = f.profiles[j]; f.profiles[j] = t; App.refreshPM(); pm.update(); };
+        f.profiles.forEach((id, i) => {
+          const row = el('div', { class: 'row', 'data-profile': id }, el('span', { class: 'chip' }, (i + 1) + '. ' + name(id)),
+            el('button', { type: 'button', class: 'relbtn', title: 'Sposta su', 'aria-label': 'Sposta su ' + name(id), disabled: i === 0, onclick: ev => { ev.stopPropagation(); move(i, -1); } }, '↑'),
+            el('button', { type: 'button', class: 'relbtn', title: 'Sposta giù', 'aria-label': 'Sposta giù ' + name(id), disabled: i === f.profiles.length - 1, onclick: ev => { ev.stopPropagation(); move(i, 1); } }, '↓'),
+            el('button', { type: 'button', class: 'relbtn', title: 'Togli', 'aria-label': 'Togli ' + name(id), onclick: ev => { ev.stopPropagation(); f.profiles.splice(i, 1); App.refreshPM(); pm.update(); } }, '×'));
+          list.append(row);
+        });
+        list.addEventListener('click', () => pm.setPick('profiles'));
+        const addSel = el('select', { id: 'pm_addProfile' });
+        addSel.append(el('option', { value: '' }, '— aggiungi un profilo —'));
+        for (const c of cands) if (!f.profiles.includes(c.id)) addSel.append(el('option', { value: c.id }, c.name));
+        addSel.addEventListener('change', () => { if (addSel.value) { f.profiles.push(addSel.value); App.refreshPM(); pm.update(); } });
+        body.append(grp('Profili', list, el('div', { class: 'row' }, el('label', { for: 'pm_addProfile' }, 'Aggiungi'), addSel),
+          el('p', { class: 'note' }, 'Ogni profilo è uno schizzo con un solo contorno chiuso, su un piano diverso (Piano di riferimento). L\'ordine dell\'elenco è quello in cui il solido attraversa i profili: cambialo con le frecce. Tra due profili le facce sono dritte; con tre o più il solido passa per tutti con una curva morbida. Se i profili hanno lo stesso numero di lati, ogni vertice si unisce al vertice corrispondente.')));
+        body.append(el('p', { class: 'note' }, f.type === 'loftcut' ? 'L\'anteprima rossa mostra il materiale che verrà tolto.' : 'L\'anteprima arancione mostra il materiale che verrà aggiunto.'));
+        break;
+      }
+      case 'curve': {
+        body.append(sketchPicker('Cerchio di partenza'));
+        const def = f.def || 'pr', spiral = def === 'spiral';
+        body.append(grp('Definita da', sel('Tipo', 'def', [['pr', 'Passo e rivoluzione'], ['hr', 'Altezza e rivoluzione'], ['hp', 'Altezza e passo'], ['spiral', 'Spirale']], () => App.refreshPM())));
+        const g = grp('Parametri');
+        if (def === 'hr' || def === 'hp') g.append(num('Altezza', 'height', 'mm'));
+        if (def !== 'hr') g.append(num('Passo', 'pitch', 'mm'));
+        if (def !== 'hp') g.append(num('Rivoluzioni', 'revs', ''));
+        if (!spiral) g.append(chk('Inverti la direzione', 'flip'));
+        g.append(num('Angolo iniziale', 'start', '°'));
+        const radio = (on, label, id, v) => { const r = el('input', { type: 'radio', name: 'pmSense', id }); r.checked = on; r.addEventListener('change', () => { f.cw = v; upd(); }); return el('label', { class: 'chk' }, r, label); };
+        g.append(radio(!f.cw, 'Senso antiorario', 'pmCcw', false), radio(!!f.cw, 'Senso orario', 'pmCw', true));
+        body.append(g);
+        if (!spiral) {
+          const gt = grp('Elica rastremata', chk('Elica rastremata', 'taperOn', () => { if (f.taperOn && !(+f.taper > 0)) f.taper = 5; App.refreshPM(); }));
+          if (f.taperOn) gt.append(num('Angolo di rastremazione', 'taper', '°'), chk('Rastremazione verso l\'esterno', 'taperOut'));
+          body.append(gt);
+        }
+        body.append(el('p', { class: 'note', id: 'pmCurveInfo' }, ''));
+        body.append(el('p', { class: 'note' }, spiral ? 'La spirale resta sul piano dello schizzo: a ogni rivoluzione il raggio cresce di un passo. Parte dal cerchio, all\'angolo iniziale misurato dall\'asse X dello schizzo.' : 'L\'elica parte dal cerchio, all\'angolo iniziale misurato dall\'asse X dello schizzo, e sale lungo la normale del piano. Il senso si legge guardando lo schizzo di fronte: antiorario mentre sale è un\'elica destra, come le viti normali. La curva è il percorso di un\'Estrusione con percorso (molle, filetti).'));
         break;
       }
       case 'import': {
@@ -14688,6 +15169,19 @@ self.postMessage({ hello: true });`;
     const doc = A().doc, idx = doc.features.indexOf(f);
     return doc.features.slice(0, idx < 0 ? doc.features.length : idx).filter(x => x.type === 'sketch' && !x.holeSketch);
   }
+  // curve (Elica/Spirale) che una funzione può usare come percorso: quelle che vengono prima di lei
+  function curveCandidates(f) {
+    const doc = A().doc, idx = doc.features.indexOf(f);
+    return doc.features.slice(0, idx < 0 ? doc.features.length : idx).filter(x => x.type === 'curve');
+  }
+  function setCurve(f, id, pm) {
+    const App = A();
+    const cv = curveCandidates(f).find(x => x.id === id);
+    if (!cv) { App.toast('Questa curva viene dopo la funzione: non si può usare.'); return; }
+    f.curve = id; f.path = null;
+    App.refreshPM(); pm.update();
+    App.toast('Percorso scelto: ' + cv.name);
+  }
   function setSketch(f, id, pm, key = 'sketch') {
     const App = A();
     const sk = sketchCandidates(f).find(x => x.id === id);
@@ -14702,15 +15196,29 @@ self.postMessage({ hello: true });`;
     const App = A();
     const mode = pm.getPick();
     if (!it) return;
+    // una curva Elica/Spirale si può scegliere solo come percorso di uno sweep
+    if (it.kind === 'feature' && it.curve) {
+      if (f.type === 'sweep' || f.type === 'sweepcut') { setCurve(f, it.id, pm); pm.setPick(!f.sketch ? 'profile' : null); }
+      return;
+    }
     if (PATTERN_FEATS.includes(f.type) && it.kind === 'feature' && !it.sketch) {
       const i = f.feats.indexOf(it.id); if (i >= 0) f.feats.splice(i, 1); else f.feats.push(it.id);
       App.refreshPM(); pm.update(); return;
     }
     if (it.kind === 'feature' && it.sketch && ['extrude', 'cut', 'revolve', 'revcut', 'rib'].includes(f.type)) { setSketch(f, it.id, pm); return; }
+    if (it.kind === 'feature' && it.sketch && (f.type === 'loft' || f.type === 'loftcut')) {
+      // un clic aggiunge lo schizzo in fondo all'elenco dei profili, un altro clic lo toglie
+      const sk = sketchCandidates(f).find(x => x.id === it.id);
+      if (!sk) { App.toast('Questo schizzo viene dopo la funzione: non si può usare.'); return; }
+      const i = f.profiles.indexOf(it.id); if (i >= 0) f.profiles.splice(i, 1); else f.profiles.push(it.id);
+      App.refreshPM(); pm.update(); return;
+    }
+    if (it.kind === 'feature' && it.sketch && f.type === 'curve') { setSketch(f, it.id, pm); return; }
     if (it.kind === 'feature' && it.sketch && (f.type === 'sweep' || f.type === 'sweepcut')) {
+      if (pm.getPick() === 'path' || (pm.getPick() !== 'profile' && f.sketch)) delete f.curve;
       const key = mode === 'path' ? 'path' : mode === 'profile' ? 'sketch' : (!f.sketch ? 'sketch' : 'path');
       setSketch(f, it.id, pm, key);
-      pm.setPick(key === 'sketch' && !f.path ? 'path' : null);
+      pm.setPick(key === 'sketch' && !f.path && !f.curve ? 'path' : null);
       return;
     }
     if (BODY_FEATS.includes(f.type) || (mode === 'scope' && f.scope) || mode === 'patBodies' || (PATTERN_FEATS.includes(f.type) && it.kind === 'body') || (SCOPE_FEATS.includes(f.type) && f.scope && !f.scopeAuto && it.kind === 'body')) {
@@ -14790,7 +15298,10 @@ self.postMessage({ hello: true });`;
     const st = pm._preview;
     const out = { lines: [], faces: [] };
     if (st.errors.get(f.id)) return out;
-    if (['extrude', 'cut', 'revolve', 'revcut', 'hole', 'sweep', 'sweepcut', 'rib', 'import'].includes(f.type)) {
+    if (f.type === 'curve') {
+      const cv = st.curves.get(f.id);
+      if (cv) { const pts = []; for (let i = 0; i + 1 < cv.pts.length; i++) pts.push(cv.pts[i], cv.pts[i + 1]); out.lines.push({ pts, color: AMBER, xray: true }); }
+    } else if (['extrude', 'cut', 'revolve', 'revcut', 'hole', 'sweep', 'sweepcut', 'loft', 'loftcut', 'rib', 'import'].includes(f.type)) {
       const t = st.tools.get(f.id);
       if (t) out.faces.push(App.polyFaces(t.polys, t.op === 'sub' ? CUTCOL : AMBER, 0.5));
     } else if (BODY_FEATS.includes(f.type)) {
@@ -16393,7 +16904,11 @@ self.postMessage({ hello: true });`;
       if (!b || !s2) return;
       const a = s2.getBoundingClientRect();
       sc.scrollLeft += a.left + fx * a.width - e.clientX;
-      sc.scrollTop += a.top + fy * a.height - e.clientY;
+      // in verticale lo scorrimento finisce dove finisce il foglio: se per tenere fermo il punto sotto il puntatore serve
+      // andare oltre, si aggiunge spazio vuoto sopra o sotto il foglio (tolto quando il foglio torna adattato alla finestra)
+      const want = sc.scrollTop + a.top + fy * a.height - e.clientY, mt = parseFloat(holder.style.marginTop) || 0, mb = parseFloat(holder.style.marginBottom) || 0;
+      if (want < 0) { holder.style.marginTop = (mt - want) + 'px'; sc.scrollTop = 0; }
+      else { const max = sc.scrollHeight - sc.clientHeight; if (want > max) holder.style.marginBottom = (mb + want - max) + 'px'; sc.scrollTop = want; }
     }, { passive: false });
   };
   D.enter = function (ctx) {
@@ -16496,6 +17011,7 @@ self.postMessage({ hello: true });`;
     const sc = document.querySelector('#sheetScroll');
     const L = lastRender ? lastRender.L : null; if (!L) return;
     const z = Math.min((sc.clientWidth - 40) / (L.W * 3.78), (sc.clientHeight - 40) / (L.H * 3.78));
+    const h = document.querySelector('#sheetHolder'); h.style.marginTop = ''; h.style.marginBottom = '';
     setZoom(z > 0 ? z : 1);
   }
   function toPaper(e) {
@@ -16912,8 +17428,20 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Funzioni', 'Taglio estruso', ['taglio-estrusione', 'taglio'], 'Come l\'estrusione, ma toglie materiale: tasche, fori sagomati, cave.'],
     ['Funzioni', 'Rivoluzione base', ['rivoluzione'], 'Fa ruotare un profilo chiuso attorno a una linea di mezzeria: alberi, perni, boccole, pomoli. Il profilo deve stare tutto da una parte dell\'asse.'],
     ['Funzioni', 'Taglio rivoluzione', ['taglio-rivoluzione'], 'Toglie materiale ruotando un profilo attorno a un asse: gole, scanalature circolari, sedi per anelli.'],
-    ['Funzioni', 'Estrusione con percorso', ['sweep', 'percorso'], 'Fa scorrere un profilo chiuso lungo un percorso (linee e archi tangenti): tubi piegati, maniglie, molle a filo, guarnizioni. Servono due schizzi: il profilo e il percorso, su piani diversi; il percorso parte dal piano del profilo, perpendicolare a esso. In SolidWorks: «Base/Estrusione con percorso».'],
+    ['Funzioni', 'Estrusione con percorso', ['sweep', 'percorso'], 'Fa scorrere un profilo chiuso lungo un percorso (linee e archi tangenti): tubi piegati, maniglie, molle a filo, guarnizioni. Servono due schizzi: il profilo e il percorso, su piani diversi; il percorso parte dal piano del profilo, perpendicolare a esso. Il percorso può essere anche una curva «Elica e spirale»: così si fanno le molle a elica e i filetti. In SolidWorks: «Base/Estrusione con percorso».'],
     ['Funzioni', 'Taglio con percorso', ['sweep cut'], 'Toglie materiale facendo scorrere un profilo lungo un percorso: canali, gole che girano, sedi per tubi.'],
+    ['Funzioni', 'Estrusione con loft', ['loft', 'estrusione/base con loft', 'base con loft'], 'Crea un solido che passa per due o più profili chiusi, disegnati su piani diversi: pale svergolate, tramogge, raccordi tra una sezione quadrata e una tonda. Ogni profilo è uno schizzo con un solo contorno; l\'ordine in cui li scegli è quello in cui il solido li attraversa. Tra due profili le facce sono dritte (rigate); con tre o più il solido passa per tutti con una curva morbida. In SolidWorks: «Estrusione/Base con loft» (qui senza curve guida).'],
+    ['Funzioni', 'Taglio con loft', ['loft cut', 'taglio-loft'], 'Come l\'Estrusione con loft, ma toglie materiale: tasche che cambiano forma dall\'ingresso al fondo, condotti che si restringono.'],
+    ['Funzioni', 'Profili', ['profili del loft', 'ordine dei profili'], 'Gli schizzi chiusi per cui passa il loft, nell\'ordine in cui il solido li attraversa. Si aggiungono con un clic nella vista o dall\'elenco «Aggiungi»; le frecce ↑ ↓ cambiano l\'ordine, × toglie un profilo. Se i profili hanno lo stesso numero di lati, ogni vertice si unisce al suo corrispondente (quello che torce meno il solido); altrimenti i punti si corrispondono alla stessa frazione del perimetro.'],
+    ['Funzioni', 'Svergolamento', ['pala svergolata', 'svergolata', 'torsione'], 'Una pala è svergolata quando il suo profilo cambia inclinazione dalla base alla punta: vicino al mozzo è più inclinata, in punta più piatta. Si ottiene con l\'Estrusione con loft tra due o più profili ruotati uno rispetto all\'altro, su piani a distanze diverse dall\'asse.'],
+    ['Funzioni', 'Elica e spirale', ['elica/spirale', 'curva elicoidale', 'elica cilindrica', 'spirale'], 'Curva nello spazio che parte da un cerchio disegnato in uno schizzo: l\'elica gira attorno all\'asse del cerchio e intanto sale (molle, filetti); la spirale resta sul piano e si allarga a ogni giro (molle a spirale). Non crea materiale: si usa come percorso di un\'Estrusione con percorso o di un Taglio con percorso. In SolidWorks: Inserisci › Curva › «Elica/Spirale».'],
+    ['Funzioni', 'Cerchio di partenza', ['cerchio dell\'elica'], 'Lo schizzo con il cerchio da cui nasce l\'elica o la spirale: il diametro del cerchio è il diametro di partenza della curva, il centro sta sull\'asse, il piano dello schizzo è perpendicolare all\'asse. Nello schizzo deve esserci un solo cerchio.'],
+    ['Funzioni', 'Definita da', ['passo e rivoluzione', 'altezza e rivoluzione', 'altezza e passo'], 'Quali due misure descrivono l\'elica, come in SolidWorks: passo e rivoluzioni, altezza e rivoluzioni, oppure altezza e passo; la terza si ricava da sola (altezza = passo × rivoluzioni). «Spirale» fa una curva piana: il passo è quanto cresce il raggio a ogni giro.'],
+    ['Funzioni', 'Passo', ['passo dell\'elica'], 'Di quanto l\'elica sale lungo l\'asse in un giro completo. Nella spirale è quanto cresce il raggio a ogni giro. Per una molla o un filetto il passo deve essere più grande del profilo, altrimenti le spire si compenetrano.'],
+    ['Funzioni', 'Rivoluzioni', ['giri', 'spire', 'numero di spire'], 'Quanti giri fa l\'elica o la spirale attorno all\'asse. Può anche non essere intero: 5,5 rivoluzioni finiscono dalla parte opposta a quella di partenza.'],
+    ['Funzioni', 'Angolo iniziale', [], 'Il punto del cerchio da cui parte l\'elica, come angolo misurato dall\'asse X dello schizzo (0° = sull\'asse X positivo). Il profilo da far scorrere va disegnato su un piano che passa per questo punto.'],
+    ['Funzioni', 'Senso orario', ['senso antiorario', 'elica destra', 'elica sinistra'], 'Il verso in cui gira l\'elica guardando lo schizzo di fronte. Antiorario mentre sale è un\'elica destra, come le viti e i bulloni normali; orario è un\'elica sinistra. «Inverti la direzione» fa salire l\'elica dall\'altra parte del piano, con lo stesso senso.'],
+    ['Funzioni', 'Elica rastremata', ['rastremazione', 'elica conica', 'angolo di rastremazione'], 'Elica il cui diametro cambia mentre sale, come una molla conica: l\'angolo di rastremazione è l\'inclinazione rispetto all\'asse. Di norma il diametro si stringe; con «Rastremazione verso l\'esterno» si allarga.'],
     ['Funzioni', 'Profilo', ['profilo chiuso'], 'Il contorno chiuso che viene estruso, ruotato o fatto scorrere: è la «sezione» della funzione.'],
     ['Funzioni', 'Nervatura', ['rib'], 'Parete sottile di rinforzo (costola) tra due parti del pezzo, per esempio nell\'angolo di una squadretta. Si disegna solo una linea aperta: il materiale riempie lo spazio tra la linea e il pezzo, con lo spessore scelto. La linea viene prolungata da sola fino al pezzo.'],
     ['Funzioni', 'Spessore', [], 'Lo spessore della nervatura, misurato perpendicolarmente al piano dello schizzo: a metà per parte (piano medio) oppure tutto da un lato.'],
@@ -16928,7 +17456,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Funzioni', 'Propagazione tangente', ['spigoli tangenti', 'propaga', 'tangent propagation'], 'Casella del Raccordo e dello Smusso (spuntata per le funzioni nuove, come in SolidWorks): con un clic su uno spigolo si lavorano anche gli spigoli che lo continuano senza angolo, cioè con la stessa direzione nel punto in cui si toccano e una faccia in comune. Esempio: un clic su una linea del bordo di un\'asola raccorda tutti e 4 gli spigoli (due linee e due archi). Agli angoli vivi, per esempio quelli di un blocco, la propagazione si ferma.'],
     ['Funzioni', 'Spigolo curvo', ['bordo dell\'ellisse', 'bordo della spline'], 'Il bordo di una faccia fatta da un\'ellisse o da una spline importata da un file DXF. Nel pezzo è fatto da tanti archi tangenti, ma come in SolidWorks conta come uno spigolo solo: un clic lo sceglie tutto (si colora per intero) e il raccordo o lo smusso lo segue senza righe tra un tratto e l\'altro. Anche la faccia della curva si sceglie tutta insieme.'],
     ['Funzioni', 'Spigoli da raccordare', ['spigoli da smussare'], 'Gli spigoli su cui si applica il raccordo o lo smusso: clic sugli spigoli nella vista (diventano blu); un secondo clic li toglie.'],
-    ['Funzioni', 'Profilo e percorso', [], 'I due schizzi dell\'estrusione con percorso: il profilo (contorno chiuso) e il percorso (linee e archi tangenti) lungo cui il profilo scorre.'],
+    ['Funzioni', 'Profilo e percorso', [], 'I due schizzi dell\'estrusione con percorso: il profilo (contorno chiuso) e il percorso (linee e archi tangenti) lungo cui il profilo scorre. Al posto dello schizzo del percorso si può scegliere una curva Elica/Spirale.'],
     ['Funzioni', 'Istanze', ['numero di istanze'], 'Il numero totale di copie in una serie, contando anche l\'originale.'],
     ['Funzioni', 'Schizzo da estrudere', ['schizzo da tagliare', 'schizzo da far ruotare', 'schizzo della nervatura'], 'Lo schizzo usato dalla funzione. Si sceglie dall\'elenco o con un clic sulle sue linee nella vista; «Modifica lo schizzo» lo riapre.'],
     ['Funzioni', 'Asse di rivoluzione', [], 'La linea di mezzeria dello schizzo attorno a cui ruota il profilo.'],
@@ -17829,6 +18357,73 @@ T('Ambito funzione: la serie di un taglio lavora sugli stessi corpi', () => { co
 // due blocchi sovrapposti: il foro passante lavora su uno solo, l'altro resta pieno
 T('Ambito funzione: anche il foro lavora solo sul corpo scelto: Ø8 su 1000, area del cerchio × 10', () => { const d = D0('c'); const a = blk(d, 0, 0, 10, 10, 10); blk(d, 0, 0, 10, 10, 10, false); const b = SB(); b.pt(5, 5, { hole: true }); const s = sketch(d, face(d, nearW([0, 1, 0], 10)), b); feat(d, { type: 'hole', sketch: s, kind: 'simple', dia: 8, end: 'through', scope: [a] }); return d; }, { V: 2000 - Math.PI * 16 * 10 });
 
+/* ---------- elica e spirale, estrusione con percorso lungo la curva ---------- */
+// cerchio sul piano superiore (asse Y), profilo sul piano frontale (contiene l'asse): il profilo gira attorno all'asse,
+// quindi il volume è area × strada del baricentro attorno all'asse (Pappo-Guldino): salire non aggiunge volume
+const planeAt = (d, off, base = 'top') => ({ kind: 'plane', id: feat(d, { type: 'plane', base: STD(base), offset: off }) });
+const helixDoc = (R, cv, prof, type = 'sweep', pre, plane = STD('top')) => {
+  const d = pre ? pre() : D0('e'); const a = SB(); a.circle(0, 0, R); const sa = sketch(d, typeof plane === 'function' ? plane(d) : plane, a);
+  const c = feat(d, { type: 'curve', sketch: sa, ...cv });
+  const b = SB(); prof(b); const sb = sketch(d, STD('front'), b); feat(d, { type, sketch: sb, curve: c }); return d;
+};
+T('Molla a elica: filo Ø4 su Ø40, passo 10, 5 giri: π·2²·2π·20·5', () => helixDoc(20, { def: 'pr', pitch: 10, revs: 5 }, b => b.circle(20, 0, 2)),
+  { V: PI * 4 * 2 * PI * 20 * 5, C: [0, 25, 0], bb: [[-22, -2, -22], [22, 52, 22]] });
+T('Molla a elica data con altezza 30 e 4 rivoluzioni (passo 7,5), filo quadrato 3×3', () => helixDoc(15, { def: 'hr', height: 30, revs: 4 }, b => b.rect(13.5, -1.5, 16.5, 1.5)),
+  { V: 9 * 2 * PI * 15 * 4, bb: [[-16.5, -1.5, -16.5], [16.5, 31.5, 16.5]] });
+T('Molla a elica data con altezza 24 e passo 8 (3 giri), direzione invertita: scende', () => helixDoc(12, { def: 'hp', height: 24, pitch: 8, flip: true }, b => b.circle(12, 0, 1.5)),
+  { V: PI * 2.25 * 2 * PI * 12 * 3, C: [0, -12, 0], bb: [[-13.5, -25.5, -13.5], [13.5, 1.5, 13.5]] });
+// spirale: il raggio cresce di un passo a giro; ∫ r dθ = 10·6π + (6/2π)·(6π)²/2 = 114π
+T('Molla a spirale piana: nastro 2×2, raggio da 10 a 28 (passo 6, 3 giri)', () => helixDoc(10, { def: 'spiral', pitch: 6, revs: 3 }, b => b.rect(9, -1, 11, 1)),
+  { V: 4 * 114 * PI, bb: [[-26, -1, -24.5], [29, 1, 27.5]] });
+// rastremata 10° verso l'interno: il raggio scende da 20 a 20 − 32·tan 10°; ∫ r dθ = raggio medio × angolo
+T('Molla conica: elica rastremata di 10°, passo 8, 4 giri, filo Ø3', () => helixDoc(20, { def: 'pr', pitch: 8, revs: 4, taperOn: true, taper: 10 }, b => b.circle(20, 0, 1.5)),
+  { V: PI * 2.25 * (20 + 20 - 32 * Math.tan(10 * PI / 180)) / 2 * 8 * PI });
+// filetto vero: solco a triangolo (profondo 1,5, largo 1,5 sul cilindro R10) lungo un'elica di passo 3, 5 giri.
+// Area tolta 1,125 mm², baricentro a 8,5 + 2/3·1,5 = 9,5 dall'asse
+T('Taglio con percorso lungo un\'elica (filetto): 1,125 · 2π·9,5 · 5', () => helixDoc(10, { def: 'pr', pitch: 3, revs: 5 }, b => b.poly([[8.5, 5], [10.5, 4], [10.5, 6]]), 'sweepcut',
+  () => { const d = D0('f'); const b = SB(); b.circle(0, 0, 10); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 30 }); return d; }, d => planeAt(d, 5)),
+  { D: -1.125 * 2 * PI * 9.5 * 5 });
+
+/* ---------- loft ---------- */
+const loftDoc = (profs, type = 'loft', pre) => {
+  const d = pre ? pre() : D0('l'); const ids = [];
+  for (const [h, draw] of profs) { const b = SB(); draw(b); ids.push(sketch(d, typeof h === 'object' ? h : h ? planeAt(d, h) : STD('top'), b)); }
+  feat(d, { type, profiles: ids }); return d;
+};
+const sqL = a => [[-a, -a], [a, -a], [a, a], [-a, a]];
+const turnL = (pts, deg) => pts.map(([x, y]) => [x * Math.cos(deg * PI / 180) - y * Math.sin(deg * PI / 180), x * Math.sin(deg * PI / 180) + y * Math.cos(deg * PI / 180)]);
+// tronco di piramide: V = h/3·(A₁ + A₂ + √(A₁A₂)); facce laterali trapezi con apotema √(30² + 5²); baricentro a h/4·(A₁ + 2√(A₁A₂) + 3A₂)/(A₁ + √(A₁A₂) + A₂)
+T('Loft tra due quadrati 20 e 10, alto 30: tronco di piramide con 6 facce piane', () => loftDoc([[0, b => b.poly(sqL(10))], [30, b => b.poly(sqL(5))]]),
+  { V: 7000, A: 500 + 4 * 15 * Math.sqrt(925), C: [0, 30 / 4 * 1100 / 700, 0], E: 12, bb: [[-10, 0, -10], [10, 30, 10]] });
+T('Loft tra due cerchi R10 e R5, alto 20: tronco di cono', () => loftDoc([[0, b => b.circle(0, 0, 10)], [20, b => b.circle(0, 0, 5)]]),
+  { V: PI * 20 / 3 * 175, A: PI * 125 + PI * 15 * Math.sqrt(425), C: [0, 20 / 4 * (100 + 100 + 75) / 175, 0] });
+// stesso quadrato girato di 30°: ogni vertice va al suo corrispondente; la sezione a quota t ha area a²·((1−t)² + t² + 2t(1−t)·cos 30°)
+T('Loft svergolato: quadrato 20 girato di 30° in 40 mm: 40·400·(2 + cos 30°)/3', () => loftDoc([[0, b => b.poly(sqL(10))], [40, b => b.poly(turnL(sqL(10), 30))]]),
+  { V: 40 * 400 * (2 + Math.cos(PI / 6)) / 3, C: [0, 20, 0] });
+// i vertici partono da punti diversi e in verso opposto: il loft li riallinea da solo (stesso solido di prima)
+T('Loft svergolato con i profili disegnati partendo da vertici diversi e in versi opposti', () => loftDoc([[0, b => b.poly(sqL(10))], [40, b => { const p = turnL(sqL(10), 30); b.poly([p[2], p[1], p[0], p[3]]); }]]),
+  { V: 40 * 400 * (2 + Math.cos(PI / 6)) / 3 });
+// tre cerchi R10, R6, R10 a 0, 20, 40: il raggio segue una parabola in ogni tratto, r = 4s² − 8s + 10; ∫₀¹ r² ds = 55,2
+T('Loft per tre cerchi R10, R6, R10 (curva morbida): 40π·55,2', () => loftDoc([[0, b => b.circle(0, 0, 10)], [20, b => b.circle(0, 0, 6)], [40, b => b.circle(0, 0, 10)]]),
+  { V: 40 * PI * 55.2, C: [0, 20, 0], bb: [[-10, 0, -10], [10, 40, 10]] });
+// tre quadrati uguali in fila: i tratti sono dritti, resta un parallelepipedo con le facce piane (8 spigoli dei tappi + 4 verticali, ognuno in due tratti)
+T('Loft per tre quadrati uguali: parallelepipedo 20×20×50 con 6 facce piane', () => loftDoc([[0, b => b.poly(sqL(10))], [20, b => b.poly(sqL(10))], [50, b => b.poly(sqL(10))]]),
+  { V: 20000, A: 2 * 400 + 4 * 1000, E: 16 });
+// quadrato → cerchio: i punti si corrispondono alla stessa frazione del perimetro; l'area delle sezioni è un polinomio di
+// secondo grado nella quota, quindi V = h/6·(A₀ + 4·A_metà + A₁), con la sezione di mezzo calcolata qui a parte
+T('Loft da un quadrato 20 a un cerchio R10, alto 30 (sezione di mezzo calcolata a parte)', () => loftDoc([[0, b => b.poly(sqL(10))], [30, b => b.circle(0, 0, 10)]]),
+  { V: (() => { const N = 8000, M = []; for (let i = 0; i < N; i++) { const u = i / N, d = u * 80, k = Math.floor(d / 20), t = d / 20 - k, P = sqL(10), a = P[k], b = P[(k + 1) % 4], an = (225 + 360 * u) * PI / 180; M.push([(a[0] + (b[0] - a[0]) * t + 10 * Math.cos(an)) / 2, (a[1] + (b[1] - a[1]) * t + 10 * Math.sin(an)) / 2]); } let A = 0; for (let i = 0; i < N; i++) { const p = M[i], q = M[(i + 1) % N]; A += (p[0] * q[1] - q[0] * p[1]) / 2; } return 30 / 6 * (400 + 4 * A + 100 * PI); })() });
+// tasca a tronco di piramide: 20×20 sulla faccia alta, 10×10 a 10 mm di profondità
+T('Taglio con loft: tasca a tronco di piramide in un blocco 40×40×20: 10/3·(400 + 100 + 200)', () => loftDoc([[{ kind: 'plane', id: 'PA' }, b => b.poly(sqL(10))], [{ kind: 'plane', id: 'PB' }, b => b.poly(sqL(5))]], 'loftcut',
+  () => { const d = D0('t'); const b = SB(); b.rect(-20, -20, 20, 20); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), b), end: 'blind', depth: 20 }); feat(d, { id: 'PA', type: 'plane', base: STD('top'), offset: 20 }); feat(d, { id: 'PB', type: 'plane', base: STD('top'), offset: 10 }); return d; }),
+  { V: 32000 - 7000 / 3, D: -7000 / 3 });
+// pala a tronco di piramide (8×2 → 4×1 in 30 mm, lungo X) ripetuta tre volte attorno all'asse Y: le superfici si copiano con lei
+T('Serie circolare di un loft: tre pale da 30/3·(16 + 4 + 8)', () => {
+  const d = D0('p'); const ids = [];
+  for (const [x, a, c] of [[10, 4, 1], [40, 2, 0.5]]) { const b = SB(); b.rect(-a, -c, a, c); ids.push(sketch(d, planeAt(d, x, 'right'), b)); }
+  const l = feat(d, { type: 'loft', profiles: ids }); feat(d, { type: 'cpattern', feats: [l], axis: { kind: 'axis', id: 'y' }, n: 3, angle: 360, equal: true }); return d;
+}, { V: 3 * 280, C: [0, 0, 0] });
+
 const SK = [];
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
   const b = SB(); const [p1, p2, p3, p4] = b.rect(0, 0, 70, 45); const s = b.s;
@@ -18409,6 +19004,56 @@ SK.push(['Sfondo DXF nello schizzo: stessa origine e scala; geometria, stato e c
   const back = JSON.parse(JSON.stringify(a.s));
   return { ok: true, exp: [1, 1, 1, 1, 1, 1, 1, 6000, 1, 1], got: [same ? 1 : 0, near(t.x, 20) * near(t.y, 30), near(t.h, 5) * near(t.w, 0.8), l.p.join() === '0,-20,100,-20' ? 1 : 0, c.c.join() === '20,30' && near(c.r, 10) ? 1 : 0,
     an.dof === an0.dof && an.status === an0.status ? 1 : 0, b.s.bg === undefined ? 1 : 0, pr.regions.reduce((s, x) => s + x.area, 0), pr.regions.length === pr0.regions.length ? 1 : 0, back.bg.length === 2 * nBg ? 1 : 0] };
+}]);
+
+/* ---------- elica e spirale: punti, lunghezze, messaggi d'errore; loft: messaggi d'errore, STEP ---------- */
+const curveDoc = (R, cv, plane = 'top') => { const d = D0('c'); const a = SB(); a.circle(0, 0, R); const id = feat(d, { type: 'curve', sketch: sketch(d, STD(plane), a), ...cv }); return { d, id }; };
+const errOf = d => { const st = Model.regen(d); return [...st.errors.values()].join(' | '); };
+// piano superiore: X dello schizzo = X, Y dello schizzo = −Z, normale = Y. Antiorario: dopo un quarto di giro il punto è a −Z
+SK.push(['Elica R20, passo 10: punti a ¼ di giro (antiorario, orario, invertita, angolo iniziale 90°) e punto finale dopo 2,5 giri', () => {
+  const pt = (cv, th) => { const { d, id } = curveDoc(20, { def: 'pr', pitch: 10, revs: 2.5, ...cv }); return Model.regen(d).curves.get(id).point(th); };
+  const got = [...pt({}, PI / 2), ...pt({ cw: true }, PI / 2), ...pt({ flip: true }, PI / 2), ...pt({ start: 90 }, PI / 2), ...pt({}, 5 * PI)];
+  return { ok: true, got, exp: [0, 2.5, -20, 0, 2.5, 20, 0, -2.5, -20, -20, 2.5, 0, -20, 25, 0] };
+}]);
+// lunghezze: elica giri·√((2πR)² + p²); spirale ed elica rastremata ∫√(r² + c²)dθ con r = R + bθ: [r√(r² + c²) + c²·asinh(r/c)]/(2b)
+SK.push(['Elica, spirale ed elica rastremata: lunghezza, altezza, passo e raggio finale', () => {
+  const info = cv => { const { d, id } = curveDoc(20, cv); return Model.regen(d).info.get(id); };
+  const F = (r, c) => r * Math.sqrt(r * r + c * c) + c * c * Math.asinh(r / c);
+  const a = info({ def: 'pr', pitch: 10, revs: 5 }), b = info({ def: 'hr', height: 30, revs: 4 }), c = info({ def: 'hp', height: 24, pitch: 8 });
+  const s = info({ def: 'spiral', pitch: 6, revs: 3 }), bs = 6 / (2 * PI);
+  const t = info({ def: 'pr', pitch: 8, revs: 4, taperOn: true, taper: 10 }), bt = -Math.tan(10 * PI / 180) * 8 / (2 * PI), ct = Math.hypot(bt, 8 / (2 * PI)), r1 = 20 - 32 * Math.tan(10 * PI / 180);
+  const o = info({ def: 'pr', pitch: 8, revs: 4, taperOn: true, taper: 10, taperOut: true });
+  return { ok: true, got: [a.length, a.height, b.length, b.pitch, c.length, c.revs, s.length, s.r1, s.height, t.length, t.r1, o.r1],
+    exp: [5 * Math.hypot(40 * PI, 10), 50, 4 * Math.hypot(40 * PI, 7.5), 7.5, 3 * Math.hypot(40 * PI, 8), 3, (F(38, bs) - F(20, bs)) / (2 * bs), 38, 0, (F(r1, ct) - F(20, ct)) / (2 * bt), r1, 20 + 32 * Math.tan(10 * PI / 180)] };
+}]);
+SK.push(['Elica e sweep lungo l\'elica: gli errori sono spiegati (cerchio mancante, passo zero, spire che si compenetrano, profilo fuori posto, profilo sull\'asse)', () => {
+  const noCircle = (() => { const d = D0('c'); const a = SB(); a.rect(0, 0, 5, 5); feat(d, { type: 'curve', sketch: sketch(d, STD('top'), a), def: 'pr', pitch: 10, revs: 5 }); return errOf(d); })();
+  const zero = errOf(curveDoc(20, { def: 'pr', pitch: 0, revs: 5 }).d), closes = errOf(curveDoc(5, { def: 'pr', pitch: 10, revs: 5, taperOn: true, taper: 10 }).d);
+  const tight = errOf(helixDoc(20, { def: 'pr', pitch: 3, revs: 5 }, b => b.circle(20, 0, 2)));           // filo Ø4, passo 3
+  const one = errOf(helixDoc(20, { def: 'pr', pitch: 3, revs: 1 }, b => b.circle(20, 0, 2)));             // un giro solo: nessuna spira sopra
+  const away = errOf(helixDoc(20, { def: 'pr', pitch: 10, revs: 5, start: 90 }, b => b.circle(20, 0, 2))); // l'elica parte a Z = −20: il piano frontale non ci passa
+  const axis = errOf(helixDoc(2, { def: 'pr', pitch: 10, revs: 3 }, b => b.circle(2, 0, 3)));
+  const spir = errOf(helixDoc(10, { def: 'spiral', pitch: 2, revs: 3 }, b => b.rect(9, -1, 11.5, 1)));
+  return { ok: true, got: [/un cerchio/.test(noCircle), /passo deve essere/.test(zero), /si chiude sull.asse/.test(closes), /spire si compenetrano/.test(tight), one === '', /partire dal piano del profilo/.test(away), /arriva all.asse/.test(axis), /larghezza del profilo/.test(spir)].map(Number), exp: [1, 1, 1, 1, 1, 1, 1, 1] };
+}]);
+SK.push(['Loft: gli errori sono spiegati (un profilo solo, stesso piano, contorno aperto, due contorni, schizzo ripetuto)', () => {
+  const mk = profs => { const d = D0('l'); const ids = profs.map(([h, draw]) => { const b = SB(); draw(b); return sketch(d, h ? planeAt(d, h) : STD('top'), b); }); return { d, ids }; };
+  const e = (profs, pick = ids => ids) => { const { d, ids } = mk(profs); feat(d, { type: 'loft', profiles: pick(ids) }); return errOf(d); };
+  const S = b => b.poly(sqL(10)), open = b => { const p = [b.pt(0, 0), b.pt(10, 0), b.pt(10, 10)]; b.line(p[0], p[1]); b.line(p[1], p[2]); };
+  return { ok: true, got: [/almeno due profili/.test(e([[0, S]])), /stesso piano/.test(e([[0, S], [0, b => b.poly(sqL(5))]])), /aperto/.test(e([[0, S], [20, open]])), /solo contorno/.test(e([[0, S], [20, b => { b.circle(0, 0, 3); b.circle(20, 0, 3); }]])),
+    /due volte/.test(e([[0, S], [20, S]], ids => [ids[0], ids[1], ids[0]])), e([[0, S], [20, S]]) === ''].map(Number), exp: [1, 1, 1, 1, 1, 1] };
+}]);
+// le facce: un loft tra due quadrati ha 4 lati piani veri (ci si può disegnare sopra), uno svergolato ha 4 facce curve (bf) senza spigoli in mezzo
+SK.push(['Loft: facce piane vere quando i lati sono piani, facce curve senza spigoli in mezzo quando è svergolato; corpo chiuso', () => {
+  const run = deg => { const st = Model.regen(loftDoc([[0, b => b.poly(sqL(10))], [40, b => b.poly(turnL(sqL(deg ? 10 : 5), deg))]])); const tg = st.body.map(p => st.tags.get(p.t));
+    return [tg.filter(t => !t.mesh).length, new Set(tg.filter(t => t.mesh).map(t => t.bf)).size, st.topo.edges.filter(e => e.sharp).length, st.topo.edges.filter(e => e.polys.length !== 2).length]; };
+  const a = run(0), b = run(30);
+  // svergolato: 30°/2,5° = 12 righe; spigoli vivi = 4 bordi × 12 tratti + 8 dei tappi
+  return { ok: true, got: [...a, ...b], exp: [6, 0, 12, 0, 2, 4, 4 * 12 + 8, 0] };
+}]);
+SK.push(['Molla e loft svergolato esportati in STEP: solidi chiusi, senza lati aperti', () => {
+  const one = d => { const r = stepX(d); return [r.stats.badEdges, r.stats.openLoops, /MANIFOLD_SOLID_BREP/.test(r.text) ? 1 : 0]; };
+  return { ok: true, got: [...one(helixDoc(20, { def: 'pr', pitch: 10, revs: 2 }, b => b.circle(20, 0, 2))), ...one(loftDoc([[0, b => b.poly(sqL(10))], [40, b => b.poly(turnL(sqL(10), 30))]]))], exp: [0, 0, 1, 0, 0, 1] };
 }]);
 
 /* ---------- assiemi: posizioni e gradi di libertà calcolati a mano ---------- */
@@ -20031,8 +20676,33 @@ if (isNode) {
       'Premi **Estrusione con percorso**: profilo e percorso vengono scelti da soli; se serve cambiali dagli elenchi o con «Scegli nella vista».',
       'Conferma con ✓. Per togliere materiale usa **Taglio con percorso**.',
     ],
-    tips: ['Esempio: percorso sul Piano superiore che parte dall\'origine, profilo (cerchio) sul Piano frontale centrato nell\'origine.', 'Il raggio degli archi del percorso deve essere più grande del profilo.'],
+    tips: ['Per molle e filetti il percorso è una curva [[Elica e spirale]] invece di uno schizzo.', 'Esempio: percorso sul Piano superiore che parte dall\'origine, profilo (cerchio) sul Piano frontale centrato nell\'origine.', 'Il raggio degli archi del percorso deve essere più grande del profilo.'],
     terms: ['Estrusione con percorso', 'Taglio con percorso', 'Profilo', 'Profilo e percorso', 'Arco tangente'],
+  });
+  add('Funzioni', 'elica', 'Elica e spirale: molle e filetti', {
+    why: 'Molle a elica, molle a spirale, filetti veri: un profilo che scorre lungo una curva che gira attorno a un asse.',
+    cmd: { tab: 'features', id: 'curve' },
+    steps: [
+      '**Cerchio:** apri uno schizzo sul piano perpendicolare all\'asse della molla (per esempio il Piano superiore) e disegna un [[Cerchio]] con il diametro medio della molla. Conferma.',
+      'Premi **Elica e spirale**: scegli in [[Definita da]] quali misure dare (per esempio [[Passo]] 10 e [[Rivoluzioni]] 5) e guarda la curva arancione. Conferma con ✓.',
+      '**Profilo:** apri uno schizzo su un piano che passa per l\'inizio dell\'elica (con il cerchio sul Piano superiore e [[Angolo iniziale]] 0° è il Piano frontale) e disegna il filo: un cerchio con il centro sul punto di partenza della curva. Conferma.',
+      'Premi **Estrusione con percorso**: il profilo e la curva vengono scelti da soli (la curva si può scegliere anche dall\'elenco «Percorso» o con un clic nella vista). Conferma con ✓.',
+    ],
+    tips: ['Il passo deve essere più grande del profilo, altrimenti le spire si compenetrano e compare un errore.', 'Per una molla conica spunta [[Elica rastremata]]; per una molla piana scegli «Spirale».', 'Per un filetto vero usa **Taglio con percorso** con un profilo a triangolo su un cilindro.', 'La lunghezza del filo si legge nel pannello della curva.'],
+    terms: ['Elica e spirale', 'Cerchio di partenza', 'Definita da', 'Passo', 'Rivoluzioni', 'Angolo iniziale', 'Senso orario', 'Elica rastremata', 'Estrusione con percorso'],
+  });
+  add('Funzioni', 'loft', 'Estrusione con loft: pale e raccordi di forma', {
+    why: 'Solidi che cambiano sezione: pale svergolate, tramogge, raccordi tra un quadrato e un cerchio, manici.',
+    cmd: { tab: 'features', id: 'loft' },
+    steps: [
+      '**Primo profilo:** in uno schizzo disegna il primo contorno chiuso (per esempio sul Piano superiore). Conferma.',
+      '**Altri piani:** con [[Piano di riferimento]] crea un piano parallelo alla distanza voluta, uno per ogni altro profilo.',
+      '**Altri profili:** su ogni piano disegna il suo contorno chiuso (un solo contorno per schizzo). Conferma ogni volta.',
+      'Premi **Estrusione con loft**: gli schizzi liberi entrano nell\'elenco [[Profili]] nell\'ordine dell\'albero. Con un clic nella vista ne aggiungi o togli uno; con le frecce ↑ ↓ cambi l\'ordine.',
+      'Controlla l\'anteprima arancione e conferma con ✓. Per togliere materiale usa **Taglio con loft**.',
+    ],
+    tips: ['**Pala svergolata:** disegna lo stesso profilo su due o tre piani, ogni volta ruotato di qualche grado: il loft li unisce torcendo la pala ([[Svergolamento]]).', 'Se i profili hanno lo stesso numero di lati (per esempio due rettangoli) ogni vertice si unisce al suo corrispondente e le facce restano distinte.', 'Tra un quadrato e un cerchio i punti si corrispondono lungo il perimetro: la superficie passa morbida da una forma all\'altra.', 'Due profili sullo stesso piano non vanno: ogni profilo vuole il suo piano.'],
+    terms: ['Estrusione con loft', 'Taglio con loft', 'Profili', 'Svergolamento', 'Piano di riferimento'],
   });
   add('Funzioni', 'nervatura', 'Nervatura', {
     why: 'Pareti sottili di rinforzo, per esempio nell\'angolo di una squadretta.',

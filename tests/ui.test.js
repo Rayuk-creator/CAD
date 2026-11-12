@@ -841,6 +841,46 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     rec('Interfaccia: lettura STEP annullata, poi una nuova importazione funziona', afterCancel.n === 0 && !afterCancel.modal && r3 === 7, `dopo Annulla: ${afterCancel.n} importati, finestra ${afterCancel.modal ? 'aperta' : 'chiusa'}; nuova importazione: ${r3} facce`);
   } catch (e) { rec('Interfaccia: STEP letto a parte (pagina libera) e scelta dei corpi di un assieme', false, e.message.split('\n')[0]); }
 
+  // 3b. Elica e spirale ed Estrusione con loft, con i pulsanti e i pannelli (schizzi già pronti: il disegno con il mouse è provato sopra)
+  try {
+    await fresh();
+    const addSk = (id, name, plane, ents) => page.evaluate(([id, name, plane, ents]) => { const s = Sketch.newSketch(); s.ents.push(...ents); s.next = 50; App.change(() => { App.doc.features.push({ id, name, type: 'sketch', plane, sk: s }); App.doc.next = Math.max(App.doc.next, +id.slice(1) + 1); }); }, [id, name, plane, ents]);
+    const circ = (x, y, r) => [{ id: 'p', t: 'pt', x, y }, { id: 'c', t: 'ci', c: 'p', r }];
+    await addSk('F1', 'Schizzo1', { kind: 'std', id: 'top' }, circ(0, 0, 20));
+    await page.evaluate(() => App.select({ kind: 'feature', id: 'F1', label: 'Schizzo1' }));
+    await page.click('#cmdBar [data-cmd="curve"]'); await page.waitForTimeout(300);
+    const pan = await page.evaluate(() => ({ title: App.pm && App.pm.title, info: document.querySelector('#pmCurveInfo').textContent }));
+    await page.fill('#pm_revs', '4'); await page.waitForTimeout(400);
+    const info2 = await page.evaluate(() => document.querySelector('#pmCurveInfo').textContent);
+    await page.click('.pm-ok'); await page.waitForTimeout(200);
+    await addSk('F3', 'Schizzo2', { kind: 'std', id: 'front' }, circ(20, 0, 2));
+    await page.evaluate(() => App.select(null));
+    await page.click('#cmdBar [data-cmd="sweep"]'); await page.waitForTimeout(500);
+    const sw = await page.evaluate(() => { const f = App.doc.features.at(-1); return { curve: f.curve, path: f.path, opt: document.querySelector('#pm_path').value }; });
+    await page.click('.pm-ok');
+    const m1 = await props();
+    const exp1 = Math.PI * 4 * 2 * Math.PI * 20 * 4;
+    rec('Interfaccia: Elica e spirale (lunghezza nel pannello) e molla con Estrusione con percorso lungo la curva',
+      pan.title === 'Elica/Spirale' && /630,305/.test(pan.info) && /504,244/.test(info2) && sw.curve === 'F2' && !sw.path && sw.opt === 'cv:F2' && rel(m1.V, exp1) < TOL,
+      `pannello «${pan.title}», «${pan.info}» → «${info2}»; percorso ${sw.curve} (${sw.opt}); volume ${m1.V.toFixed(1)} invece di ${exp1.toFixed(1)}`);
+  } catch (e) { rec('Interfaccia: Elica e spirale (lunghezza nel pannello) e molla con Estrusione con percorso lungo la curva', false, e.message.split('\n')[0]); await page.evaluate(() => { if (App.pm) App.closePM(false); }); }
+  try {
+    await fresh();
+    const sq = (a, deg) => { const c = Math.cos(deg * Math.PI / 180), s = Math.sin(deg * Math.PI / 180), P = [[-a, -a], [a, -a], [a, a], [-a, a]].map(([x, y]) => [x * c - y * s, x * s + y * c]); return P.map((p, i) => ({ id: 'p' + i, t: 'pt', x: p[0], y: p[1] })).concat(P.map((p, i) => ({ id: 'l' + i, t: 'ln', a: 'p' + i, b: 'p' + (i + 1) % 4 }))); };
+    await page.evaluate(([a, b]) => { const sk = e => { const s = Sketch.newSketch(); s.ents.push(...e); s.next = 50; return s; };
+      App.change(() => { const d = App.doc; d.features.push({ id: 'F1', name: 'Schizzo1', type: 'sketch', plane: { kind: 'std', id: 'top' }, sk: sk(a) }, { id: 'F2', name: 'Piano1', type: 'plane', base: { kind: 'std', id: 'top' }, offset: 40 }, { id: 'F3', name: 'Schizzo2', type: 'sketch', plane: { kind: 'plane', id: 'F2' }, sk: sk(b) }); d.next = 4; }); }, [sq(10, 0), sq(10, 30)]);
+    await page.click('#cmdBar [data-cmd="loft"]'); await page.waitForTimeout(500);
+    const l0 = await page.evaluate(() => ({ prof: App.doc.features.at(-1).profiles.join(), rows: document.querySelectorAll('#pmProfiles [data-profile]').length }));
+    // ordine scambiato con la freccia: stesso solido; poi ✓
+    await page.locator('#pmProfiles [data-profile="F1"] .relbtn', { hasText: '↓' }).click(); await page.waitForTimeout(300);
+    const l1 = await page.evaluate(() => App.doc.features.at(-1).profiles.join());
+    await page.click('.pm-ok');
+    const m2 = await props();
+    const exp2 = 40 * 400 * (2 + Math.cos(Math.PI / 6)) / 3;
+    rec('Interfaccia: Estrusione con loft (pala svergolata di 30°): profili presi da soli, ordine cambiato con le frecce, volume giusto',
+      l0.prof === 'F1,F3' && l0.rows === 2 && l1 === 'F3,F1' && rel(m2.V, exp2) < TOL, `profili ${l0.prof} (${l0.rows} righe) → ${l1}; volume ${m2.V.toFixed(1)} invece di ${exp2.toFixed(1)}`);
+  } catch (e) { rec('Interfaccia: Estrusione con loft (pala svergolata di 30°): profili presi da soli, ordine cambiato con le frecce, volume giusto', false, e.message.split('\n')[0]); await page.evaluate(() => { if (App.pm) App.closePM(false); }); }
+
   // 4. glossario: ogni comando e ogni titolo dei pannelli ha la sua spiegazione
   try {
     await fresh();
@@ -855,7 +895,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
       // pannelli delle funzioni (su un blocco con uno schizzo libero)
       const s = Sketch.newSketch(); s.ents.push({ id: 'a', t: 'pt', x: 0, y: 0 }, { id: 'b', t: 'pt', x: 20, y: 0 }, { id: 'c', t: 'pt', x: 20, y: 10 }, { id: 'd', t: 'pt', x: 0, y: 10 }, { id: 'l1', t: 'ln', a: 'a', b: 'b' }, { id: 'l2', t: 'ln', a: 'b', b: 'c' }, { id: 'l3', t: 'ln', a: 'c', b: 'd' }, { id: 'l4', t: 'ln', a: 'd', b: 'a' }, { id: 'm', t: 'ln', a: 'a', b: 'd', cons: true, center: true }); s.next = 10;
       App.change(() => { App.doc.features.push({ id: 'F1', name: 'Schizzo1', type: 'sketch', plane: { kind: 'std', id: 'front' }, sk: s }, { id: 'F2', name: 'Estrusione1', type: 'extrude', sketch: 'F1', end: 'blind', depth: 10 }); App.doc.next = 3; });
-      for (const t of ['extrude', 'cut', 'revolve', 'revcut', 'sweep', 'rib', 'hole', 'fillet', 'chamfer', 'lpattern', 'cpattern', 'mirror', 'plane']) {
+      for (const t of ['extrude', 'cut', 'revolve', 'revcut', 'sweep', 'loft', 'curve', 'rib', 'hole', 'fillet', 'chamfer', 'lpattern', 'cpattern', 'mirror', 'plane']) {
         try { App.select(null); Features.create(t); } catch (e) { out.add('errore ' + t + ': ' + e.message); }
         await wait(150);
         document.querySelectorAll('#pm .grp > h3').forEach(h => { if (!h.querySelector('.gl-i')) out.add('pannello ' + t + ': ' + h.textContent); });
