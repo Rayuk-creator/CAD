@@ -129,7 +129,7 @@ B.append(H2('Prova a cambiare il pezzo'))
 B.append(P('Qui si vede la forza del metodo parametrico. Fai doppio clic su **Estrusione1** nell\'albero, cambia la profondità in 15 e conferma: foro e raccordi si adattano da soli. Con **Annulla** torni indietro. Da qui in poi il manuale spiega ogni comando uno per uno.'))
 B.append(fig('es-8-finito','Il pezzo finito, con la sua storia nell\'albero.'))
 # ---------- guida
-FIG={'sk-colori':None,'sk-dxf':('importa-dxf','La finestra di importazione: anteprima, layer, sfondo.'),'corpi':('corpi-ambito','Ambito funzione e albero sopra la vista, con schizzi e corpi scelti per nome.'),
+FIG={'sk-colori':None,'loft':('loft','Estrusione con loft: tre profili girati su tre piani diversi diventano una pala svergolata.'),'elica':('elica','Una molla: cerchio Ø5 che scorre lungo un\'elica di passo 12 mm e 5 giri.'),'sk-dxf':('importa-dxf','La finestra di importazione: anteprima, layer, sfondo.'),'corpi':('corpi-ambito','Ambito funzione e albero sopra la vista, con schizzi e corpi scelti per nome.'),
  'fori':('foro','Creazione guidata fori: in arancione la faccia, poi si mettono le posizioni.'),'serie-lin':('serie','Pannello della serie lineare.'),'misura':('misura','Misura di una faccia: l\'area è nel pannello.'),'sezione':('sezione','Vista in sezione nel modello 3D, con la barra in basso.'),
  'assieme':('assieme-inserito','Assieme con due componenti inseriti: (f) fissa, (-) sotto definita.'),'accoppiamenti':('assieme-accoppiamento','Accoppiamento concentrico tra perno e foro.'),'viti':('viti','La finestra per inserire viti, dadi e rondelle.'),'calcoli-assieme':('distinta','La distinta base, che si può salvare in CSV.'),'esplosa':('assieme-esplosa','Vista esplosa: il perno sollevato di 40 mm dal foro.'),'tavola-assieme':('assieme-tavola','Tavola dell\'assieme con distinta e numeri di posizione.'),'interferenze':('interferenze','Il pannello di Verifica interferenze.')}
 cmdname={c['id']:c['t'] for v in d['cmds'].values() for c in v}
@@ -195,7 +195,9 @@ B.append(UL(['**Testi nel PDF:** usano Helvetica; i caratteri fuori dall\'alfabe
  '**Viti e filetti:** il filetto è indicato, salvo l\'opzione dell\'elica; nell\'assonometria i filetti non si disegnano; le lunghezze seguono la serie ISO 888, ma i campi disponibili per ogni misura dipendono dal fornitore.',
  '**Interferenze:** una sola coppia di pezzi enormi può tenere ferma la pagina anche per un minuto o più.',
  '**Assiemi:** un sottoassieme dentro un sottoassieme flessibile resta rigido; le superfici libere di uno STEP si accoppiano solo con la Tangente, contro un piano o una sfera.',
- '**Selezione automatica dell\'ambito:** non si ricalcola a pannello chiuso. Per i corpi aggiunti dopo, riapri la funzione.']))
+ '**Selezione automatica dell\'ambito:** non si ricalcola a pannello chiuso. Per i corpi aggiunti dopo, riapri la funzione.',
+ '**Loft:** senza curve guida e senza tangenze imposte agli estremi; ogni profilo è un solo contorno chiuso, su un piano suo.',
+ '**Elica e spirale:** il profilo gira sempre con la curva («Segui percorso») e va disegnato su un piano che passa per l\'inizio della curva. Le facce curve di molle e loft sono faccette: nello STEP restano piane.']))
 # ---------- glossario
 B.append(H1('Glossario'))
 B.append(P('Tutti i termini del programma, in ordine alfabetico. Tra parentesi la scheda o l\'argomento a cui appartengono.'))

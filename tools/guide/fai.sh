@@ -13,7 +13,7 @@ grep -E "STATO VANO|errori" gear.log; grep -A1 "^massa" gear.log | grep "V:"; gr
 python3 gear_doc.py; python3 prop_doc.py; node render.js ingranaggio elica
 python3 - <<'P' 2>/dev/null
 from pypdf import PdfWriter
-for n,out,t,s in (('ingranaggio','Come-creare-un-ingranaggio','Come creare un ingranaggio – Banco CAD','Guida passo per passo: ruota dentata a denti dritti, modulo 2, 20 denti'),('elica','Come-creare-un-elica',"Come creare un'elica – Banco CAD",'Guida passo per passo: elica a 3 pale, Ø200 mm')):
+for n,out,t,s in (('ingranaggio','Come-creare-un-ingranaggio','Come creare un ingranaggio – Banco CAD','Guida passo per passo: ruota dentata a denti dritti, modulo 2, 20 denti'),('elica','Come-creare-un-elica',"Come creare un'elica – Banco CAD",'Guida passo per passo: elica a 3 pale con la pala svergolata, Ø200 mm')):
     w=PdfWriter(clone_from=f'out/{n}.pdf');w.add_metadata({'/Title':t,'/Author':'Rayuk-creator','/Subject':s});w.write(f'out/{out}.pdf')
 P
 ls -la out/Come-*.pdf

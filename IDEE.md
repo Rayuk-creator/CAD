@@ -2,11 +2,11 @@
 
 Promemoria delle cose discusse ma **non ancora fatte**. Da leggere all'inizio di una nuova sessione di lavoro.
 
-## PRIMO LAVORO: funzioni per l'elica (quasi finito)
+## Funzioni per l'elica: FATTE (12 novembre)
 
-**Fatti il 12 novembre:** Elica e spirale, sweep lungo la curva, Estrusione e Taglio con loft (vedi `RIPARTENZA.md`). **Restano:** la guida PDF dell'elica con la pala svergolata (`tools/guide/prop.js` e `prop_doc.py`, si rifà con `bash tools/guide/fai.sh`) e il manuale rifatto (`tools/manuale/fai.sh`). Possibili aggiunte, solo se servono: curve guida nel loft, tangenze agli estremi del loft.
+Elica e spirale, sweep lungo la curva, Estrusione e Taglio con loft, guida PDF dell'elica con la pala svergolata (`bash tools/guide/fai.sh`, PDF in `tools/guide/out`, non pubblicati: da chiedere all'utente se metterli sul sito) e manuale rifatto. Possibili aggiunte, solo se servono: curve guida nel loft, tangenze agli estremi del loft.
 
-## SUBITO DOPO: traduzione in inglese
+## PROSSIMO LAVORO: traduzione in inglese
 
 Scelta dell'utente del 5 novembre, confermata il 12 novembre (ordine: elica, traduzione, installabile): **dopo le funzioni per l'elica**. Tradurre tutto il programma in inglese, lasciando l'italiano come lingua normale e l'inglese da scegliere con un comando.
 

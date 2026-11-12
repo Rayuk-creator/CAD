@@ -881,6 +881,28 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
       l0.prof === 'F1,F3' && l0.rows === 2 && l1 === 'F3,F1' && rel(m2.V, exp2) < TOL, `profili ${l0.prof} (${l0.rows} righe) → ${l1}; volume ${m2.V.toFixed(1)} invece di ${exp2.toFixed(1)}`);
   } catch (e) { rec('Interfaccia: Estrusione con loft (pala svergolata di 30°): profili presi da soli, ordine cambiato con le frecce, volume giusto', false, e.message.split('\n')[0]); await page.evaluate(() => { if (App.pm) App.closePM(false); }); }
 
+  // 3c. schizzo su un piano di riferimento: clic sul suo nome nell'albero e poi Schizzo (come in SolidWorks), oppure dal pannello
+  //     «Schizzo» senza niente di scelto. Prima non partiva: l'albero lo sceglieva come funzione e il pannello aveva solo i tre piani
+  try {
+    await fresh();
+    await page.evaluate(() => { App.change(() => { App.doc.features.push({ id: 'F1', name: 'Piano1', type: 'plane', base: { kind: 'std', id: 'top' }, offset: 25 }); App.doc.next = 2; }); App.regen(); App.setCmdTab('sketch'); });
+    await page.waitForTimeout(200);
+    await page.locator('.tnode', { hasText: 'Piano1' }).first().click(); await page.waitForTimeout(200);
+    const vis = await page.evaluate(() => [...App.visiblePlanes()].join());
+    await page.click('#cmdBar [data-cmd="sketch"]'); await page.waitForTimeout(600);
+    const s1 = await page.evaluate(() => ({ mode: App.mode, pl: App.mode === 'sketch' ? JSON.stringify(Sketcher.session().f.plane) : '', y: App.mode === 'sketch' ? Sketcher.frame().o[1] : NaN }));
+    await page.evaluate(() => { if (App.mode === 'sketch') Sketcher.exit(false); App.select(null); App.setCmdTab('sketch'); }); await page.waitForTimeout(300);
+    await page.click('#cmdBar [data-cmd="sketch"]'); await page.waitForTimeout(400);
+    const btn = await page.locator('#pm button[data-plane="F1"]').innerText().catch(() => '');
+    const shown = await page.evaluate(() => App.visiblePlanes().has('F1'));
+    await page.click('#pm button[data-plane="F1"]'); await page.waitForTimeout(600);
+    const s2 = await page.evaluate(() => ({ mode: App.mode, y: App.mode === 'sketch' ? Sketcher.frame().o[1] : NaN }));
+    await page.evaluate(() => { if (App.mode === 'sketch') Sketcher.exit(false); });
+    rec('Interfaccia: schizzo su un piano di riferimento, dal nome nell\'albero e dal pannello «Schizzo»',
+      vis === 'F1' && s1.mode === 'sketch' && s1.pl === '{"kind":"plane","id":"F1"}' && Math.abs(s1.y - 25) < 1e-9 && btn === 'Piano1' && shown && s2.mode === 'sketch' && Math.abs(s2.y - 25) < 1e-9,
+      `visibili «${vis}»; dall'albero ${s1.mode} su ${s1.pl} a y ${s1.y}; pulsante «${btn}», piano nella vista ${shown}; dal pannello ${s2.mode} a y ${s2.y}`);
+  } catch (e) { rec('Interfaccia: schizzo su un piano di riferimento, dal nome nell\'albero e dal pannello «Schizzo»', false, e.message.split('\n')[0]); await page.evaluate(() => { if (App.pm) App.closePM(false); if (App.mode === 'sketch') Sketcher.exit(false); }); }
+
   // 4. glossario: ogni comando e ogni titolo dei pannelli ha la sua spiegazione
   try {
     await fresh();

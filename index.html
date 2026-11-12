@@ -660,26 +660,73 @@ label.chk .gl-i { margin-left: 2px; }
   }
   const boxesOverlap = (a, b) => a.mn[0] <= b.mx[0] + EPS && b.mn[0] <= a.mx[0] + EPS && a.mn[1] <= b.mx[1] + EPS && b.mn[1] <= a.mx[1] + EPS && a.mn[2] <= b.mx[2] + EPS && b.mn[2] <= a.mx[2] + EPS;
 
+  // Le booleane lavorano solo nella zona dove i due ingombri si sovrappongono (scatola allargata di un margine): i poligoni,
+  // o i pezzi di poligono, fuori da quella zona sono fuori dall'altro solido e passano così come sono. Dentro la zona c'è
+  // tutto il bordo di ciascun solido, quindi gli alberi BSP fatti solo con quei pezzi classificano giusto. Prima ogni
+  // unione rifaceva l'albero di tutti i poligoni: con pezzi grandi (pale svergolate) decine di secondi e poligoni spezzati.
+  function splitByBox(polys, box) {
+    const inn = [], out = [];
+    const planes = [];
+    for (let k = 0; k < 3; k++) {
+      const n1 = [0, 0, 0]; n1[k] = 1; planes.push({ n: n1, w: box.mx[k] });
+      const n0 = [0, 0, 0]; n0[k] = -1; planes.push({ n: n0, w: -box.mn[k] });
+    }
+    for (const p of polys) {
+      const pb = bbox([p]);
+      let inside = true, apart = false;
+      for (let k = 0; k < 3; k++) {
+        if (pb.mn[k] > box.mx[k] || pb.mx[k] < box.mn[k]) apart = true;
+        if (pb.mn[k] < box.mn[k] || pb.mx[k] > box.mx[k]) inside = false;
+      }
+      if (apart) { out.push(clonePoly(p)); continue; }
+      if (inside) { inn.push(clonePoly(p)); continue; }
+      let cur = [clonePoly(p)];
+      for (const pl of planes) {
+        const next = [];
+        for (const q of cur) splitPolygon(pl, q, next, next, out, next);   // davanti = fuori dalla scatola
+        cur = next;
+        if (!cur.length) break;
+      }
+      for (const q of cur) inn.push(q);
+    }
+    return { inn, out };
+  }
+  function zone(A, B) {
+    const a = bbox(A), b = bbox(B), mn = [], mx = [];
+    let size = 0;
+    for (let k = 0; k < 3; k++) size = Math.max(size, a.mx[k] - a.mn[k], b.mx[k] - b.mn[k]);
+    const m = 1e-3 * size + 100 * EPS;
+    for (let k = 0; k < 3; k++) { mn[k] = Math.max(a.mn[k], b.mn[k]) - m; mx[k] = Math.min(a.mx[k], b.mx[k]) + m; }
+    const za = splitByBox(A, { mn, mx }), zb = splitByBox(B, { mn, mx });
+    return { A: za.inn, Aout: za.out, B: zb.inn, Bout: zb.out };
+  }
   function union(A, B) {
     if (!A.length) return B.map(clonePoly);
     if (!B.length) return A.map(clonePoly);
     if (!boxesOverlap(bbox(A), bbox(B))) return A.map(clonePoly).concat(B.map(clonePoly));
-    const a = bspOf(A), b = bspOf(B);
+    const z = zone(A, B);
+    // un solido senza bordo nella zona (l'altro può stargli tutto dentro): calcolo completo, come prima
+    if (!z.A.length || !z.B.length) { z.A = A.map(clonePoly); z.B = B.map(clonePoly); z.Aout = []; z.Bout = []; }
+    const a = bspOf(z.A), b = bspOf(z.B);
     a.clipTo(b); b.clipTo(a); b.invert(); b.clipTo(a); b.invert();
     a.build(b.allPolygons());
-    return cleanup(a.allPolygons());
+    return cleanup(z.Aout.concat(z.Bout, a.allPolygons()));
   }
   function subtract(A, B) {
     if (!A.length) return [];
     if (!B.length || !boxesOverlap(bbox(A), bbox(B))) return A.map(clonePoly);
-    const a = bspOf(A), b = bspOf(B);
+    const z = zone(A, B);
+    if (!z.A.length || !z.B.length) { z.A = A.map(clonePoly); z.B = B.map(clonePoly); z.Aout = []; }
+    const a = bspOf(z.A), b = bspOf(z.B);
     a.invert(); a.clipTo(b); b.clipTo(a); b.invert(); b.clipTo(a); b.invert();
     a.build(b.allPolygons()); a.invert();
-    return cleanup(a.allPolygons());
+    return cleanup(z.Aout.concat(a.allPolygons()));
   }
   function intersect(A, B) {
     if (!A.length || !B.length || !boxesOverlap(bbox(A), bbox(B))) return [];
-    const a = bspOf(A), b = bspOf(B);
+    const z = zone(A, B);
+    if (!z.A.length || !z.B.length) { z.A = A.map(clonePoly); z.B = B.map(clonePoly); }
+    const a = bspOf(z.A), b = bspOf(z.B);
     a.invert(); b.clipTo(a); b.invert(); a.clipTo(b); b.clipTo(a);
     a.build(b.allPolygons()); a.invert();
     return cleanup(a.allPolygons());
@@ -9575,7 +9622,7 @@ self.postMessage({ hello: true });`;
       if (!F) continue;
       const P = planeCorners(F);
       const hov = App.hover && App.hover.kind === 'plane' && App.hover.id === pid;
-      const sel = App.sel.some(s => s.kind === 'plane' && s.id === pid);
+      const sel = App.sel.some(s => (s.kind === 'plane' || s.kind === 'feature') && s.id === pid);
       const col = hov ? C_HOV : sel ? C_SEL : [0.42, 0.55, 0.7];
       out.lines.push({ pts: [P[0], P[1], P[1], P[2], P[2], P[3], P[3], P[0]], color: col });
       // assi tratteggiati nel piano, con il colore dell'asse (X rosso, Y verde, Z blu)
@@ -9722,7 +9769,7 @@ self.postMessage({ hello: true });`;
       return ids;
     }
     if (App.planeFocus && App.pm) { ids.add(App.planeFocus); return ids; }
-    const selPlanes = App.sel.filter(s => s.kind === 'plane').map(s => s.id);
+    const selPlanes = App.sel.filter(s => s.kind === 'plane' || (s.kind === 'feature' && App.st && App.st.planes && App.st.planes.has(s.id))).map(s => s.id);
     if (selPlanes.length) { selPlanes.forEach(id => ids.add(id)); return ids; }
     if (App.showPlanes) ['front', 'top', 'right'].forEach(p => ids.add(p));
     if (App.hover && App.hover.kind === 'plane') ids.add(App.hover.id);
@@ -9794,6 +9841,14 @@ self.postMessage({ hello: true });`;
         const q = r.project(PC[3]);
         c.fillStyle = '#4a6f94'; c.font = '12px ' + getComputedStyle(document.body).fontFamily; c.textAlign = 'left'; c.textBaseline = 'bottom';
         c.fillText(Model.STD_PLANES[id].name, q[0] + 4, q[1] - 3);
+      }
+      for (const id of visSet) {
+        if (Model.STD_PLANES[id] || !App.st || !App.st.planes || !App.st.planes.has(id)) continue;
+        const F = App.st.planes.get(id), pf = App.doc.features.find(f => f.id === id);
+        if (!pf || Math.abs(dot(F.z, b.back)) < 0.08) continue;
+        const q = r.project(planeCorners(F)[3]);
+        c.fillStyle = '#4a6f94'; c.font = '12px ' + getComputedStyle(document.body).fontFamily; c.textAlign = 'left'; c.textBaseline = 'bottom';
+        c.fillText(pf.name, q[0] + 4, q[1] - 3);
       }
     }
     if (App.mode === 'sketch') Sketcher.drawOverlay(c);
@@ -10288,6 +10343,8 @@ self.postMessage({ hello: true });`;
       case 'sketch': {
         const s = App.sel[0];
         if (s && s.kind === 'plane') return Sketcher.start(Model.STD_PLANES[s.id] ? { kind: 'std', id: s.id } : { kind: 'plane', id: s.id });
+        // piano di riferimento scelto nell'albero (come in SolidWorks: clic sul piano, poi Schizzo)
+        if (s && s.kind === 'feature' && App.st && App.st.planes && App.st.planes.has(s.id)) return Sketcher.start({ kind: 'plane', id: s.id });
         if (s && s.kind === 'face' && s.planar) return Sketcher.start({ kind: 'face', name: s.name, n: s.n, w: s.w });
         if (s && s.kind === 'face') { toast('Lo schizzo si fa su una faccia piana: questa è curva.'); return; }
         App.pickPlaneFor('Scegli il piano o la faccia piana su cui disegnare lo schizzo', ref => Sketcher.start(ref));
@@ -10314,6 +10371,8 @@ self.postMessage({ hello: true });`;
       case 'dxf': return importDxfDialog();
     }
   };
+  // piani di riferimento calcolati (non soppressi, prima della barra di ripristino)
+  const refPlanes = () => App.doc.features.filter(f => f.type === 'plane' && App.st && App.st.planes && App.st.planes.has(f.id));
   // chiede di scegliere un piano/faccia nella vista (con i piani visibili)
   App.pickPlaneFor = function (hint, cb) {
     const prevPlanes = App.showPlanes;
@@ -10329,12 +10388,13 @@ self.postMessage({ hello: true });`;
     App.openPM({
       title: 'Schizzo', icon: 'sketch', hint,
       filter: ['plane', 'face'],
-      planes: () => ['front', 'top', 'right'],
+      planes: () => ['front', 'top', 'right', ...refPlanes().map(f => f.id)],
       build(b) {
-        b.append(el('p', { class: 'note' }, 'Fai clic su uno dei tre piani (frontale, superiore, destro) o su una faccia piana del pezzo.'));
+        b.append(el('p', { class: 'note' }, 'Fai clic su uno dei tre piani (frontale, superiore, destro)' + (refPlanes().length ? ', su un piano di riferimento' : '') + ' o su una faccia piana del pezzo.'));
         const g = el('div', { class: 'btnrow' });
-        for (const id of ['front', 'top', 'right']) {
-          const bt = el('button', { class: 'relbtn', type: 'button', onclick: () => { App.planeFocus = null; App.closePM(false); cb({ kind: 'std', id }); } }, Model.STD_PLANES[id].name);
+        for (const id of ['front', 'top', 'right', ...refPlanes().map(f => f.id)]) {
+          const std = !!Model.STD_PLANES[id], label = std ? Model.STD_PLANES[id].name : App.doc.features.find(f => f.id === id).name;
+          const bt = el('button', { class: 'relbtn', type: 'button', 'data-plane': id, onclick: () => { App.planeFocus = null; App.closePM(false); cb(std ? { kind: 'std', id } : { kind: 'plane', id }); } }, label);
           // passando sul pulsante si vede solo quel piano
           bt.addEventListener('pointerenter', () => { App.planeFocus = id; App.redraw(); });
           bt.addEventListener('pointerleave', () => { App.planeFocus = null; App.redraw(); });
@@ -18424,7 +18484,39 @@ T('Serie circolare di un loft: tre pale da 30/3·(16 + 4 + 8)', () => {
   const l = feat(d, { type: 'loft', profiles: ids }); feat(d, { type: 'cpattern', feats: [l], axis: { kind: 'axis', id: 'y' }, n: 3, angle: 360, equal: true }); return d;
 }, { V: 3 * 280, C: [0, 0, 0] });
 
+/* ---------- booleane solo nella zona dove gli ingombri si sovrappongono ---------- */
+// un solido tutto dentro l'altro: nella zona c'è il bordo di uno solo, quindi serve il calcolo completo
+T('Unione con un blocco tutto dentro il pezzo: il volume resta 40·40·20', () => {
+  const d = D0('u'); const a = SB(); a.rect(-20, -20, 20, 20); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), a), end: 'blind', depth: 20 });
+  const b = SB(); b.rect(-5, -5, 5, 5); feat(d, { type: 'extrude', sketch: sketch(d, planeAt(d, 5), b), end: 'blind', depth: 10 }); return d;
+}, { V: 32000, bb: [[-20, 0, -20], [20, 20, 20]] });
+T('Tasca chiusa dentro il pezzo (il taglio non arriva a nessuna faccia): 32000 − 10·10·5', () => {
+  const d = D0('u'); const a = SB(); a.rect(-20, -20, 20, 20); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), a), end: 'blind', depth: 20 });
+  const b = SB(); b.rect(-5, -5, 5, 5); feat(d, { type: 'cut', sketch: sketch(d, planeAt(d, 10), b), end: 'blind', depth: 5 }); return d;
+}, { V: 31500, D: -500 });
+
 const SK = [];
+// le booleane lavorano solo dove gli ingombri si sovrappongono: i poligoni della pala lontani dal mozzo restano gli stessi
+// (prima venivano spezzati dall'albero BSP: più poligoni e decine di secondi con le pale svergolate dell'elica)
+SK.push(['Booleane: un mozzo alla base di una pala svergolata lascia intatti i poligoni lontani; volume = pala + mozzo − parte comune', () => {
+  const d = D0('z'); const ids = [];
+  for (const [h, deg] of [[0, 0], [40, 30], [80, 60]]) { const b = SB(); b.poly(turnL([[-12, -1.5], [12, -1.5], [12, 1.5], [-12, 1.5]], deg)); ids.push(sketch(d, h ? planeAt(d, h) : STD('top'), b)); }
+  feat(d, { type: 'loft', profiles: ids });
+  const st0 = Model.regen(d), far = st => st.body.filter(p => p.v.every(v => v[1] > 10)).map(p => p.v.map(v => v.map(x => x.toFixed(9)).join(',')).join(';')).sort().join('|');
+  const c = SB(); c.circle(0, 0, 15); feat(d, { type: 'extrude', sketch: sketch(d, planeAt(d, -5), c), end: 'blind', depth: 8 });
+  const st1 = Model.regen(d);
+  const V0 = Model.massProperties(st0, d).volume, Vm = PI * 225 * 8;
+  // la pala da 0 a 3 mm sta tutta dentro il mozzo (metà corda 12 < 15 anche girata): il volume comune è quello della pala in quel tratto
+  const dd = D0('q'); const ids2 = [];
+  for (const [h, deg] of [[0, 0], [40, 30], [80, 60]]) { const b = SB(); b.poly(turnL([[-12, -1.5], [12, -1.5], [12, 1.5], [-12, 1.5]], deg)); ids2.push(sketch(dd, h ? planeAt(dd, h) : STD('top'), b)); }
+  feat(dd, { type: 'loft', profiles: ids2 }); const k = SB(); k.rect(-30, -30, 30, 30); feat(dd, { type: 'cut', sketch: sketch(dd, planeAt(dd, 3), k), end: 'blind', depth: 100 });
+  // il taglio dal piano a 3 mm va verso il basso (dentro il materiale) e lascia la pala da 3 a 80: la parte comune è il resto
+  const sc = Model.regen(dd), mc = Model.massProperties(sc, dd);
+  if (Math.abs(mc.bbox.mn[1] - 3) > 1e-6) throw new Error('il taglio di controllo non ha lasciato la pala da 3 mm in su');
+  const Vin = V0 - mc.volume;
+  const same = far(st0) === far(st1) && far(st0).length > 0 && !st1.errors.size;
+  return { ok: same, got: [Model.massProperties(st1, d).volume, same ? 1 : 0], exp: [V0 + Vm - Vin, 1] };
+}]);
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
   const b = SB(); const [p1, p2, p3, p4] = b.rect(0, 0, 70, 45); const s = b.s;
   const L = s.ents.filter(e => e.t === 'ln');
@@ -20817,7 +20909,7 @@ if (isNode) {
   add('Funzioni', 'piano', 'Piano di riferimento', {
     why: 'Fare schizzi in posizioni dove non c\'è una faccia: a metà pezzo, in alto, sfalsati.',
     cmd: { tab: 'features', id: 'plane' },
-    steps: ['Seleziona un piano o una faccia piana, poi premi **Piano di riferimento**.', 'Scrivi la distanza; «Inverti» per l\'altra parte.', 'Conferma: il nuovo piano compare nell\'albero e si può usare per gli schizzi.'],
+    steps: ['Seleziona un piano o una faccia piana, poi premi **Piano di riferimento**.', 'Scrivi la distanza; «Inverti» per l\'altra parte.', 'Conferma: il nuovo piano compare nell\'albero e si può usare per gli schizzi.', '**Schizzo sul piano:** fai clic sul suo nome nell\'albero (nella vista diventa blu) e premi **Schizzo**. Oppure premi **Schizzo** senza scegliere niente e scegli il piano nel pannello.'],
     terms: ['Piano di riferimento', 'Distanza'],
   });
 

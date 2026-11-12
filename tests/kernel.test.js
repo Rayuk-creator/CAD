@@ -702,7 +702,39 @@ T('Serie circolare di un loft: tre pale da 30/3·(16 + 4 + 8)', () => {
   const l = feat(d, { type: 'loft', profiles: ids }); feat(d, { type: 'cpattern', feats: [l], axis: { kind: 'axis', id: 'y' }, n: 3, angle: 360, equal: true }); return d;
 }, { V: 3 * 280, C: [0, 0, 0] });
 
+/* ---------- booleane solo nella zona dove gli ingombri si sovrappongono ---------- */
+// un solido tutto dentro l'altro: nella zona c'è il bordo di uno solo, quindi serve il calcolo completo
+T('Unione con un blocco tutto dentro il pezzo: il volume resta 40·40·20', () => {
+  const d = D0('u'); const a = SB(); a.rect(-20, -20, 20, 20); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), a), end: 'blind', depth: 20 });
+  const b = SB(); b.rect(-5, -5, 5, 5); feat(d, { type: 'extrude', sketch: sketch(d, planeAt(d, 5), b), end: 'blind', depth: 10 }); return d;
+}, { V: 32000, bb: [[-20, 0, -20], [20, 20, 20]] });
+T('Tasca chiusa dentro il pezzo (il taglio non arriva a nessuna faccia): 32000 − 10·10·5', () => {
+  const d = D0('u'); const a = SB(); a.rect(-20, -20, 20, 20); feat(d, { type: 'extrude', sketch: sketch(d, STD('top'), a), end: 'blind', depth: 20 });
+  const b = SB(); b.rect(-5, -5, 5, 5); feat(d, { type: 'cut', sketch: sketch(d, planeAt(d, 10), b), end: 'blind', depth: 5 }); return d;
+}, { V: 31500, D: -500 });
+
 const SK = [];
+// le booleane lavorano solo dove gli ingombri si sovrappongono: i poligoni della pala lontani dal mozzo restano gli stessi
+// (prima venivano spezzati dall'albero BSP: più poligoni e decine di secondi con le pale svergolate dell'elica)
+SK.push(['Booleane: un mozzo alla base di una pala svergolata lascia intatti i poligoni lontani; volume = pala + mozzo − parte comune', () => {
+  const d = D0('z'); const ids = [];
+  for (const [h, deg] of [[0, 0], [40, 30], [80, 60]]) { const b = SB(); b.poly(turnL([[-12, -1.5], [12, -1.5], [12, 1.5], [-12, 1.5]], deg)); ids.push(sketch(d, h ? planeAt(d, h) : STD('top'), b)); }
+  feat(d, { type: 'loft', profiles: ids });
+  const st0 = Model.regen(d), far = st => st.body.filter(p => p.v.every(v => v[1] > 10)).map(p => p.v.map(v => v.map(x => x.toFixed(9)).join(',')).join(';')).sort().join('|');
+  const c = SB(); c.circle(0, 0, 15); feat(d, { type: 'extrude', sketch: sketch(d, planeAt(d, -5), c), end: 'blind', depth: 8 });
+  const st1 = Model.regen(d);
+  const V0 = Model.massProperties(st0, d).volume, Vm = PI * 225 * 8;
+  // la pala da 0 a 3 mm sta tutta dentro il mozzo (metà corda 12 < 15 anche girata): il volume comune è quello della pala in quel tratto
+  const dd = D0('q'); const ids2 = [];
+  for (const [h, deg] of [[0, 0], [40, 30], [80, 60]]) { const b = SB(); b.poly(turnL([[-12, -1.5], [12, -1.5], [12, 1.5], [-12, 1.5]], deg)); ids2.push(sketch(dd, h ? planeAt(dd, h) : STD('top'), b)); }
+  feat(dd, { type: 'loft', profiles: ids2 }); const k = SB(); k.rect(-30, -30, 30, 30); feat(dd, { type: 'cut', sketch: sketch(dd, planeAt(dd, 3), k), end: 'blind', depth: 100 });
+  // il taglio dal piano a 3 mm va verso il basso (dentro il materiale) e lascia la pala da 3 a 80: la parte comune è il resto
+  const sc = Model.regen(dd), mc = Model.massProperties(sc, dd);
+  if (Math.abs(mc.bbox.mn[1] - 3) > 1e-6) throw new Error('il taglio di controllo non ha lasciato la pala da 3 mm in su');
+  const Vin = V0 - mc.volume;
+  const same = far(st0) === far(st1) && far(st0).length > 0 && !st1.errors.size;
+  return { ok: same, got: [Model.massProperties(st1, d).volume, same ? 1 : 0], exp: [V0 + Vm - Vin, 1] };
+}]);
 SK.push(['Rettangolo quotato 80×50 (orizz./vert. + quote)', () => {
   const b = SB(); const [p1, p2, p3, p4] = b.rect(0, 0, 70, 45); const s = b.s;
   const L = s.ents.filter(e => e.t === 'ln');

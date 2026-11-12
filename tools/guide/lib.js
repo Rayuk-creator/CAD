@@ -21,7 +21,7 @@ H.props=()=>page.evaluate(()=>{const m=Model.massProperties(App.st,App.doc);retu
 H.tab=async t=>{await page.evaluate(t=>App.setCmdTab(t),t);await w(120);};
 H.startSketchPlane=async name=>{await H.tab('sketch');await page.locator('.tnode',{hasText:name}).first().click();await H.tool('sketch');await page.waitForFunction(()=>App.mode==='sketch');await w(1300);await H.helpers();};
 H.exit=async()=>{await H.tool('exitSketch');await page.waitForFunction(()=>App.mode!=='sketch');await w(400);};
-H.ok=async()=>{await page.click('.pm-ok');await page.waitForFunction(()=>!App.pm,null,{timeout:200000});await w(400);};
+H.ok=async()=>{const t0=Date.now();await page.click('.pm-ok',{timeout:900000});await page.waitForFunction(()=>!App.pm,null,{timeout:900000});console.log('ok ms',Date.now()-t0);await w(400);};
 H.row=(label)=>page.locator('.pm-body .row',{hasText:label}).first();
 H.world=async(q,mod)=>{const [x,y]=await page.evaluate(q=>{const p=App.r.project(q);const c=document.querySelector('.view canvas').getBoundingClientRect();return [c.left+p[0],c.top+p[1]];},q);await page.mouse.move(x,y);await w(150);if(mod)await page.keyboard.down(mod);await page.mouse.click(x,y);if(mod)await page.keyboard.up(mod);await w(250);};
 H.iso=async()=>{await page.evaluate(()=>App.r.setView(GLView.Renderer.viewQ('iso')));await w(700);await page.evaluate(()=>App.r.fit());await w(600);};
