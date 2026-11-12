@@ -16,7 +16,7 @@ Scelta dell'utente del 5 novembre, confermata il 12 novembre (ordine: elica, tra
 4. **Manuale PDF in inglese: FATTO il 12 novembre notte** (`docs/Manual-Banco-CAD.pdf`, 63 pagine, schermate in inglese; si rifà con `bash tools/manuale/fai.sh <cartella> en`). README inglese riscritto con i nomi inglesi dei comandi.
 5. **Convertitore DWG in inglese e prova finale: FATTI il 12 novembre notte** (pulsante «Language: English», stessa scelta del Banco CAD; dizionario `tools/traduzione/convertitore-en.json`). `npm run test:lingua`: **0 frasi senza traduzione** (resta fuori solo l'Autoverifica). «Prova ricarica» sistemata nella pagina (`I18N.user`).
 
-**Subito dopo (scelta dell'utente del 12 novembre): ripubblicare su claude.ai** il Banco CAD e il Convertitore. **Le due guide PDF (ingranaggio ed elica) non vanno sul sito: sono per l'utente** (12 novembre sera).
+**Ripubblicati su claude.ai il 12 novembre notte** il Banco CAD (versione 25) e il Convertitore (versione 8), tutti e due tradotti. **Le due guide PDF (ingranaggio ed elica) non vanno sul sito: sono per l'utente** (12 novembre sera).
 
 L'Autoverifica (5 400 parole) resta fuori dalla traduzione: i nomi delle prove possono restare in italiano. Il lavoro consuma molto del limite settimanale dell'utente: dopo ogni tappa il programma deve restare usabile.
 
@@ -106,4 +106,4 @@ Il marchio ora costa troppo. **Fatti:** condizioni aggiuntive GPL 3 sezione 7 (`
 
 - Sfondo del disegno: **fatti** il 3 novembre testi e quote, il 4 novembre tratteggi, tolleranze geometriche, MULTILEADER e tabelle (limite: le tabelle dei DWG dal 2010 in poi, che LibreDWG non scrive).
 - Convertitore DWG → DXF: **fatti** il 29 ottobre memoria iniziale 16 MB (invece di 1 GB), anteprima del disegno, più file in un solo .zip.
-- Le pagine pubblicate su claude.ai: «Banco CAD» (versione 24 del 5 novembre) e «Convertitore DWG → DXF» (3 novembre notte) sono condivise con chiunque abbia il link. Il Banco CAD su claude.ai è stato ripubblicato il 5 novembre con tutti i lavori fino a quel momento. La versione di riferimento resta `index.html` in questo repository.
+- Le pagine pubblicate su claude.ai: «Banco CAD» (versione 25) e «Convertitore DWG → DXF» (versione 8), tutte e due del 12 novembre notte, con l'inglese, sono condivise con chiunque abbia il link. La versione di riferimento resta `index.html` in questo repository.
