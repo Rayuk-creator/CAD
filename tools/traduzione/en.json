@@ -1607,5 +1607,14 @@
  "Cerca nel glossario": "Search the glossary",
  "Il significato di ogni termine del programma": "The meaning of every term in the program",
  "Il significato di tutti i termini del programma. Le stesse spiegazioni compaiono con il pulsante {} accanto ai titoli dei pannelli e nei suggerimenti dei comandi.": "The meaning of all the terms of the program. The same explanations appear with the {} button next to the panel titles and in the command tooltips.",
- "LibreDWG": "LibreDWG"
+ "LibreDWG": "LibreDWG",
+ "← Tutti gli argomenti": "← All topics",
+ "Mostrami dove": "Show me where",
+ "Come si fa": "How to do it",
+ "Consigli": "Tips",
+ "Termini": "Terms",
+ "Come si usa ogni comando: a cosa serve, i passi da seguire, i consigli e il significato dei termini (i termini sottolineati aprono la spiegazione).": "How to use each command: what it is for, the steps to follow, the tips and the meaning of the terms (underlined terms open the explanation).",
+ "Cerca (es. foro, quota, sweep, tablet)": "Search (e.g. hole, dimension, sweep, tablet)",
+ "Cerca nella guida": "Search the guide",
+ "Nessun argomento trovato. Prova anche nel Glossario.": "No topic found. Try the Glossary too."
 }

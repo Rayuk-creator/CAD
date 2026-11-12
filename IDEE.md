@@ -12,9 +12,9 @@ Scelta dell'utente del 5 novembre, confermata il 12 novembre (ordine: elica, tra
 
 1. **Interfaccia e scelta della lingua: FATTA il 12 novembre** (1 600 frasi, `tools/traduzione/en.json`).
 2. **Glossario: FATTO il 12 novembre sera** (233 voci, `tools/traduzione/glossario-en.json`; come funziona: `RIPARTENZA.md`, punto «Lingua»).
-3. **Guida** (circa 7 000 parole, 64 argomenti): **prossima**, stesso metodo del Glossario; titoli dei gruppi, pulsanti «Mostrami dove», «← Tutti gli argomenti». Così si sistema anche il pulsante «Come si fa: …» del Glossario in inglese, che oggi mostra il titolo italiano dell'argomento (a volte tradotto a metà).
-4. **Manuale PDF in inglese**, con le schermate rifatte in inglese (capitoli scritti a mano in `tools/manuale/build.py`, più Guida e Glossario tradotti). Il README inglese va riscritto con i nomi inglesi dei comandi.
-5. **Convertitore DWG** in inglese e prova finale: `npm run test:lingua` con 0 frasi mancanti anche per Glossario e Guida (togliere l'esclusione in `tools/traduzione/mancanti.js`).
+3. **Guida: FATTA il 12 novembre sera** (66 argomenti, circa 7 300 parole, `tools/traduzione/guida-en.json`; come funziona: `RIPARTENZA.md`, punto «Lingua»). Anche il pulsante «Come si fa: …» del Glossario ora mostra il titolo inglese.
+4. **Manuale PDF in inglese** (**prossima**), con le schermate rifatte in inglese (capitoli scritti a mano in `tools/manuale/build.py`, più Guida e Glossario tradotti). Il README inglese va riscritto con i nomi inglesi dei comandi.
+5. **Convertitore DWG** in inglese e prova finale: `npm run test:lingua` con 0 frasi mancanti (l'esclusione di Guida in `tools/traduzione/mancanti.js` è già tolta: resta solo l'Autoverifica; c'è ancora «Prova ricarica», nome di una parte scritto da una prova: da sistemare nella prova o nella pagina).
 
 L'Autoverifica (5 400 parole) resta fuori dalla traduzione: i nomi delle prove possono restare in italiano. Il lavoro consuma molto del limite settimanale dell'utente: dopo ogni tappa il programma deve restare usabile.
 

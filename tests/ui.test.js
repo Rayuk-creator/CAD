@@ -951,6 +951,8 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
         document.querySelectorAll('#cmdBar .tool').forEach(b => { const lab = b.textContent.trim(); if (!cmdIds.has(b.dataset.cmd) && !text.includes(lab.toLowerCase())) out.push('comando senza guida: ' + lab); });
       }
       for (const t of T) {
+        // da un assieme vuoto la Messa in tavola non si apre: per i pulsanti della tavola si torna prima alla parte
+        if (t.cmd && t.cmd.tab === 'drawing' && App.mode === 'assembly') { App.setCmdTab('features'); await wait(80); }
         if (t.cmd) { App.setCmdTab(t.cmd.tab); await wait(80); if (!document.querySelector(`#cmdBar [data-cmd="${t.cmd.id}"]`)) out.push('«Mostrami dove» senza pulsante: ' + t.t); }
         const terms = (t.terms || []).concat([...(t.why + t.steps.join(' ') + (t.tips || []).join(' ')).matchAll(/\[\[([^\]|]+)/g)].map(m => m[1]));
         for (const x of terms) if (!Glossary.find(x)) out.push('termine non nel glossario: ' + x + ' (' + t.t + ')');

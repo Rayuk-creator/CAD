@@ -67,6 +67,36 @@ rec('Testi di un SVG tradotti (tavola salvata), il resto non cambia',
   rec(`Glossario inglese: tutte le ${E.length} voci (termine, altri nomi, spiegazione) e le categorie`, E.length > 200 && !bad.length, bad.slice(0, 8).join(' | '));
 }
 
+// 5. Guida in inglese: blocco in index.html uguale a tools/traduzione/guida-en.json; ogni argomento tradotto
+//    con gli stessi passi, consigli e termini del Glossario; capitoli tradotti
+{
+  const { guide, DA, DB } = require('../tools/traduzione/incorpora.js');
+  const da = page.indexOf(DA), db = page.indexOf(DB);
+  rec('Guida inglese in index.html uguale a tools/traduzione/guida-en.json', da >= 0 && db > da && page.slice(da + DA.length, db) === guide());
+  const gd = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'tools', 'traduzione', 'guida-en.json'), 'utf8'));
+  const lines = page.split('\n'), s = lines.findIndex(l => /^  const add = \(cap, id, t, o\)/.test(l)), e = lines.findIndex((l, i) => i > s && /^  \/\* -+ lingua -+/.test(l));
+  const T = []; vm.runInNewContext(lines.slice(s + 1, e).join('\n'), { add: (cap, id, t, o) => T.push({ cap, id, t, ...o }) });
+  // chiavi dei termini del Glossario [[chiave|etichetta]], in ordine alfabetico
+  const keys = l => [...[l.why, ...l.steps, ...(l.tips || [])].join(' ').matchAll(/\[\[([^\]|]+)/g)].map(m => m[1]).sort().join(', ');
+  const ital = /\b(della|degli|delle|nella|sono|anche|questo|quando|perché|oppure|viene|il|la|lo|le|gli|che|di|un|una|su|con|del|dei|non|si|da|al|alla|nel|questa|clic|tasto|scegli|premi)\b|\be\b(?!\.)/i;  // «e» italiana, non «e.g.»
+  // parole italiane ammesse: chiavi dei termini, nomi del menu italiano citati per tornare all'italiano, nomi d'esempio
+  const strip = x => x.replace(/\[\[[^\]|]+\|?/g, '').replace(/Progetto › Language|Lingua: italiano|Estrusione1/g, '');
+  const bad = [];
+  for (const t of T) {
+    const v = gd.argomenti[t.id];
+    if (!v) { bad.push('manca: ' + t.id); continue; }
+    if (!v.t || !v.why || !Array.isArray(v.steps)) { bad.push('incompleto: ' + t.id); continue; }
+    if (v.steps.length !== t.steps.length || (v.tips || []).length !== (t.tips || []).length) bad.push('passi o consigli diversi: ' + t.id);
+    if (keys(v) !== keys(t)) bad.push('termini diversi: ' + t.id + ' (' + keys(v) + ' ≠ ' + keys(t) + ')');
+    if (ital.test(strip([v.t, v.why, ...v.steps, ...(v.tips || [])].join(' ')))) bad.push('italiano rimasto: ' + t.id);
+    if (!gd.capitoli[t.cap]) bad.push('capitolo senza traduzione: ' + t.cap);
+  }
+  for (const k in gd.argomenti) if (!T.some(t => t.id === k)) bad.push('argomento inglese senza argomento italiano: ' + k);
+  rec(`Guida inglese: tutti i ${T.length} argomenti (titolo, a cosa serve, passi, consigli, termini) e i capitoli`, T.length > 60 && !bad.length, bad.slice(0, 8).join(' | '));
+  rec('Guida: frasi fisse del pannello e «Come si fa: …» del Glossario nel dizionario',
+    ['← Tutti gli argomenti', 'Mostrami dove', 'Come si fa', 'Consigli', 'Termini', 'Cerca nella guida'].every(x => en.tr(x) !== x) && en.tr('Come si fa: {} →') === 'How to: {} →');
+}
+
 const fail = rows.filter(x => !x).length;
 console.log(`\n${rows.length - fail}/${rows.length} superati`);
 process.exit(fail ? 1 : 0);
