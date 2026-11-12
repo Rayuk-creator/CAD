@@ -29,7 +29,14 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
   const browser = await chromium.launch(launch);
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await ctx.addInitScript(PEZZI_JS);
+  // TEST_LANG=en: la pagina in inglese (le prove che cercano testi italiani falliscono: serve per raccogliere le frasi non tradotte in TEST_MISSING)
+  // TEST_LANG=check: la pagina resta in italiano (le prove valgono come sempre) e ogni testo che compare si cerca nel dizionario inglese
+  if (process.env.TEST_LANG) await ctx.addInitScript(l => { try { localStorage.setItem('banco-cad-lang', l); } catch (e) { /* niente */ } }, process.env.TEST_LANG);
   const page = await ctx.newPage(); PAGE = page;
+  const MISSING = new Set();
+  const grabMissing = () => page.evaluate(() => [...I18N.missing]).then(m => { m.forEach(x => MISSING.add(x)); if (process.env.TEST_MISSING) require('fs').writeFileSync(process.env.TEST_MISSING, JSON.stringify([...MISSING], null, 1)); }).catch(() => {});
+  if (process.env.TEST_LANG === 'en') page.setDefaultTimeout(4000);
+  if (process.env.TEST_LANG) { setInterval(grabMissing, 1000); page.on('framenavigated', grabMissing); }
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.text().startsWith('DIAG') || m.type() === 'warning' && !/GL Driver|WebGL|GroupMarker/.test(m.text())) console.log('   [pagina] ' + m.text().slice(0, 400)); if (m.type() === 'error' && !/ERR_TUNNEL|ERR_NAME|fonts\.g/.test(m.text() + JSON.stringify(m.location()))) errors.push('console: ' + m.text()); });
@@ -2862,6 +2869,33 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
     rec('Specchia entità: la copia di un arco non manda lo schizzo in rosso e segue l\'originale', ok, `prima ${JSON.stringify(a0)}; arco ${JSON.stringify(a1)} ${JSON.stringify(geo)} raggio dopo 7: ${r7}; centro sull'asse ${JSON.stringify(a2)}; cerchio ${JSON.stringify(a3)}; selezioni ${s1},${s2},${s3}; errori ${errs.join()}`);
   } catch (e) { rec('Specchia entità: la copia di un arco non manda lo schizzo in rosso e segue l\'originale', false, e.message.split('\n')[0]); }
 
+  /* ---------- lingua: Progetto › Language: English, poi di nuovo in italiano ---------- */
+  try {
+    const lctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await lctx.addInitScript(PEZZI_JS);
+    const lp = await lctx.newPage(); const lerr = []; lp.on('pageerror', e => lerr.push(e.message));
+    await lp.goto('file://' + page_); await lp.waitForFunction(() => window.App && App.r);
+    await lp.evaluate(() => { App.change(() => { App.doc = JSON.parse(JSON.stringify(window.PEZZI.piastra)); App.doc.name = 'Parte1'; App.sel = []; }); });
+    await lp.click('#btnFile'); await lp.click('#langBtn');
+    await lp.waitForFunction(() => window.App && App.r && window.I18N && I18N.en, null, { timeout: 15000 });
+    await lp.waitForTimeout(500);
+    const en = await lp.evaluate(() => ({
+      file: document.querySelector('#btnFile').textContent, tab: document.querySelector('[data-ct="features"]').textContent,
+      name: document.querySelector('#docName').value, feats: App.doc.features.length, data: App.doc.name, dc: I18N.dc,
+      tree: [...document.querySelectorAll('#tree .tl')].map(n => n.textContent).join('|'), lang: document.documentElement.lang,
+      undo: document.querySelector('#btnUndo').title, btn: document.querySelector('#langBtn').textContent,
+    }));
+    await lp.click('#btnFile'); await lp.click('#langBtn');
+    await lp.waitForFunction(() => window.App && App.r && window.I18N && !I18N.en, null, { timeout: 15000 });
+    await lp.waitForTimeout(500);
+    const it = await lp.evaluate(() => ({ file: document.querySelector('#btnFile').textContent, name: document.querySelector('#docName').value, feats: App.doc.features.length, tree: [...document.querySelectorAll('#tree .tl')].map(n => n.textContent).join('|'), dc: I18N.dc }));
+    await lctx.close();
+    const ok = !lerr.length && en.file === 'Project' && en.tab === 'Features' && en.name === 'Part1' && en.data === 'Parte1' && en.feats > 0 && en.dc === '.' && en.lang === 'en'
+      && /Front Plane/.test(en.tree) && /Boss-Extrude1/.test(en.tree) && en.undo === 'Undo (Ctrl+Z)' && en.btn === 'Lingua: italiano'
+      && it.file === 'Progetto' && it.name === 'Parte1' && it.feats === en.feats && /Piano frontale/.test(it.tree) && /Estrusione1/.test(it.tree) && it.dc === ',';
+    rec('Lingua: Progetto › Language: English traduce la pagina e tiene il progetto; poi si torna in italiano', ok, `${JSON.stringify(en)} ${JSON.stringify(it)} ${lerr.join()}`);
+  } catch (e) { rec('Lingua: Progetto › Language: English traduce la pagina e tiene il progetto; poi si torna in italiano', false, e.message.split('\n')[0]); }
+  if (process.env.TEST_LANG) await grabMissing();
   await browser.close();
   const f = results.filter(r => !r.ok).length;
   console.log(`\n${results.length - f}/${results.length} superati`);

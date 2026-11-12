@@ -4,7 +4,7 @@
 
 A parametric 3D modeller for schools, inspired by SolidWorks, in **a single HTML page**: double-click it to open it in Chrome, Edge or Firefox. There is nothing to install and it works offline.
 
-> The program's interface is in **Italian**. This page explains what it does and how to use it; command names are given in Italian with their meaning.
+> The program's interface is in **Italian** and **English**: choose *Progetto › Language: English*, or open [rayuk-creator.github.io/CAD/?lang=en](https://rayuk-creator.github.io/CAD/?lang=en). The commands use the names of the English version of SolidWorks. The in-app Guide, the Glossary and the user manual are still in Italian (their translation is under way). This page explains what it does and how to use it; command names are given in Italian with their meaning.
 
 ![Banco CAD: flange with hub and eight holes in isometric view](docs/img/modello-3d.png)
 

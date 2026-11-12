@@ -5,8 +5,9 @@
   "private": true,
   "scripts": {
     "test": "npm run test:kernel && npm run test:ui",
-    "test:kernel": "node tests/extract.js index.html tests/core && node tests/kernel.test.js tests/core && node tests/step.test.js index.html tests/core && node tests/dwg.test.js convertitore-dwg/index.html tests/core",
-    "test:ui": "node tests/ui.test.js index.html"
+    "test:kernel": "node tests/extract.js index.html tests/core && node tests/kernel.test.js tests/core && node tests/step.test.js index.html tests/core && node tests/dwg.test.js convertitore-dwg/index.html tests/core && node tests/lingua.test.js index.html",
+    "test:ui": "node tests/ui.test.js index.html",
+    "test:lingua": "TEST_LANG=check TEST_MISSING=tests/frasi-mancanti.json node tests/ui.test.js index.html && node tools/traduzione/mancanti.js tests/frasi-mancanti.json"
   },
   "devDependencies": {
     "playwright": "^1.56.0"

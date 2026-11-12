@@ -412,6 +412,7 @@ label.chk .gl-i { margin-left: 2px; }
           <button type="button" data-act="help">Guida (come si fa)</button>
           <a data-act="manual" id="manualLink" href="https://rayuk-creator.github.io/CAD/docs/Manuale-Banco-CAD.pdf" target="_blank" rel="noopener">Manuale d'uso (PDF)</a>
           <button type="button" data-act="about">Informazioni e licenze</button>
+          <button type="button" data-act="lang" id="langBtn" translate="no" lang="en">Language: English</button>
         </div>
       </div>
     </div>
@@ -504,6 +505,1798 @@ label.chk .gl-i { margin-left: 2px; }
   <div class="toast" id="toast" role="status" hidden></div>
 </div>
 <script>
+/* LINGUA: inizio */
+/* Lingua dell'interfaccia (italiano normale, inglese da scegliere).
+   L'italiano resta nel codice; in inglese un osservatore della pagina traduce i testi che compaiono
+   (testi, title, aria-label, placeholder) con il dizionario EN: chiave = frase italiana, valore = inglese.
+   Nelle chiavi {} = pezzo variabile (numero, nome...), ripetuto nel valore nello stesso ordine; {1}, {2}... per cambiarlo.
+   Il pezzo variabile si traduce a sua volta se è una frase del dizionario (per esempio il nome di una funzione).
+   Le frasi che mancano finiscono in I18N.missing (le prove controllano che non ce ne siano). */
+(function (root) {
+  'use strict';
+  const KEY = 'banco-cad-lang';
+  let lang = 'it', check = false;
+  try {
+    const q = /[?&]lang=(it|en)\b/.exec(root.location ? root.location.search : '');
+    if (q) { lang = q[1]; root.localStorage.setItem(KEY, lang); }
+    else lang = root.localStorage.getItem(KEY) === 'en' ? 'en' : 'it';
+    // «check» (solo per le prove): la pagina resta in italiano, ma ogni testo che compare si cerca nel dizionario
+    check = root.localStorage.getItem(KEY) === 'check';
+  } catch (e) { /* senza localStorage resta l'italiano */ }
+  const EN = {
+/* TRADUZIONE EN: inizio */
+    "– Copyright © 2026 Rayuk-creator.": "– Copyright © 2026 Rayuk-creator.",
+    "– posizioni dei fori": "– hole positions",
+    "— aggiungi un profilo —": "— add a profile —",
+    "— scegli —": "— choose —",
+    ", {} corpi separati": ", {} separate bodies",
+    ", {} parti separate": ", {} separate parts",
+    ", filettato": ", tapped",
+    ", il file non la dice": ", not stated in the file",
+    ", su un piano di riferimento": ", on a reference plane",
+    "; {} a facce piane": "; {} with flat facets",
+    "; {} corpi separati": "; {} separate bodies",
+    "· {} con errori": "· {} with errors",
+    "· area {} mm²": "· area {} mm²",
+    "· compressa": "· collapsed",
+    "· diametro finale {} mm": "· end diameter {} mm",
+    "· lunghezza {} mm": "· length {} mm",
+    "· sullo sfondo: {}": "· in the background: {}",
+    "«{}» contiene <b>{} corpi</b>. Scegli quali importare.": "«{}» contains <b>{} bodies</b>. Choose which ones to import.",
+    "«{}» non ha ancora un solido: aprila e crea almeno un'estrusione.": "«{}» has no solid yet: open it and create at least one extrusion.",
+    "«Filetto»: il volume sta tutto nella corona del filetto. Il filetto è solo indicato, quindi vite e foro si sovrappongono nel disegno: non è un errore di montaggio.": "«Thread»: the volume lies entirely in the thread ring. The thread is only cosmetic, so screw and hole overlap in the model: it is not an assembly error.",
+    "«Forse solo contatto»: i pezzi importati sono fatti di triangoli, e uno strato così sottile può nascere solo da quelli. Controlla le misure nel programma d'origine.": "«Maybe just contact»: imported parts are made of triangles, and such a thin layer can only come from them. Check the dimensions in the original program.",
+    "({} elementi selezionati)": "({} entities selected)",
+    "(filetto)": "(thread)",
+    "(flessibile)": "(flexible)",
+    "(forse solo contatto)": "(maybe just contact)",
+    "(percorso)": "(path)",
+    "(profilo {})": "(profile {})",
+    "(profilo)": "(profile)",
+    "(schizzo eliminato)": "(sketch deleted)",
+    "(solo {}).": "(only {}).",
+    "(spento nel file)": "(off in the file)",
+    "(usato da {})": "(used by {})",
+    "{} - distinta base.csv": "{} - bill of materials.csv",
+    "{} – Assonometria isometrica": "{} – Isometric view",
+    "{} – tavola": "{} – drawing",
+    "{} – vista 3D": "{} – 3D view",
+    "{} – Vista da destra": "{} – Right view",
+    "{} – Vista da sinistra": "{} – Left view",
+    "{} – Vista dal basso": "{} – Bottom view",
+    "{} – Vista dall'alto": "{} – Top view",
+    "{} – Vista frontale": "{} – Front view",
+    "{} – Vista posteriore": "{} – Back view",
+    "{} — {} g/cm³": "{} — {} g/cm³",
+    "{} · {#} tra linee, archi e cerchi (polilinee e blocchi divisi nei loro tratti) · ingombro {} × {} mm (unità: {}){}": "{} · {} lines, arcs and circles (polylines and blocks split into their segments) · size {} × {} mm (units: {}){}",
+    "{} · area {} mm²": "{} · area {} mm²",
+    "{} · lunghezza {} mm": "{} · length {} mm",
+    "{} · vista 3D": "{} · 3D view",
+    "{} ({} elementi selezionati)": "{} ({} entities selected)",
+    "{} (assieme)": "{} (assembly)",
+    "{} (curva)": "{} (curve)",
+    "{} (DWG)": "{} (DWG)",
+    "{} (DXF)": "{} (DXF)",
+    "{} (IGES)": "{} (IGES)",
+    "{} (OBJ)": "{} (OBJ)",
+    "{} (percorso)": "{} (path)",
+    "{} (profilo {#})": "{} (profile {})",
+    "{} (profilo)": "{} (profile)",
+    "{} (sottoassieme)": "{} (subassembly)",
+    "{} (STEP)": "{} (STEP)",
+    "{} (STL)": "{} (STL)",
+    "{} (usato da {})": "{} (used by {})",
+    "{} {} su {} {}.": "{} {} in {} {}.",
+    "{} {} sulla faccia scelta.": "{} {} on the chosen face.",
+    "{} × {} (passo grosso)": "{} × {} (coarse pitch)",
+    "{} × {} × {} mm": "{} × {} × {} mm",
+    "{} cm³": "{} cm³",
+    "{} di {}": "{} of {}",
+    "{} e {} sono sullo stesso piano: metti ogni profilo su un piano diverso (Piano di riferimento)": "{} and {} are on the same plane: put each profile on a different plane (Reference Plane)",
+    "{} e {}: {} mm³{}": "{} and {}: {} mm³{}",
+    "{} e {}: non si è potuto calcolare (pezzi troppo complessi).": "{} and {}: could not be calculated (parts too complex).",
+    "{} è diventata {} (compresi nel conteggio), lontani al massimo {} mm dalla curva vera.": "{} became {} (included in the count), at most {} mm from the true curve.",
+    "{} è fissa: per muoverla usa Libera dal suo menu.": "{} is fixed: to move it use Float from its menu.",
+    "{} entità fuori dal piano del disegno sono state saltate o appiattite.": "{} entities outside the drawing plane were skipped or flattened.",
+    "{} entità nel file": "{} entities in the file",
+    "{} facce del modello d'origine, divise in {} triangoli{}.": "{} faces of the original model, divided into {} triangles{}.",
+    "{} funzione con errori: passa sopra all'icona rossa nell'albero per leggere il motivo": "{} feature with errors: hover over the red icon in the tree to read the reason",
+    "{} g/mm³": "{} g/mm³",
+    "{} lati in comune a più di due facce": "{} edges shared by more than two faces",
+    "{} lati liberi": "{} free edges",
+    "{} mm": "{} mm",
+    "{} mm²": "{} mm²",
+    "{} mm³": "{} mm³",
+    "{} non esiste più: controlla la funzione": "{} no longer exists: check the feature",
+    "{} non vale per questi due elementi.": "{} does not apply to these two entities.",
+    "{} solidi": "{} solids",
+    "{} sono diventate {} (compresi nel conteggio), lontani al massimo {} mm dalla curva vera.": "{} became {} (included in the count), at most {} mm from the true curve.",
+    "{} spline": "{} splines",
+    "{} superfici curve sono": "{} curved surfaces",
+    "{} tra {} e {}. Doppio clic per modificare.": "{} between {} and {}. Double-click to edit.",
+    "{} triangoli, {} facce piane{}.": "{} triangles, {} flat faces{}.",
+    "{}-{}.pdf": "{}-{}.pdf",
+    "{}-tavola.html": "{}-drawing.html",
+    "{}-tavola.pdf": "{}-drawing.pdf",
+    "{}-vista.pdf": "{}-view.pdf",
+    "{}, {}, {} di libertà{}": "{}, {}, {} of freedom{}",
+    "{}: {}{} mm": "{}: {}{} mm",
+    "{}: il profilo deve essere un contorno chiuso": "{}: the profile must be a closed contour",
+    "{}: ogni profilo deve essere un solo contorno chiuso, senza fori": "{}: each profile must be a single closed contour, without holes",
+    "{}. Doppio clic per aprire la parte.": "{}. Double-click to open the part.",
+    "{}.bcad.json": "{}.bcad.json",
+    "{}.dxf": "{}.dxf",
+    "{}.html": "{}.html",
+    "{}.step": "{}.step",
+    "{}.stl": "{}.stl",
+    "{}.svg": "{}.svg",
+    "{}.zip": "{}.zip",
+    "{}Albero": "{}Tree",
+    "{}Questa operazione non si può annullare.": "{}This operation cannot be undone.",
+    "{#} accoppiamenti": "{} mates",
+    "{#} accoppiamento": "{} mate",
+    "{#} archi": "{} arcs",
+    "{#} arco": "{} arc",
+    "{#} attributi": "{} attributes",
+    "{#} attributo": "{} attribute",
+    "{#} blocchi": "{} blocks",
+    "{#} blocco": "{} block",
+    "{#} cerchi": "{} circles",
+    "{#} cerchio": "{} circle",
+    "{#} cilindri": "{} cylinders",
+    "{#} cilindro": "{} cylinder",
+    "{#} componente": "{} component",
+    "{#} componenti": "{} components",
+    "{#} coni": "{} cones",
+    "{#} cono": "{} cone",
+    "{#} copia": "{} copy",
+    "{#} copie": "{} copies",
+    "{#} coppia": "{} pair",
+    "{#} coppie": "{} pairs",
+    "{#} corpi": "{} bodies",
+    "{#} corpi 3D": "{} 3D bodies",
+    "{#} corpo": "{} body",
+    "{#} corpo 3D": "{} 3D body",
+    "{#} curva spline": "{} spline curve",
+    "{#} curve spline": "{} spline curves",
+    "{#} elica": "{} helix",
+    "{#} eliche": "{} helixes",
+    "{#} ellisse": "{} ellipse",
+    "{#} ellissi": "{} ellipses",
+    "{#} entità": "{} entity",
+    "{#} facce": "{} faces",
+    "{#} facce · {}": "{} faces · {}",
+    "{#} facce 3D": "{} 3D faces",
+    "{#} faccia": "{} face",
+    "{#} faccia · {}": "{} face · {}",
+    "{#} faccia 3D": "{} 3D face",
+    "{#} finestra": "{} viewport",
+    "{#} finestre": "{} viewports",
+    "{#} fori": "{} holes",
+    "{#} forma": "{} shape",
+    "{#} forme": "{} shapes",
+    "{#} foro": "{} hole",
+    "{#} funzione": "{} feature",
+    "{#} funzioni": "{} features",
+    "{#} gradi": "{} degrees",
+    "{#} grado": "{} degree",
+    "{#} immagine": "{} image",
+    "{#} immagini": "{} images",
+    "{#} interferenza": "{} interference",
+    "{#} interferenze": "{} interferences",
+    "{#} istanza": "{} instance",
+    "{#} istanze": "{} instances",
+    "{#} linea": "{} line",
+    "{#} linea di mezzeria": "{} centerline",
+    "{#} linee": "{} lines",
+    "{#} linee di mezzeria": "{} centerlines",
+    "{#} luce": "{} light",
+    "{#} luci": "{} lights",
+    "{#} mascheratura": "{} wipeout",
+    "{#} mascherature": "{} wipeouts",
+    "{#} mesh": "{} meshes",
+    "{#} multilinea": "{} multiline",
+    "{#} multilinee": "{} multilines",
+    "{#} oggetti OLE": "{} OLE objects",
+    "{#} oggetto OLE": "{} OLE object",
+    "{#} parte": "{} part",
+    "{#} parti": "{} parts",
+    "{#} passi": "{} steps",
+    "{#} passo": "{} step",
+    "{#} profili": "{} profiles",
+    "{#} profilo": "{} profile",
+    "{#} punti": "{} points",
+    "{#} punto": "{} point",
+    "{#} quota": "{} dimension",
+    "{#} quote": "{} dimensions",
+    "{#} regione": "{} region",
+    "{#} regioni": "{} regions",
+    "{#} retta infinita": "{} infinite line",
+    "{#} rette infinite": "{} infinite lines",
+    "{#} richiami": "{} leaders",
+    "{#} richiamo": "{} leader",
+    "{#} riempimenti": "{} fills",
+    "{#} riempimento": "{} fill",
+    "{#} schizzi": "{} sketches",
+    "{#} schizzo": "{} sketch",
+    "{#} semiretta": "{} ray",
+    "{#} semirette": "{} rays",
+    "{#} sfera": "{} sphere",
+    "{#} sfere": "{} spheres",
+    "{#} solidi": "{} solids",
+    "{#} solidi 3D": "{} 3D solids",
+    "{#} solido": "{} solid",
+    "{#} solido 3D": "{} 3D solid",
+    "{#} spigoli": "{} edges",
+    "{#} spigolo": "{} edge",
+    "{#} spline": "{} spline",
+    "{#} superfici": "{} surfaces",
+    "{#} superficie": "{} surface",
+    "{#} tabella": "{} table",
+    "{#} tabelle": "{} tables",
+    "{#} testi": "{} texts",
+    "{#} testo": "{} text",
+    "{#} tolleranza": "{} tolerance",
+    "{#} tolleranza geometrica": "{} geometric tolerance",
+    "{#} tolleranze": "{} tolerances",
+    "{#} tolleranze geometriche": "{} geometric tolerances",
+    "{#} tori": "{} tori",
+    "{#} toro": "{} torus",
+    "{#} tra linee, archi e cerchi (polilinee e blocchi divisi nei loro tratti) · ingombro {} × {} mm (unità: {}){}": "{} lines, arcs and circles (polylines and blocks split into their segments) · size {} × {} mm (units: {}){}",
+    "{#} tracce": "{} traces",
+    "{#} traccia": "{} trace",
+    "{#} tratteggi": "{} hatches",
+    "{#} tratteggio": "{} hatch",
+    "{#} triangoli": "{} triangles",
+    "{#} triangolo": "{} triangle",
+    "{#} vincoli": "{} constraints",
+    "{#} vincolo": "{} constraint",
+    "{#}. {}": "{}. {}",
+    "<b>{} su {} prove superate</b> in {} s. Tolleranza ammessa: 1 %.": "<b>{} of {} tests passed</b> in {} s. Allowed tolerance: 1 %.",
+    "<b>Banco CAD</b> – Copyright © 2026 Rayuk-creator.": "<b>Banco CAD</b> – Copyright © 2026 Rayuk-creator.",
+    "<b>Caratteri IBM Plex</b>, © 2017 IBM Corp.: licenza {}.": "<b>IBM Plex fonts</b>, © 2017 IBM Corp.: license {}.",
+    "<b>Colori dello schizzo:</b> blu = sotto definito (mancano quote o relazioni), nero = completamente definito, rosso = sovradefinito (quote in conflitto).": "<b>Sketch colors:</b> blue = under defined (dimensions or relations missing), black = fully defined, red = over defined (conflicting dimensions).",
+    "<b>Corpi da importare</b>": "<b>Bodies to import</b>",
+    "<b>csg.js</b>, © 2011 Evan Wallace: il modulo delle operazioni booleane ne segue l'algoritmo. Licenza {}.": "<b>csg.js</b>, © 2011 Evan Wallace: the boolean operations module follows its algorithm. License {}.",
+    "<b>Dati personali.</b> Il programma non raccoglie dati: il lavoro resta nel tuo browser e i file che apri non vengono mandati da nessuna parte.": "<b>Personal data.</b> The program does not collect data: your work stays in your browser and the files you open are not sent anywhere.",
+    "<b>Layer da importare</b>": "<b>Layers to import</b>",
+    "<b>LibreDWG</b> (progetto GNU), compilato in WebAssembly da <b>libredwg-web</b> 0.8.2, il lettore DWG: licenza GPL 3 ({}). Sorgenti: {} e {} ({}); versione e unica modifica: {}.": "<b>LibreDWG</b> (GNU project), compiled to WebAssembly by <b>libredwg-web</b> 0.8.2, the DWG reader: GPL 3 license ({}). Sources: {} and {} ({}); version and only change: {}.",
+    "<b>Marchi.</b> SolidWorks è un marchio di Dassault Systèmes, AutoCAD di Autodesk. Il Banco CAD non è collegato a loro.": "<b>Trademarks.</b> SolidWorks is a trademark of Dassault Systèmes, AutoCAD of Autodesk. Banco CAD is not affiliated with them.",
+    "<b>Metriche dei caratteri Helvetica</b> per i PDF, © 1985–1997 Adobe Systems Incorporated: {}.": "<b>Helvetica font metrics</b> for PDFs, © 1985–1997 Adobe Systems Incorporated: {}.",
+    "<b>Modificare:</b> doppio clic su una funzione nell'albero (o su una faccia del pezzo). Tasto destro per sopprimere, rinominare o eliminare.": "<b>Editing:</b> double-click a feature in the tree (or a face of the part). Right-click to suppress, rename or delete.",
+    "<b>Mouse:</b> trascina con il tasto sinistro nel vuoto per ruotare, con il destro (o Maiusc + sinistro) per spostare; rotella per lo zoom (avanti ingrandisce, indietro riduce), <kbd>Ctrl</kbd> + rotella per ruotarlo. Su tablet: due dita ingrandiscono; per ruotare e spostare tocca prima il pezzo (si colora il bordo della vista), poi un dito ruota e due dita spostano; tocca il vuoto o «Lascia» per rilasciarlo.": "<b>Mouse:</b> drag with the left button in empty space to rotate, with the right button (or Shift + left) to pan; wheel to zoom (forward zooms in, backward zooms out), <kbd>Ctrl</kbd> + wheel to rotate. On tablets: two fingers zoom; to rotate and pan first touch the part (the view border is colored), then one finger rotates and two fingers pan; touch empty space or «Release» to let go.",
+    "<b>occt-import-js</b> 0.0.24 (V. Kovacs) e <b>Open CASCADE Technology</b> 7.6.1, il lettore STEP/IGES: licenza LGPL 2.1 ({}, {}). Sorgenti di questa versione: {} e {} (progetti d'origine: {}, {}); come sostituirlo: {}.": "<b>occt-import-js</b> 0.0.24 (V. Kovacs) and <b>Open CASCADE Technology</b> 7.6.1, the STEP/IGES reader: LGPL 2.1 license ({}, {}). Sources of this version: {} and {} (original projects: {}, {}); how to replace it: {}.",
+    "<b>Parti di altri autori</b>": "<b>Third-party components</b>",
+    "<b>Primo pezzo:</b> scheda <i>Schizzo</i> › Schizzo › scegli un piano › disegna un contorno chiuso › metti le quote con <i>Quota intelligente</i> finché lo schizzo diventa nero › ✓ › <i>Estrusione base</i>.": "<b>First part:</b> <i>Sketch</i> tab › Sketch › choose a plane › draw a closed contour › add dimensions with <i>Smart Dimension</i> until the sketch turns black › ✓ › <i>Extruded Boss/Base</i>.",
+    "<b>Salvataggio:</b> il lavoro resta salvato in questo browser. Per spostarlo usa Progetto › Esporta.": "<b>Saving:</b> your work stays saved in this browser. To move it use Project › Export.",
+    "<b>Schizzo su una faccia:</b> seleziona una faccia piana e premi Schizzo, oppure tasto destro sulla faccia.": "<b>Sketch on a face:</b> select a flat face and press Sketch, or right-click the face.",
+    "<b>Viste:</b> <kbd>Barra spaziatrice</kbd> per gli orientamenti, <kbd>F</kbd> per adattare, <kbd>Ctrl</kbd>+<kbd>Z</kbd> annulla.": "<b>Views:</b> <kbd>Spacebar</kbd> for orientations, <kbd>F</kbd> to zoom to fit, <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes.",
+    "<i>(spento nel file)</i>": "<i>(off in the file)</i>",
+    "1 entità": "1 entity",
+    "1 mesh": "1 mesh",
+    "1 spline": "1 spline",
+    "A2 orizzontale (594 × 420)": "A2 landscape (594 × 420)",
+    "A3 orizzontale (420 × 297)": "A3 landscape (420 × 297)",
+    "A4 orizzontale (297 × 210)": "A4 landscape (297 × 210)",
+    "A4 verticale (210 × 297)": "A4 portrait (210 × 297)",
+    "Acciaio 39NiCrMo3": "Steel 39NiCrMo3",
+    "Acciaio C40": "Steel C40",
+    "Acciaio inox X5CrNi18-10 (AISI 304)": "Stainless steel X5CrNi18-10 (AISI 304)",
+    "Acciaio S235JR": "Steel S235JR",
+    "accoppiamenti": "mates",
+    "Accoppiamenti ({})": "Mates ({})",
+    "accoppiamento": "mate",
+    "Accoppiamento": "Mate",
+    "Accoppiamento (ISO 273)": "Fit (ISO 273)",
+    "Acetalica POM": "Acetal POM",
+    "Adatta alla finestra": "Zoom to Fit",
+    "Adatta alla finestra (F)": "Zoom to Fit (F)",
+    "Adatta il foglio": "Fit the sheet",
+    "Aggiunge le quote d'ingombro delle viste e i diametri dei cerchi": "Adds the overall dimensions of the views and the diameters of the circles",
+    "Aggiunge una parte del progetto o un file (STEP, IGES, STL, OBJ, progetto) come componente dell'assieme": "Adds a part of the project or a file (STEP, IGES, STL, OBJ, project) as a component of the assembly",
+    "Aggiungi": "Add",
+    "Aggiungi almeno un punto per la posizione del foro": "Add at least one point for the hole position",
+    "Aggiungi il passo": "Add the step",
+    "Aggiungi le quote con questi valori": "Add dimensions with these values",
+    "Aggiungi relazione": "Add Relation",
+    "Aggiungi relazioni": "Add Relations",
+    "Aggiungi una parte": "Add a part",
+    "Aggiungi una sezione": "Add a section",
+    "Aggiunte {} quote. Trascina i testi per sistemarle; Canc elimina quella selezionata.": "Added {} dimensions. Drag the texts to arrange them; Del deletes the selected one.",
+    "Albero di progettazione": "FeatureManager design tree",
+    "Alcune entità si intersecano: usa «Taglia entità» per eliminare le parti in più, così i contorni sono chiusi e separati.": "Some entities intersect: use «Trim Entities» to delete the extra parts, so the contours are closed and separate.",
+    "Alcune facce erano girate al contrario e sono state corrette.": "Some faces were reversed and have been corrected.",
+    "Alcune facce erano girate al contrario: sono state corrette.": "Some faces were reversed: they have been corrected.",
+    "Alcune relazioni o quote verso gli spigoli del pezzo sono state rimosse perché quegli spigoli non esistono più": "Some relations or dimensions to the part edges were removed because those edges no longer exist",
+    "Alcuni corpi non si toccano: restano staccati dentro lo stesso corpo": "Some bodies do not touch: they stay separate inside the same body",
+    "Alcuni corpi scelti in «Ambito funzione» non esistono più": "Some bodies chosen in «Feature Scope» no longer exist",
+    "All'inizio il percorso deve essere perpendicolare al piano del profilo": "At the start the path must be perpendicular to the profile plane",
+    "All'inizio l'elica corre lungo il piano del profilo: disegna il profilo su un piano che l'elica attraversa": "At the start the helix runs along the profile plane: draw the profile on a plane that the helix crosses",
+    "Allontana i componenti per mostrare come si montano, senza cambiare le posizioni vere": "Moves the components apart to show how they fit together, without changing their real positions",
+    "Alluminio EN AW-2011": "Aluminum EN AW-2011",
+    "Alluminio EN AW-6082": "Aluminum EN AW-6082",
+    "Almeno {} mm. L'arco si piega dalla parte del mouse.": "At least {} mm. The arc bends toward the mouse side.",
+    "Altezza": "Height",
+    "Altezza e passo": "Height and Pitch",
+    "Altezza e rivoluzione": "Height and Revolution",
+    "Ambito funzione": "Feature Scope",
+    "Ambito funzione: scegli almeno un corpo": "Feature Scope: choose at least one body",
+    "Ampiezza": "Angle",
+    "Ampiezza dell'arco": "Arc angle",
+    "Angolo": "Angle",
+    "Angolo (°)": "Angle (°)",
+    "Angolo da destra in senso antiorario: 0° destra, 90° su, 180° sinistra, 270° giù.": "Angle from the right counterclockwise: 0° right, 90° up, 180° left, 270° down.",
+    "Angolo di rastremazione": "Taper angle",
+    "Angolo di sformo": "Draft angle",
+    "angolo in basso a sinistra sull'origine": "bottom left corner on the origin",
+    "Angolo iniziale": "Start angle",
+    "Angolo totale": "Total angle",
+    "Angolo tra le facce": "Angle between the faces",
+    "Annulla": "Cancel",
+    "Annulla (Ctrl+Z)": "Undo (Ctrl+Z)",
+    "Annulla (Esc)": "Cancel (Esc)",
+    "Annulla soppressione": "Unsuppress",
+    "Anteprima del disegno DXF": "DXF drawing preview",
+    "Applica": "Apply",
+    "Applica (Invio)": "Apply (Enter)",
+    "Apri il file salvato in Chrome: parte la stampa in scala (scegli «Dimensioni effettive» o «100%», oppure «Salva come PDF»).": "Open the saved file in Chrome: printing to scale starts (choose «Actual size» or «100%», or «Save as PDF»).",
+    "Apri l'assieme": "Open assembly",
+    "Apri la parte": "Open part",
+    "Apri prima uno schizzo.": "Open a sketch first.",
+    "archi": "arcs",
+    "arco": "arc",
+    "Arco": "Arc",
+    "Arco 3 punti": "3 Point Arc",
+    "Arco centro-estremi": "Centerpoint Arc",
+    "Arco tangente": "Tangent Arc",
+    "Arco tangente che parte dall'estremo di una linea o di un arco": "Tangent arc starting from the end of a line or an arc",
+    "Arco: centro, punto iniziale, punto finale": "Arc: center, start point, end point",
+    "Arco: estremo iniziale, estremo finale, punto di passaggio": "Arc: start point, end point, point on the arc",
+    "Area": "Area",
+    "Area (mm²)": "Area (mm²)",
+    "Area della superficie": "Surface area",
+    "Area grafica": "Graphics area",
+    "Arrotonda gli spigoli selezionati": "Rounds the selected edges",
+    "Arrotonda l'angolo tra due linee: clic sul vertice": "Rounds the corner between two lines: click the vertex",
+    "Asola": "Straight Slot",
+    "Asola diritta: centro del primo arco, centro del secondo, larghezza": "Straight slot: center of the first arc, center of the second, width",
+    "Asse": "Axis",
+    "Asse {}": "Axis {}",
+    "Asse di rivoluzione": "Axis of Revolution",
+    "Asse per l'origine": "Axis through the origin",
+    "Asse X": "X axis",
+    "Asse Y": "Y axis",
+    "Asse Z": "Z axis",
+    "Asse Z del file verso l'alto": "File Z axis up",
+    "Assi e linee di centro": "Axes and center lines",
+    "Assieme": "Assembly",
+    "Assieme{}": "Assembly{}",
+    "Assieme{#}": "Assembly{}",
+    "Assonometria esplosa": "Exploded isometric view",
+    "Assonometria isometrica": "Isometric view",
+    "Assonometria ombreggiata (con i colori del pezzo)": "Shaded isometric view (with the part colors)",
+    "Attenzione: il corpo non è chiuso (forse il file contiene solo superfici).": "Warning: the body is not closed (maybe the file only contains surfaces).",
+    "Attenzione: il corpo non è chiuso.": "Warning: the body is not closed.",
+    "Attenzione: in qualche punto la curva è troppo complicata e lo scostamento è maggiore del solito.": "Warning: in some places the curve is too complicated and the deviation is larger than usual.",
+    "Attenzione: qualche corpo non è chiuso (forse il file contiene solo superfici).": "Warning: some bodies are not closed (maybe the file only contains surfaces).",
+    "attributi": "attributes",
+    "attributo": "attribute",
+    "AutoCAD 2000": "AutoCAD 2000",
+    "AutoCAD 2004": "AutoCAD 2004",
+    "AutoCAD 2007": "AutoCAD 2007",
+    "AutoCAD 2010": "AutoCAD 2010",
+    "AutoCAD 2013": "AutoCAD 2013",
+    "AutoCAD 2018": "AutoCAD 2018",
+    "AutoCAD Binary DXF": "AutoCAD Binary DXF",
+    "Automatica (la più grande che sta nel foglio)": "Automatic (the largest that fits the sheet)",
+    "Autoverifica": "Self-check",
+    "Autoverifica non disponibile.": "Self-check not available.",
+    "avviso": "warning",
+    "Banco CAD": "Banco CAD",
+    "Banco CAD · {}": "Banco CAD · {}",
+    "Baricentro X": "Center of mass X",
+    "Baricentro Y": "Center of mass Y",
+    "Baricentro Z": "Center of mass Z",
+    "Benvenuto: per iniziare apri la Guida, in alto a destra.": "Welcome: to get started open the Guide, top right.",
+    "blocchi": "blocks",
+    "blocco": "block",
+    "C'è già una richiesta di salvataggio aperta": "A save request is already open",
+    "Calcola": "Calculate",
+    "Cartiglio": "Title block",
+    "centimetri": "centimeters",
+    "Centro": "Center",
+    "Centro del primo arco": "Center of the first arc",
+    "centro sull'origine": "center on the origin",
+    "cerchi": "circles",
+    "cerchio": "circle",
+    "Cerchio": "Circle",
+    "Cerchio di partenza": "Start circle",
+    "Cerchio: centro, poi un punto della circonferenza": "Circle: center, then a point on the circumference",
+    "Che cos'è: {}": "What is it: {}",
+    "Chiudi": "Close",
+    "Chiudi il pannello": "Close the panel",
+    "Chiudi prima lo schizzo o il pannello aperto, poi cambia lingua.": "Close the sketch or the open panel first, then change the language.",
+    "Cieca": "Blind",
+    "Cieca (profondità)": "Blind (depth)",
+    "cilindri": "cylinders",
+    "cilindro": "cylinder",
+    "Classe": "Class",
+    "Clic per evidenziare il corpo": "Click to highlight the body",
+    "Clic per il primo punto, poi un clic per ogni vertice. Doppio clic o Esc per finire.": "Click for the first point, then one click for each vertex. Double-click or Esc to finish.",
+    "Clic per mettere un punto.": "Click to place a point.",
+    "Clic su un vertice, poi sul vertice opposto.": "Click a corner, then the opposite corner.",
+    "Clic su un'entità (o su due), poi clic dove mettere la quota.": "Click an entity (or two), then click where to place the dimension.",
+    "Clic su una o due entità, poi clic per posizionare la quota e scrivi il valore": "Click one or two entities, then click to place the dimension and type the value",
+    "Clic su uno spigolo (lunghezza), un cerchio (diametro) o due punti; poi clic dove mettere la quota.": "Click an edge (length), a circle (diameter) or two points; then click where to place the dimension.",
+    "Clic sul centro del primo arco, poi sul secondo, poi un clic per la larghezza.": "Click the center of the first arc, then the second one, then one click for the width.",
+    "Clic sul centro, poi su un punto della circonferenza.": "Click the center, then a point on the circumference.",
+    "Clic sul centro, poi su un vertice.": "Click the center, then a corner.",
+    "Clic sul centro, poi su un vertice. Il numero di lati è nel pannello a sinistra.": "Click the center, then a vertex. The number of sides is in the panel on the left.",
+    "Clic sul centro, poi sul punto iniziale, poi sul punto finale.": "Click the center, then the start point, then the end point.",
+    "Clic sul percorso nella vista…": "Click the path in the view…",
+    "Clic sul primo punto e sul secondo punto della linea di mezzeria.": "Click the first point and the second point of the centerline.",
+    "Clic sul profilo nella vista…": "Click the profile in the view…",
+    "Clic sul punto iniziale, poi sul punto finale, poi su un punto dell'arco.": "Click the start point, then the end point, then a point on the arc.",
+    "Clic sul vertice comune a due linee.": "Click the vertex shared by two lines.",
+    "Clic sull'estremo di una linea o di un arco, poi sul punto finale.": "Click the end of a line or an arc, then the end point.",
+    "Clic sulla faccia per mettere la posizione di un foro. Poi quota la posizione.": "Click the face to place a hole position. Then dimension the position.",
+    "Clic sulla parte di entità da togliere (fino alle intersezioni)": "Click the part of the entity to remove (up to the intersections)",
+    "Clic sulla parte di entità da togliere.": "Click the part of the entity to remove.",
+    "Clic: esplodi o comprimi. Doppio clic: modifica i passi.": "Click: explode or collapse. Double-click: edit the steps.",
+    "Coincidente": "Coincident",
+    "Collineare": "Collinear",
+    "Colori del file": "File colors",
+    "Comandi": "Commands",
+    "Combina": "Combine",
+    "Combina{#}": "Combine{}",
+    "Combinazione non misurabile: prova con vertici, facce piane parallele o spigoli circolari.": "Combination that cannot be measured: try vertices, parallel flat faces or circular edges.",
+    "come nel file": "as in the file",
+    "Come quota guida renderebbe lo schizzo sovradefinito.": "As a driving dimension it would make the sketch over defined.",
+    "Come si usano i comandi, passo per passo": "How to use the commands, step by step",
+    "Completa i campi con valori validi.": "Fill in the fields with valid values.",
+    "Completamente definito": "Fully Defined",
+    "componente": "component",
+    "Componente": "Component",
+    "componenti": "components",
+    "Componenti": "Components",
+    "Componenti ({})": "Components ({})",
+    "Comprimi": "Collapse",
+    "Comune": "Common",
+    "Con la casella spuntata ogni corpo arriva nella sua funzione «Importato» (con il nome del corpo, se il file lo ha): si può sopprimere o eliminare da solo. Senza la casella i corpi scelti arrivano tutti insieme in una funzione sola.": "With the box checked each body arrives in its own «Imported» feature (with the body name, if the file has one): it can be suppressed or deleted on its own. Without the box the chosen bodies all arrive together in a single feature.",
+    "Con la propagazione tangente basta un clic su uno spigolo: si lavorano anche quelli che lo continuano senza angolo (per esempio tutto il bordo di un'asola).": "With tangent propagation one click on an edge is enough: the edges that continue it without a corner are also processed (for example the whole edge of a slot).",
+    "Con questa rastremazione l'elica si chiude sull'asse prima della fine: riduci l'angolo o l'altezza": "With this taper the helix closes on the axis before the end: reduce the angle or the height",
+    "Con questi valori la figura non si può costruire.": "The shape cannot be built with these values.",
+    "Con questo valore lo schizzo non si può risolvere: prova un valore diverso.": "With this value the sketch cannot be solved: try a different value.",
+    "Con una vista esplosa nell'assieme, qui si può mostrarla nell'assonometria.": "With an exploded view in the assembly, it can be shown here in the isometric view.",
+    "Concentrica": "Concentric",
+    "Concentrico": "Concentric",
+    "Condizione finale": "End Condition",
+    "condizioni aggiuntive": "additional terms",
+    "Conferma": "Confirm",
+    "Conferma il valore": "Confirm the value",
+    "Conferma le posizioni": "Confirm the positions",
+    "Conferma lo schizzo (come il ✓ in alto a destra)": "Confirms the sketch (like the ✓ at the top right)",
+    "Conferma prima le posizioni dei fori (✓).": "Confirm the hole positions first (✓).",
+    "coni": "cones",
+    "cono": "cone",
+    "Continua": "Continuous",
+    "Contorni chiusi: {} (area {} mm²).": "Closed contours: {} (area {} mm²).",
+    "Converti entità": "Convert Entities",
+    "Convertitore DWG → DXF": "DWG → DXF Converter",
+    "convertitore-dwg/COPYING": "convertitore-dwg/COPYING",
+    "convertitore-dwg/LEGGIMI.md": "convertitore-dwg/LEGGIMI.md",
+    "copia": "copy",
+    "Copia": "Copy",
+    "copia dei sorgenti": "copy of the sources",
+    "Copia funzioni simmetriche rispetto a un piano": "Copies features symmetrically about a plane",
+    "Copia il componente": "Copy component",
+    "Copia il corpo": "Copy the body",
+    "Copia il testo": "Copy the text",
+    "Copia nello schizzo gli spigoli selezionati della faccia (in grigio)": "Copies the selected edges of the face (in gray) into the sketch",
+    "copie": "copies",
+    "coppia": "pair",
+    "Coppia {} di {}…": "Pair {} of {}…",
+    "coppie": "pairs",
+    "corpi": "bodies",
+    "Corpi": "Bodies",
+    "corpi 3D": "3D bodies",
+    "Corpi da combinare": "Bodies to combine",
+    "Corpi da importare": "Bodies to import",
+    "Corpi da ripetere": "Bodies to pattern",
+    "Corpi da sottrarre": "Bodies to subtract",
+    "Corpi da specchiare": "Bodies to mirror",
+    "Corpi nel file": "Bodies in the file",
+    "Corpi scelti": "Chosen bodies",
+    "Corpi selezionati": "Selected bodies",
+    "Corpi solidi": "Solid Bodies",
+    "Corpi solidi ({})": "Solid Bodies ({})",
+    "corpo": "body",
+    "Corpo": "Body",
+    "Corpo {}": "Body {}",
+    "corpo 3D": "3D body",
+    "Corpo principale": "Main body",
+    "Corpo{#}": "Body{}",
+    "costruzione": "construction",
+    "Costruzione": "Construction Geometry",
+    "Crea un altro assieme in questo progetto; può diventare un sottoassieme di un altro": "Creates another assembly in this project; it can become a subassembly of another one",
+    "Crea una parte vuota in questo progetto e la apre": "Creates an empty part in this project and opens it",
+    "Creazione guidata fori": "Hole Wizard",
+    "Curva a elica o a spirale che parte da un cerchio: è il percorso di molle e filetti": "Helix or spiral curve starting from a circle: it is the path of springs and threads",
+    "curva spline": "spline curve",
+    "Curve": "Curves",
+    "curve spline": "spline curves",
+    "Da eliminare": "To delete",
+    "Da mantenere": "To keep",
+    "Dado esagonale, ISO 4032": "Hexagon nut, ISO 4032",
+    "Dado ISO 4032": "Hex nut ISO 4032",
+    "dal file": "from the file",
+    "Dal pezzo ✓": "From the part ✓",
+    "Dal pezzo: fai clic su una faccia cilindrica (si usa il suo asse) o su uno spigolo circolare.": "From the part: click a cylindrical face (its axis is used) or a circular edge.",
+    "Dal pezzo…": "From the part…",
+    "Data": "Date",
+    "Dati del corpo importato danneggiati": "The imported body data is damaged",
+    "decimetri": "decimeters",
+    "Definita da": "Defined by",
+    "Definita: nessun grado di libertà": "Defined: no degrees of freedom",
+    "Denominazione": "Title",
+    "Densità": "Density",
+    "Destra": "Right",
+    "Destro": "Right",
+    "Di solito il filetto è indicato: il gambo è un cilindro al diametro nominale, quindi la massa è un po' più alta di quella vera. Con l'elica vera il filetto c'è davvero, ma serve solo a vederlo: rallenta tutto e la punta resta senza smusso. Le lunghezze sono quelle della serie ISO 888: quelle a catalogo dipendono dal fornitore.{}": "Usually the thread is cosmetic: the shank is a cylinder at the nominal diameter, so the mass is a bit higher than the real one. With the true helix the thread is really there, but it is only for looking at it: it slows everything down and the tip stays without a chamfer. The lengths are those of the ISO 888 series: catalog lengths depend on the supplier.{}",
+    "Diametro": "Diameter",
+    "Diametro circoscritto": "Circumscribed diameter",
+    "Dimensioni": "Dimensions",
+    "Dimetrica": "Dimetric",
+    "Direzione": "Direction",
+    "Direzione 1": "Direction 1",
+    "Direzione 2": "Direction 2",
+    "Direzione da una faccia": "Direction from a face",
+    "Direzione del materiale": "Material direction",
+    "Direzione: {}": "Direction: {}",
+    "Disegna con gli strumenti della scheda Schizzo. Seleziona le entità (Ctrl+clic per più di una) per vedere e aggiungere le relazioni.": "Draw with the tools of the Sketch tab. Select the entities (Ctrl+click for more than one) to see and add relations.",
+    "Disegna lo schizzo; poi metti le quote finché diventa nero e premi ✓": "Draw the sketch; then add dimensions until it turns black and press ✓",
+    "Disegna una linea aperta (non un contorno chiuso) per la nervatura": "Draw an open line (not a closed contour) for the rib",
+    "Disegna una linea aperta sul piano della nervatura (di solito il piano frontale o un piano medio del pezzo).": "Draw an open line on the rib plane (usually the front plane or a mid plane of the part).",
+    "Disegnato da": "Drawn by",
+    "Disegno nello zip": "Drawing in the zip",
+    "Disegno vettoriale in scala 1:1 su carta": "Vector drawing at 1:1 scale on paper",
+    "Disponi in automatico": "Arrange automatically",
+    "Distanza": "Distance",
+    "Distanza (mm)": "Distance (mm)",
+    "Distanza 2": "Distance 2",
+    "Distanza asse–faccia": "Axis–face distance",
+    "Distanza e angolo": "Distance and angle",
+    "Distanza normale": "Normal distance",
+    "Distanza tra gli assi": "Distance between the axes",
+    "Distanza tra le facce": "Distance between the faces",
+    "Distanza uguale (45°)": "Equal distance (45°)",
+    "Distanze, diametri e angoli tra gli elementi selezionati": "Distances, diameters and angles between the selected entities",
+    "Distinta base": "Bill of Materials",
+    "Distinta base sopra il cartiglio": "Bill of materials above the title block",
+    "Doppio clic per cambiare il materiale": "Double-click to change the material",
+    "Due distanze": "Two distances",
+    "Due profili vicini hanno lo stesso centro: metti ogni profilo su un piano diverso (Piano di riferimento)": "Two adjacent profiles have the same center: put each profile on a different plane (Reference Plane)",
+    "è diventata": "became",
+    "È un programma libero: puoi usarlo, studiarlo, modificarlo e distribuirlo secondo la licenza {} (o una versione successiva), con le {} della sezione 7: va conservato questo avviso, le versioni modificate vanno indicate come diverse dall'originale e il nome «Banco CAD» non si usa per loro. Viene dato <b>senza alcuna garanzia</b>. Il codice sorgente è in {}.": "It is free software: you can use, study, modify and distribute it under the {} license (or any later version), with the {} of section 7: this notice must be kept, modified versions must be marked as different from the original and the name «Banco CAD» is not used for them. It comes with <b>no warranty</b>. The source code is at {}.",
+    "È una quota condotta: si aggiorna da sola.": "It is a driven dimension: it updates by itself.",
+    "è una superficie vera": "is a true surface",
+    "Elementi": "Entities",
+    "Elementi da accoppiare": "Entities to mate",
+    "Elemento": "Entity",
+    "elica": "helix",
+    "Elica e spirale": "Helix and Spiral",
+    "Elica rastremata": "Taper Helix",
+    "Elica vera (pezzo molto più pesante da calcolare)": "True helix (part much heavier to calculate)",
+    "Elica/Spirale": "Helix/Spiral",
+    "Elica/Spirale{#}": "Helix/Spiral{}",
+    "eliche": "helixes",
+    "Elimina": "Delete",
+    "Elimina la parte": "Delete the part",
+    "Elimina la relazione": "Delete the relation",
+    "Elimina la selezione": "Delete the selection",
+    "Elimina la selezione (Canc)": "Delete the selection (Del)",
+    "Elimina questa parte": "Delete this part",
+    "Elimina questo assieme": "Delete this assembly",
+    "Elimina tutte le quote": "Delete all dimensions",
+    "Elimina/Mantieni corpo": "Body-Delete/Keep",
+    "Elimina/Mantieni corpo{#}": "Body-Delete/Keep{}",
+    "Eliminare «{}» dal progetto?": "Delete «{}» from the project?",
+    "Eliminare {}?": "Delete {}?",
+    "ellisse": "ellipse",
+    "ellissi": "ellipses",
+    "entità": "entity",
+    "entità di costruzione": "construction entities",
+    "Entità selezionate": "Selected Entities",
+    "Entra prima in uno schizzo": "Enter a sketch first",
+    "Errore interno nella rigenerazione: {}": "Internal rebuild error: {}",
+    "Errore max": "Max error",
+    "Errore: {}": "Error: {}",
+    "Esci dallo schizzo": "Exit Sketch",
+    "Esplodi": "Explode",
+    "Esplosione automatica": "Auto-explode",
+    "Esporta": "Export",
+    "Esporta DXF": "Export DXF",
+    "Esporta il progetto": "Export project",
+    "Esporta STEP": "Export STEP",
+    "Esporta STEP (per altri CAD)": "Export STEP (for other CAD programs)",
+    "Esporta STL": "Export STL",
+    "Esporta STL (stampa 3D)": "Export STL (3D printing)",
+    "Esporta SVG": "Export SVG",
+    "Estrude uno schizzo chiuso e crea materiale": "Extrudes a closed sketch and adds material",
+    "Estrudi anche nella direzione opposta": "Extrude also in the opposite direction",
+    "Estrusione": "Boss-Extrude",
+    "Estrusione base": "Extruded Boss/Base",
+    "Estrusione con loft": "Loft",
+    "Estrusione con loft{#}": "Loft{}",
+    "Estrusione con percorso": "Sweep",
+    "Estrusione con percorso{#}": "Sweep{}",
+    "Estrusione{#}": "Boss-Extrude{}",
+    "Fa ruotare un profilo attorno a una linea di mezzeria": "Rotates a profile around a centerline",
+    "Fa scorrere un profilo chiuso lungo un percorso (linee e archi tangenti): tubi, molle piegate, maniglie": "Moves a closed profile along a path (tangent lines and arcs): tubes, bent springs, handles",
+    "facce": "faces",
+    "facce 3D": "3D faces",
+    "faccia": "face",
+    "Faccia ✓": "Face ✓",
+    "faccia 3D": "3D face",
+    "Faccia cilindrica": "Cylindrical face",
+    "Faccia cilindrica Ø{}": "Cylindrical face Ø{}",
+    "Faccia conica": "Conical face",
+    "Faccia curva": "Curved face",
+    "Faccia piana": "Flat face",
+    "Faccia…": "Face…",
+    "Fai clic qui e poi scegli gli schizzi nella vista": "Click here and then choose the sketches in the view",
+    "Fai clic qui e poi seleziona nella vista": "Click here and then select in the view",
+    "Fai clic qui e poi su un corpo nella vista (o sul suo nome nell'albero)": "Click here and then a body in the view (or its name in the tree)",
+    "Fai clic su due elementi di due componenti diversi: facce, spigoli o vertici. I piani e l'origine si scelgono nell'albero sopra la vista o nel pannello.": "Click two entities of two different components: faces, edges or vertices. Planes and origin are chosen in the tree above the view or in the panel.",
+    "Fai clic su una faccia della funzione (o sul suo nome nell'albero)": "Click a face of the feature (or its name in the tree)",
+    "Fai clic su una faccia: piana, si va lungo la normale; cilindrica o conica, lungo l'asse.": "Click a face: flat, it goes along the normal; cylindrical or conical, along the axis.",
+    "Fai clic su una faccia.": "Click a face.",
+    "Fai clic su una o due facce, spigoli o vertici.": "Click one or two faces, edges or vertices.",
+    "Fai clic su uno dei tre piani (frontale, superiore, destro){} o su una faccia piana del pezzo.": "Click one of the three planes (front, top, right){} or a flat face of the part.",
+    "Fai clic su uno spigolo, un cerchio o un punto di una vista.": "Click an edge, a circle or a point of a view.",
+    "Fai clic sugli spigoli nella vista": "Click the edges in the view",
+    "Fai clic sui componenti da spostare, scegli la direzione e la distanza. Puoi anche trascinarli.": "Click the components to move, choose the direction and the distance. You can also drag them.",
+    "Fai clic sul vertice comune a due linee.": "Click the vertex shared by two lines.",
+    "Fai clic sull'estremo di una linea o di un arco.": "Click the end of a line or an arc.",
+    "Fai clic sulla faccia piana dove vuoi i fori.": "Click the flat face where you want the holes.",
+    "Fai clic sulla parete cilindrica di un foro.": "Click the cylindrical wall of a hole.",
+    "Fai clic sulla parete del foro, vicino all'imbocco da cui entra la vite.": "Click the hole wall, near the entrance where the screw goes in.",
+    "File importato": "Imported file",
+    "File non inserito: {}": "File not inserted: {}",
+    "File PDF della tavola, vettoriale e in scala (foglio vero, A4–A2): si apre e si stampa ovunque": "PDF file of the drawing, vector and to scale (real sheet, A4–A2): it opens and prints anywhere",
+    "File STEP pronto, ma il solido non è chiuso del tutto ({} punti): l'altro programma potrebbe aprirlo come superfici.": "STEP file ready, but the solid is not completely closed ({} points): the other program might open it as surfaces.",
+    "File STEP pronto: {} con {} facce, in millimetri{}.": "STEP file ready: {} with {} faces, in millimeters{}.",
+    "File STL pronto: {} triangoli, unità in millimetri.": "STL file ready: {} triangles, units in millimeters.",
+    "Filettato (foro di preparazione)": "Tapped (tap drill hole)",
+    "Filetto": "Thread",
+    "Filetto{#}": "Thread{}",
+    "Fine della catena": "End of the chain",
+    "finestra": "viewport",
+    "finestre": "viewports",
+    "Fino a": "Up to",
+    "Fissa": "Fix",
+    "Fissa: non si muove": "Fixed: it does not move",
+    "Foglio": "Sheet",
+    "fori": "holes",
+    "Fori semplici, passanti per viti, lamati, svasati e filettati (ISO)": "Simple holes, clearance holes for screws, counterbores, countersinks and tapped holes (ISO)",
+    "forma": "shape",
+    "Formato": "Size",
+    "Formato non riconosciuto: si possono inserire STEP, IGES, STL, OBJ e i progetti di Banco CAD (.json).": "Format not recognized: you can insert STEP, IGES, STL, OBJ and Banco CAD projects (.json).",
+    "forme": "shapes",
+    "foro": "hole",
+    "Foro": "Hole",
+    "Foro annullato: non c'erano posizioni.": "Hole canceled: there were no positions.",
+    "Foro Ø{} lungo {} mm{}: misura consigliata {}.": "Hole Ø{} {} mm long{}: recommended size {}.",
+    "Foro passante": "Through hole",
+    "Foro semplice (diametro libero)": "Simple hole (free diameter)",
+    "Foro{#}": "Hole{}",
+    "Frontale": "Front",
+    "Fronte": "Front",
+    "funzione": "feature",
+    "funzioni": "features",
+    "Funzioni": "Features",
+    "Funzioni da {}": "Features to {}",
+    "Ghisa grigia EN-GJL-250": "Gray cast iron EN-GJL-250",
+    "Gli assiemi di Inventor (.iam) non si possono aprire: in Inventor esportali in STEP (.stp), poi «Importa STEP o IGES».": "Inventor assemblies (.iam) cannot be opened: in Inventor export them to STEP (.stp), then «Import STEP or IGES».",
+    "Gli assiemi di SolidWorks (.sldasm) non si possono aprire: in SolidWorks salvali come STEP AP214 (.step), poi «Importa STEP o IGES».": "SolidWorks assemblies (.sldasm) cannot be opened: in SolidWorks save them as STEP AP214 (.step), then «Import STEP or IGES».",
+    "Gli schizzi dei profili devono venire prima della funzione": "The profile sketches must come before the feature",
+    "Gli schizzi di profilo e percorso devono venire prima della funzione": "The profile and path sketches must come before the feature",
+    "Gli spigoli scelti vengono lavorati tutti insieme, sul pezzo di partenza (come in SolidWorks): conviene sceglierli tutti nella stessa funzione. Spigoli supportati: rettilinei tra due facce piane, circolari o ad arco tra un cilindro e una faccia piana (alberi, fori, perni, asole) e il bordo di un'ellisse o di una spline importata, che si sceglie tutto con un clic.": "The chosen edges are all processed together, on the starting part (as in SolidWorks): it is better to choose them all in the same feature. Supported edges: straight between two flat faces, circular or arc between a cylinder and a flat face (shafts, holes, pins, slots) and the edge of an imported ellipse or spline, which is chosen whole with one click.",
+    "Glossario": "Glossary",
+    "GNU GPL versione 3": "GNU GPL version 3",
+    "gradi": "degrees",
+    "Gradi di libertà rimasti: {}": "Degrees of freedom left: {}",
+    "grado": "degree",
+    "Grandezza": "Size",
+    "Guida": "Guide",
+    "Guida (come si fa)": "Guide (how to)",
+    "Guida rapida": "Quick guide",
+    "Ho capito": "Got it",
+    "I componenti fissi non si muovono. Quelli legati da accoppiamenti seguono il componente che trascini.": "Fixed components do not move. Those linked by mates follow the component you drag.",
+    "I corpi scelti in «Ambito funzione» non esistono più: scegline altri": "The bodies chosen in «Feature Scope» no longer exist: choose others",
+    "I corpi solidi della parte": "The solid bodies of the part",
+    "I corpi spuntati sono quelli che la funzione tocca: si aggiornano mentre il pannello è aperto, poi restano questi.": "The checked bodies are those the feature touches: they update while the panel is open, then they stay as they are.",
+    "I due elementi devono stare nella stessa vista.": "The two entities must be in the same view.",
+    "I file ACIS (.sat) non si possono aprire: esporta il pezzo in STEP (.step) dal programma d'origine.": "ACIS files (.sat) cannot be opened: export the part to STEP (.step) from the original program.",
+    "I file di Inventor (.ipt) non si possono aprire: in Inventor usa Esporta › Formato CAD › STEP (.stp), poi «Importa STEP o IGES».": "Inventor files (.ipt) cannot be opened: in Inventor use Export › CAD Format › STEP (.stp), then «Import STEP or IGES».",
+    "I file di SolidWorks (.sldprt) non si possono aprire: in SolidWorks usa File › Salva con nome › STEP AP214 (.step), poi «Importa STEP o IGES».": "SolidWorks files (.sldprt) cannot be opened: in SolidWorks use File › Save As › STEP AP214 (.step), then «Import STEP or IGES».",
+    "I file DWG sono disegni 2D: usa «Importa DXF o DWG (schizzo)».": "DWG files are 2D drawings: use «Import DXF or DWG (sketch)».",
+    "I file DXF sono disegni 2D: usa «Importa DXF o DWG (schizzo)».": "DXF files are 2D drawings: use «Import DXF or DWG (sketch)».",
+    "I file Parasolid (.x_t) non si possono aprire: esporta il pezzo in STEP (.step) dal programma d'origine.": "Parasolid files (.x_t) cannot be opened: export the part to STEP (.step) from the original program.",
+    "I file STL non dicono l'unità: di solito sono in millimetri. Molti programmi per la stampa 3D mettono la Z verso l'alto: spunta la casella se il pezzo arriva coricato. Le due scelte si possono cambiare dopo, con doppio clic su «Importato» nell'albero.": "STL files do not state the unit: they are usually in millimeters. Many 3D printing programs put Z up: check the box if the part arrives lying down. Both choices can be changed later, by double-clicking «Imported» in the tree.",
+    "I fori si fanno su una faccia del pezzo: crea prima un solido.": "Holes are made on a face of the part: create a solid first.",
+    "I legami tra i componenti": "The links between the components",
+    "I numeri si trascinano sul foglio.": "The balloons can be dragged on the sheet.",
+    "I profili sono troppo semplici per un loft": "The profiles are too simple for a loft",
+    "Il baricentro è riferito all'origine dell'assieme ed è pesato con la massa, perché ogni parte ha il suo materiale. Il volume in comune di due componenti che si compenetrano conta due volte: per trovarli usa Verifica interferenze.": "The center of mass refers to the assembly origin and is weighted by mass, because each part has its own material. The common volume of two overlapping components counts twice: to find them use Interference Detection.",
+    "Il browser non ha abbastanza memoria per questo disegno: chiudi qualche scheda o usa un computer.": "The browser does not have enough memory for this drawing: close some tabs or use a computer.",
+    "Il cerchio dell'elica non è valido": "The helix circle is not valid",
+    "Il contorno è aperto: un estremo non è collegato a nessun'altra entità.": "The contour is open: an endpoint is not connected to any other entity.",
+    "Il corpo è chiuso: volume e massa sono calcolati sui triangoli.": "The body is closed: volume and mass are calculated on the triangles.",
+    "Il corpo è chiuso: volume e massa sono calcolati sulle facce divise in triangoli fitti (errore molto sotto l'1 %).": "The body is closed: volume and mass are calculated on the faces divided into fine triangles (error well below 1 %).",
+    "Il corpo importato non contiene dati": "The imported body contains no data",
+    "Il corpo importato non è chiuso ({}): volume, massa e funzioni aggiunte sopra possono non essere corretti": "The imported body is not closed ({}): volume, mass and features added on top may not be correct",
+    "Il corpo principale": "The main body",
+    "Il disegno non si riesce a leggere (codice LibreDWG {}): il file è danneggiato o la versione non è supportata. Prova a salvarlo come DXF dal programma d'origine.": "The drawing cannot be read (LibreDWG code {}): the file is damaged or the version is not supported. Try saving it as DXF from the original program.",
+    "Il DXF nello zip è compresso in un modo che il Banco CAD non conosce: estrailo e scegli il file .dxf.": "The DXF in the zip is compressed in a way Banco CAD does not know: extract it and choose the .dxf file.",
+    "Il DXF nello zip è danneggiato.": "The DXF in the zip is damaged.",
+    "Il DXF va in uno schizzo: apri prima una parte.": "The DXF goes into a sketch: open a part first.",
+    "Il file .zip è danneggiato (manca l'elenco dei file).": "The .zip file is damaged (the file list is missing).",
+    "Il file .zip è danneggiato o non è un archivio zip.": "The .zip file is damaged or is not a zip archive.",
+    "Il file .zip è danneggiato.": "The .zip file is damaged.",
+    "Il file contiene coordinate non valide": "The file contains invalid coordinates",
+    "Il file è stato aggiunto alle parti, ma non contiene solidi.": "The file was added to the parts, but it contains no solids.",
+    "Il file ha {} triangoli: il massimo è {}. Riducili con il programma da cui viene (comando «Semplifica» o «Riduci») e riprova.": "The file has {} triangles: the maximum is {}. Reduce them with the program it comes from («Simplify» or «Reduce» command) and try again.",
+    "Il file importato è danneggiato": "The imported file is damaged",
+    "Il file non contiene parti.": "The file contains no parts.",
+    "Il file non contiene triangoli": "The file contains no triangles",
+    "Il file non contiene triangoli.": "The file contains no triangles.",
+    "Il file non è un DXF valido (riga {}).": "The file is not a valid DXF (line {}).",
+    "Il file non è un DXF: manca la sezione delle entità.": "The file is not a DXF: the entities section is missing.",
+    "Il file non è un IGES valido.{}": "The file is not a valid IGES.{}",
+    "Il file non è un progetto di Banco CAD.": "The file is not a Banco CAD project.",
+    "Il file non è un progetto valido.": "The file is not a valid project.",
+    "Il file non è un STL valido": "The file is not a valid STL",
+    "Il file non è uno STEP valido: dovrebbe cominciare con «ISO-10303-21».{}": "The file is not a valid STEP: it should start with «ISO-10303-21».{}",
+    "il file non la dice": "not stated in the file",
+    "Il file non si riesce a leggere: forse è danneggiato o incompleto.": "The file cannot be read: it may be damaged or incomplete.",
+    "Il file non si riesce a leggere.": "The file cannot be read.",
+    "Il file OBJ cita un vertice che non esiste": "The OBJ file refers to a vertex that does not exist",
+    "Il file OBJ non contiene facce": "The OBJ file contains no faces",
+    "Il file STL è incompleto": "The STL file is incomplete",
+    "Il foglio intero nella finestra": "The whole sheet in the window",
+    "Il lettore dei file DWG manca in questa copia del Banco CAD.": "The DWG file reader is missing from this copy of Banco CAD.",
+    "Il lettore dei file STEP e IGES manca in questa copia del Banco CAD.": "The STEP and IGES reader is missing from this copy of Banco CAD.",
+    "Il lettore DWG ha segnalato qualche oggetto che non conosce bene (codice {}): controlla il risultato.": "The DWG reader reported some objects it does not know well (code {}): check the result.",
+    "Il lettore non è riuscito a leggere il disegno ({}). Il file potrebbe essere danneggiato o usare oggetti che LibreDWG non conosce ancora: prova a salvarlo come DXF dal programma d'origine.": "The reader could not read the drawing ({}). The file might be damaged or use objects LibreDWG does not know yet: try saving it as DXF from the original program.",
+    "il lettore si è fermato all'improvviso": "the reader stopped suddenly",
+    "Il materiale non è specificato: la massa è calcolata con densità 1 g/cm³. Scegli il materiale per avere la massa vera.": "The material is not specified: the mass is calculated with density 1 g/cm³. Choose the material to get the real mass.",
+    "Il passo ({} mm) non è più grande dell'altezza del profilo ({} mm): le spire si compenetrano. Aumenta il passo o rimpicciolisci il profilo": "The pitch ({} mm) is not larger than the profile height ({} mm): the coils overlap. Increase the pitch or make the profile smaller",
+    "Il passo ({} mm) non è più grande della larghezza del profilo ({} mm): le spire si compenetrano. Aumenta il passo o rimpicciolisci il profilo": "The pitch ({} mm) is not larger than the profile width ({} mm): the coils overlap. Increase the pitch or make the profile smaller",
+    "Il passo deve essere maggiore di zero": "The pitch must be greater than zero",
+    "Il percorso deve essere una sola catena di linee e archi collegati": "The path must be a single chain of connected lines and arcs",
+    "Il percorso deve partire dal piano del profilo (metti l'estremo del percorso sul profilo)": "The path must start on the profile plane (put the end of the path on the profile)",
+    "Il percorso deve partire dal piano del profilo: disegna il profilo su un piano che passa per l'inizio dell'elica (dove il cerchio incontra l'angolo iniziale)": "The path must start on the profile plane: draw the profile on a plane that passes through the start of the helix (where the circle meets the start angle)",
+    "Il percorso è una curva Elica/Spirale: il profilo, chiuso, va disegnato su un piano che passa per il punto di partenza della curva (per esempio il piano frontale, con il cerchio dell'elica sul piano superiore). Il profilo gira attorno all'asse seguendo la curva.": "The path is a Helix/Spiral curve: the closed profile must be drawn on a plane that passes through the start point of the curve (for example the front plane, with the helix circle on the top plane). The profile turns around the axis following the curve.",
+    "Il percorso ha un angolo vivo: raccorda gli angoli (Raccordo di schizzo) così linee e archi sono tangenti": "The path has a sharp corner: fillet the corners (Sketch Fillet) so lines and arcs are tangent",
+    "Il pezzo arriva come <b>corpo a faccette</b> (tanti triangoli): si vede, si misura, si mette in tavola e se ne calcolano volume e massa. Non porta con sé la storia delle funzioni, ma sopra puoi disegnare schizzi e aggiungere funzioni.": "The part arrives as a <b>faceted body</b> (many triangles): you can view it, measure it, put it in a drawing and calculate its volume and mass. It does not bring the feature history with it, but you can draw sketches and add features on top.",
+    "Il pezzo è molto complesso: le superfici curve sono state divise in triangoli più grandi, volume e massa sono meno precisi.": "The part is very complex: the curved surfaces were divided into larger triangles, volume and mass are less precise.",
+    "Il pezzo è molto complesso: per non superare 100 000 triangoli le superfici curve sono state divise in triangoli più grandi, quindi volume e massa sono meno precisi.": "The part is very complex: to stay under 100,000 triangles the curved surfaces were divided into larger triangles, so volume and mass are less precise.",
+    "Il pezzo è troppo complesso: anche con i triangoli più grandi ne servono {}, il massimo è {}. Prova a importare una parte alla volta.": "The part is too complex: even with the largest triangles it needs {}, the maximum is {}. Try importing one part at a time.",
+    "Il piano di questo schizzo non esiste più.": "The plane of this sketch no longer exists.",
+    "Il piano di riferimento non esiste più": "The reference plane no longer exists",
+    "Il piano scelto non esiste più nella parte.": "The chosen plane no longer exists in the part.",
+    "Il profilo {} non esiste o è soppresso": "The profile {} does not exist or is suppressed",
+    "Il profilo arriva all'asse dell'elica: rimpicciolisci il profilo o allarga il cerchio": "The profile reaches the helix axis: make the profile smaller or the circle larger",
+    "Il profilo attraversa l'asse di rivoluzione: deve stare tutto da una parte": "The profile crosses the axis of revolution: it must lie entirely on one side",
+    "Il profilo deve essere un contorno chiuso": "The profile must be a closed contour",
+    "Il profilo è un contorno chiuso; il percorso è una catena di linee e archi tangenti che parte dal piano del profilo, perpendicolare a esso, oppure una curva Elica/Spirale. Lo schizzo del percorso si fa di solito su un piano perpendicolare a quello del profilo.": "The profile is a closed contour; the path is a chain of tangent lines and arcs starting from the profile plane, perpendicular to it, or a Helix/Spiral curve. The path sketch is usually made on a plane perpendicular to the profile one.",
+    "Il profilo non si riesce a chiudere con i tappi: controlla lo schizzo": "The profile cannot be closed with end caps: check the sketch",
+    "Il progetto attuale verrà sostituito da una parte vuota. Se ti serve, esportalo prima.": "The current project will be replaced by an empty part. If you need it, export it first.",
+    "Il progetto è troppo grande per il salvataggio automatico di questo browser: usa Progetto › Esporta il progetto per non perderlo.": "The project is too large for this browser's automatic saving: use Project › Export project so you don't lose it.",
+    "Il progetto ha un assieme solo.": "The project has only one assembly.",
+    "Il progetto ha una parte sola: per ricominciare usa Nuovo progetto.": "The project has only one part: to start over use New project.",
+    "Il progetto salvato non si può leggere dall'archivio del browser.": "The saved project cannot be read from the browser storage.",
+    "Il progetto salvato non si trova più nell'archivio del browser.": "The saved project is no longer in the browser storage.",
+    "Il punto deve essere l'estremo di una linea o di un arco.": "The point must be the end of a line or an arc.",
+    "Il punto è già definito dalle quote e dalle relazioni.": "The point is already defined by dimensions and relations.",
+    "Il solido avrebbe troppe facce: riduci le rivoluzioni dell'elica o semplifica il profilo": "The solid would have too many faces: reduce the helix revolutions or simplify the profile",
+    "Il taglio va verso l'interno del pezzo (opposto alla normale del piano dello schizzo). Usa «Inverti» se serve l'altro verso.": "The cut goes into the part (opposite to the normal of the sketch plane). Use «Reverse» if you need the other way.",
+    "Il testo non è un progetto di Banco CAD.": "The text is not a Banco CAD project.",
+    "Il testo non è un progetto valido.": "The text is not a valid project.",
+    "Il valore è troppo grande per queste linee.": "The value is too large for these lines.",
+    "Il vertice deve essere comune a esattamente due linee.": "The vertex must be shared by exactly two lines.",
+    "Il vertice scelto non esiste più nella parte.": "The chosen vertex no longer exists in the part.",
+    "Il volume totale è la somma dei corpi: se due corpi si sovrappongono, la parte in comune conta due volte finché non li combini.": "The total volume is the sum of the bodies: if two bodies overlap, the common part counts twice until you combine them.",
+    "immagine": "image",
+    "immagini": "images",
+    "Importa": "Import",
+    "Importa DXF o DWG (schizzo)": "Import DXF or DWG (sketch)",
+    "Importa STEP o IGES": "Import STEP or IGES",
+    "Importa STL o OBJ": "Import STL or OBJ",
+    "Importa un file DXF o DWG": "Import a DXF or DWG file",
+    "Importa un file STEP o IGES": "Import a STEP or IGES file",
+    "Importa un file STL o OBJ": "Import an STL or OBJ file",
+    "Importa un progetto": "Import a project",
+    "Importato": "Imported",
+    "Importato «{}»: {} corpi, ognuno nella sua funzione ({}).": "Imported «{}»: {} bodies, each in its own feature ({}).",
+    "Importato «{}»: {} facce{}.": "Imported «{}»: {} faces{}.",
+    "Importato «{}»: {} triangoli, {} facce piane.": "Imported «{}»: {} triangles, {} flat faces.",
+    "Importato «{}»: {}. Ingombro {} × {} mm (unità: {}).": "Imported «{}»: {}. Size {} × {} mm (units: {}).",
+    "Importato{#}": "Imported{}",
+    "Importazione con errori: {}": "Import with errors: {}",
+    "in uno <b>schizzo nuovo</b>": "into a <b>new sketch</b>",
+    "Incolla il testo di un progetto esportato oppure scegli il file.": "Paste the text of an exported project or choose the file.",
+    "Inferiore": "Bottom",
+    "Informazioni e licenze": "About and licenses",
+    "Ingombro (X × Y × Z): {} mm.": "Bounding box (X × Y × Z): {} mm.",
+    "Ingombro X × Y × Z": "Bounding box X × Y × Z",
+    "Inserimento numerico – {}": "Numeric input – {}",
+    "Inserisce una vite, un dado o una rondella di norma, con il filetto indicato": "Inserts a standard screw, nut or washer, with a cosmetic thread",
+    "Inserisci": "Insert",
+    "Inserisci DXF o DWG": "Insert DXF or DWG",
+    "Inserisci parte": "Insert Part",
+    "Inserisci vite, dado o rondella": "Insert screw, nut or washer",
+    "Inserita «{}».": "Inserted «{}».",
+    "Inserite {} parti da «{}».": "Inserted {} parts from «{}».",
+    "Interasse": "Center distance",
+    "Interasse e angolo": "Center distance and angle",
+    "interferenza": "interference",
+    "interferenze": "interferences",
+    "Interrompi": "Stop",
+    "Inverti": "Reverse",
+    "Inverti allineamento": "Flip alignment",
+    "Inverti angolo": "Flip angle",
+    "Inverti il lato del materiale": "Flip material side",
+    "Inverti la direzione": "Reverse Direction",
+    "Inverti lato": "Flip side",
+    "ISO 2768-mK": "ISO 2768-mK",
+    "Isometrica": "Isometric",
+    "istanza": "instance",
+    "istanze": "instances",
+    "Istituto": "School",
+    "Istituto Tecnico – Meccanica e Meccatronica": "Technical Institute – Mechanical Engineering and Mechatronics",
+    "L'altezza deve essere maggiore di zero": "The height must be greater than zero",
+    "L'angolo deve essere minore di 180°.": "The angle must be less than 180°.",
+    "L'angolo di rastremazione deve stare tra 0° e 89°": "The taper angle must be between 0° and 89°",
+    "L'angolo di sformo deve essere minore di 89°": "The draft angle must be less than 89°",
+    "L'anteprima arancione mostra il materiale che verrà aggiunto.": "The orange preview shows the material that will be added.",
+    "L'anteprima rossa mostra il materiale che verrà tolto.": "The red preview shows the material that will be removed.",
+    "L'assieme": "The assembly",
+    "L'assieme è vuoto: premi Inserisci parte.": "The assembly is empty: press Insert Part.",
+    "L'elenco delle parti dell'assieme, con quantità, materiale e massa": "The list of the parts of the assembly, with quantity, material and mass",
+    "L'elica parte dal cerchio, all'angolo iniziale misurato dall'asse X dello schizzo, e sale lungo la normale del piano. Il senso si legge guardando lo schizzo di fronte: antiorario mentre sale è un'elica destra, come le viti normali. La curva è il percorso di un'Estrusione con percorso (molle, filetti).": "The helix starts from the circle, at the start angle measured from the sketch X axis, and rises along the plane normal. The direction is read looking at the sketch from the front: counterclockwise while rising is a right-hand helix, like normal screws. The curve is the path of a Sweep (springs, threads).",
+    "L'unità di misura è scritta nel file e viene convertita da sola in millimetri. SolidWorks tiene l'asse Y verso l'alto; Inventor, Fusion e FreeCAD spesso la Z: se il pezzo arriva coricato spunta la casella (si cambia anche dopo, con doppio clic su «Importato»). Se il file contiene più corpi (un assieme) potrai scegliere quali importare. La lettura avviene a parte: intanto la pagina resta libera, e con Annulla la interrompi.": "The unit of measure is written in the file and is converted to millimeters automatically. SolidWorks keeps the Y axis up; Inventor, Fusion and FreeCAD often Z: if the part arrives lying down check the box (it can also be changed later, by double-clicking «Imported»). If the file contains several bodies (an assembly) you can choose which ones to import. Reading happens separately: meanwhile the page stays free, and Cancel stops it.",
+    "L'unità è scritta nel file ed è già convertita in millimetri. Se il pezzo arriva coricato spunta la casella della Z.": "The unit is written in the file and is already converted to millimeters. If the part arrives lying down check the Z box.",
+    "La curva del percorso deve venire prima della funzione": "The path curve must come before the feature",
+    "La curva del percorso ha un errore: {}": "The path curve has an error: {}",
+    "La densità serve per calcolare la massa nelle proprietà di massa.": "The density is used to calculate the mass in the mass properties.",
+    "La distanza è nulla: sposta prima le entità.": "The distance is zero: move the entities first.",
+    "La faccia scelta non esiste più nella parte.": "The chosen face no longer exists in the part.",
+    "La faccia su cui si basa non esiste più: modifica il piano dello schizzo": "The face it is based on no longer exists: edit the sketch plane",
+    "La funzione non tocca i corpi scelti in «Ambito funzione»: è diventata un corpo nuovo": "The feature does not touch the bodies chosen in «Feature Scope»: it has become a new body",
+    "La funzione non tocca nessun corpo": "The feature does not touch any body",
+    "La grafica 3D non è disponibile": "3D graphics are not available",
+    "La massa è quella di tutto l'assieme; i materiali sono nella distinta base.": "The mass is that of the whole assembly; the materials are in the bill of materials.",
+    "La nervatura non è chiusa dal pezzo da nessuna delle due parti: avvicina la linea al pezzo o prolungala fino a toccarlo": "The rib is not closed by the part on either side: move the line closer to the part or extend it until it touches",
+    "La nervatura riempie lo spazio tra la linea e il pezzo, nel piano dello schizzo (direzione «Parallela allo schizzo» di SolidWorks). La linea viene prolungata da sola fino al pezzo. Se il lato è sbagliato usa «Inverti».": "The rib fills the space between the line and the part, in the sketch plane (the «Parallel to Sketch» direction of SolidWorks). The line is extended to the part automatically. If the side is wrong use «Reverse».",
+    "La nervatura rinforza un pezzo che c'è già: crea prima un solido.": "The rib reinforces a part that already exists: create a solid first.",
+    "La nervatura si appoggia al pezzo: crea prima un solido": "The rib rests on the part: create a solid first",
+    "la parte": "the part",
+    "La parte": "The part",
+    "La parte di questo componente non esiste più.": "The part of this component no longer exists.",
+    "La parte non ha un solido.": "The part has no solid.",
+    "La posizione è la coordinata del piano lungo la sua normale (Z per la vista frontale, Y per quella dall'alto, X per quella da sinistra). Il centro del pezzo è: X {}, Y {}, Z {}.": "The position is the coordinate of the plane along its normal (Z for the front view, Y for the top view, X for the left view). The center of the part is: X {}, Y {}, Z {}.",
+    "La profondità deve essere maggiore di zero": "The depth must be greater than zero",
+    "La profondità è misurata fino all'inizio della punta conica a 118° (come nei CAD).": "The depth is measured up to the start of the 118° conical tip (as in CAD programs).",
+    "La spirale resta sul piano dello schizzo: a ogni rivoluzione il raggio cresce di un passo. Parte dal cerchio, all'angolo iniziale misurato dall'asse X dello schizzo.": "The spiral stays on the sketch plane: at each revolution the radius grows by one pitch. It starts from the circle, at the start angle measured from the sketch X axis.",
+    "Lamato per vite a testa cilindrica": "Counterbore for socket head screw",
+    "Lamatura": "Counterbore",
+    "Larghezza": "Width",
+    "larghezza {}": "width {}",
+    "Larghezza dell'asola": "Slot width",
+    "Largo (grossolana)": "Loose (coarse)",
+    "Lascia": "Release",
+    "Lato": "Side",
+    "Layer da importare": "Layers to import",
+    "Le due linee sono allineate: non c'è un angolo da raccordare.": "The two lines are aligned: there is no corner to fillet.",
+    "Le funzioni sotto la barra non sono calcolate": "The features below the bar are not calculated",
+    "Le parti montate, ognuna con la sua posizione": "The mounted parts, each with its position",
+    "Le posizioni dei fori non sono state rigenerate": "The hole positions have not been rebuilt",
+    "Le quote vanno sulle viste ortogonali, non sull'assonometria.": "Dimensions go on the orthographic views, not on the isometric view.",
+    "Le rivoluzioni devono essere maggiori di zero": "The revolutions must be greater than zero",
+    "Lega due elementi di due componenti: coincidente, concentrico, parallelo, perpendicolare, distanza, angolo, tangente": "Links two entities of two components: coincident, concentric, parallel, perpendicular, distance, angle, tangent",
+    "LEGGIMI": "LEGGIMI (readme)",
+    "Lettera": "Letter",
+    "Lettura annullata.": "Reading canceled.",
+    "Lettura del disegno…": "Reading the drawing…",
+    "Lettura del DWG… La pagina resta libera; con Annulla la interrompi.": "Reading the DWG… The page stays free; Cancel stops it.",
+    "Lettura del file in corso… La pagina resta libera; con Annulla la interrompi.": "Reading the file… The page stays free; Cancel stops it.",
+    "Lettura del file…": "Reading the file…",
+    "Lettura di «{}» in corso…": "Reading «{}»…",
+    "Libera": "Float",
+    "libredwg-web": "libredwg-web",
+    "licenze/adobe-core14-afm.txt": "licenze/adobe-core14-afm.txt",
+    "licenze/csg.js-MIT.txt": "licenze/csg.js-MIT.txt",
+    "licenze/ibm-plex-OFL-1.1.txt": "licenze/ibm-plex-OFL-1.1.txt",
+    "licenze/LEGGIMI.md": "licenze/LEGGIMI.md",
+    "licenze/occt-import-js-LGPL-2.1.txt": "licenze/occt-import-js-LGPL-2.1.txt",
+    "licenze/opencascade-LGPL-2.1-eccezione.txt": "licenze/opencascade-LGPL-2.1-eccezione.txt",
+    "linea": "line",
+    "Linea": "Line",
+    "Linea di costruzione": "Construction line",
+    "Linea di costruzione tratto-punto: asse di rivoluzione o di simmetria": "Dash-dot construction line: axis of revolution or of symmetry",
+    "linea di mezzeria": "centerline",
+    "Linea di mezzeria": "Centerline",
+    "Linea di mezzeria dello schizzo": "Sketch centerline",
+    "linee": "lines",
+    "Linee consecutive: clic per ogni vertice, doppio clic o Esc per finire": "Consecutive lines: click for each vertex, double-click or Esc to finish",
+    "linee di mezzeria": "centerlines",
+    "Linee nascoste (tratteggiate)": "Hidden lines (dashed)",
+    "Linee nascoste rimosse": "Hidden Lines Removed",
+    "Linee nascoste visibili": "Hidden Lines Visible",
+    "Linee, archi e cerchi del disegno entrano {}: poi li estrudi, o li fai ruotare attorno a una linea di mezzeria. <b>Ellissi e spline</b> diventano archi tangenti tra loro, vicinissimi alla curva vera. Testi, quote, tratteggi, tolleranze e tabelle possono arrivare come sfondo grigio da guardare.": "Lines, arcs and circles of the drawing go {}: then you extrude them, or revolve them around a centerline. <b>Ellipses and splines</b> become arcs tangent to each other, very close to the true curve. Texts, dimensions, hatches, tolerances and tables can arrive as a gray background to look at.",
+    "Lo scaricamento non è disponibile in questa pagina: usa il file del programma aperto direttamente in Chrome.": "Downloading is not available in this page: use the program file opened directly in Chrome.",
+    "Lo schizzo del cerchio deve venire prima della curva": "The circle sketch must come before the curve",
+    "Lo schizzo del percorso è vuoto": "The path sketch is empty",
+    "Lo schizzo del profilo deve venire prima della funzione": "The profile sketch must come before the feature",
+    "Lo schizzo della nervatura non esiste o è soppresso": "The rib sketch does not exist or is suppressed",
+    "Lo schizzo deve contenere un cerchio: il suo diametro è quello di partenza dell'elica": "The sketch must contain a circle: its diameter is the starting diameter of the helix",
+    "Lo schizzo deve contenere un solo cerchio: il suo diametro è quello di partenza dell'elica": "The sketch must contain only one circle: its diameter is the starting diameter of the helix",
+    "Lo schizzo di questa funzione non esiste o è soppresso": "The sketch of this feature does not exist or is suppressed",
+    "Lo schizzo è completamente definito.": "The sketch is fully defined.",
+    "Lo schizzo è sovradefinito: elimina la quota o la relazione di troppo (in rosso).": "The sketch is over defined: delete the extra dimension or relation (in red).",
+    "Lo schizzo non contiene contorni chiusi": "The sketch contains no closed contours",
+    "Lo schizzo non contiene contorni chiusi da estrudere": "The sketch contains no closed contours to extrude",
+    "Lo schizzo non è risolto: controlla le relazioni e le quote in conflitto": "The sketch is not solved: check the conflicting relations and dimensions",
+    "Lo schizzo non è stato rigenerato": "The sketch has not been rebuilt",
+    "Lo schizzo non ha una linea di mezzeria: aggiungila (strumento Linea di mezzeria).": "The sketch has no centerline: add one (Centerline tool).",
+    "Lo schizzo si fa su una faccia piana: questa è curva.": "A sketch goes on a flat face: this one is curved.",
+    "Lo sformo è troppo grande per questa profondità: il profilo si chiuderebbe su se stesso": "The draft is too large for this depth: the profile would close on itself",
+    "Lo sformo funziona con la condizione «Cieca» in una sola direzione.": "Draft works with the «Blind» condition in one direction only.",
+    "Lo sformo si applica solo con la condizione «Cieca» in una sola direzione: qui è stato ignorato": "Draft only applies with the «Blind» end condition in one direction: here it was ignored",
+    "Lo spessore deve essere maggiore di zero": "The thickness must be greater than zero",
+    "Lo spigolo scelto non esiste più nella parte.": "The chosen edge no longer exists in the part.",
+    "Lo stesso schizzo è scelto due volte tra i profili": "The same sketch is chosen twice among the profiles",
+    "luce": "light",
+    "luci": "lights",
+    "Lunghezza": "Length",
+    "Lunghezza (mm)": "Length (mm)",
+    "Lunghezza della curva: {} mm · altezza {} mm · passo {} mm · {} rivoluzioni{}": "Curve length: {} mm · height {} mm · pitch {} mm · {} revolutions{}",
+    "Lunghezza e angolo": "Length and angle",
+    "Manca il piano di riferimento": "The reference plane is missing",
+    "Manca la curva del percorso (Elica/Spirale)": "The path curve (Helix/Spiral) is missing",
+    "Manca lo schizzo con il cerchio dell'elica": "The sketch with the helix circle is missing",
+    "Manca lo schizzo del percorso": "The path sketch is missing",
+    "Manca lo schizzo del profilo (chiuso)": "The profile sketch (closed) is missing",
+    "Mancano {} vincoli (quote o relazioni) per definire completamente lo schizzo.": "{} constraints (dimensions or relations) are missing to fully define the sketch.",
+    "Mancano le posizioni dei fori": "The hole positions are missing",
+    "Mancano le posizioni dei fori.": "The hole positions are missing.",
+    "Manuale d'uso (PDF)": "User manual (PDF)",
+    "mascheratura": "wipeout",
+    "mascherature": "wipeouts",
+    "Massa": "Mass",
+    "Massa (g)": "Mass (g)",
+    "Massa cad. (g)": "Unit mass (g)",
+    "Massa tot. (g)": "Total mass (g)",
+    "Massa, volume, area e baricentro di tutto l'assieme e di ogni componente": "Mass, volume, area and center of mass of the whole assembly and of each component",
+    "Materiale": "Material",
+    "Materiale <{}>": "Material <{}>",
+    "Materiale della parte": "Part material",
+    "Materiale e massa arrivano dalla parte (Valuta › Materiale).": "Material and mass come from the part (Evaluate › Material).",
+    "Materiale…": "Material…",
+    "meno di 0,001": "less than 0.001",
+    "mesh": "mesh",
+    "Messa in tavola": "Drawing",
+    "Messa in tavola: trascina le viste per spostarle; usa Quota per aggiungere le quote.": "Drawing: drag the views to move them; use Dimension to add dimensions.",
+    "Metodo E": "Method E",
+    "metri": "meters",
+    "Mette i componenti in fila lungo la direzione scelta sopra. Sostituisce i passi già fatti.": "Lines up the components along the direction chosen above. It replaces the steps already made.",
+    "Metti un punto per ogni foro e quotane la posizione rispetto agli spigoli del pezzo (in grigio). Poi premi ✓.": "Place a point for each hole and dimension its position from the part edges (in gray). Then press ✓.",
+    "mezzeria": "centerline",
+    "Mezzeria {}": "Centerline {}",
+    "micrometri": "micrometers",
+    "milionesimi di pollice": "millionths of an inch",
+    "millesimi di pollice": "thousandths of an inch",
+    "millimetri": "millimeters",
+    "Misura": "Measure",
+    "MMGS · mm": "MMGS · mm",
+    "Modifica {}": "Edit {}",
+    "Modifica accoppiamento": "Edit mate",
+    "Modifica dello schizzo {}": "Editing sketch {}",
+    "Modifica funzione": "Edit Feature",
+    "Modifica i passi": "Edit steps",
+    "Modifica il piano dello schizzo": "Edit Sketch Plane",
+    "Modifica il piano dello schizzo{}": "Edit Sketch Plane{}",
+    "Modifica il valore": "Edit the value",
+    "Modifica la sezione": "Edit the section",
+    "Modifica le posizioni": "Edit the positions",
+    "Modifica lo schizzo": "Edit the sketch",
+    "Modifica schizzo": "Edit Sketch",
+    "Modifica schizzo{}": "Edit Sketch{}",
+    "Modifica:": "Edit:",
+    "Modifica: {}": "Edit: {}",
+    "Mostra i piani": "Show the planes",
+    "Mostra le relazioni sullo schizzo": "Show the relations on the sketch",
+    "Mostra lo sfondo": "Show the background",
+    "Mostrali nella vista: un clic sul bordo di un piano o su un'origine": "Show them in the view: one click on the edge of a plane or on an origin",
+    "Movimento": "Movement",
+    "multilinea": "multiline",
+    "multilinee": "multilines",
+    "N.;Parte;Materiale;Quantità;Massa cad. (g);Massa tot. (g)": "No.;Part;Material;Quantity;Unit mass (g);Total mass (g)",
+    "Nei layer scelti ci sono solo testi e quote: scegli anche un layer con linee, archi o cerchi.": "The chosen layers only contain texts and dimensions: also choose a layer with lines, arcs or circles.",
+    "Nei layer scelti non ci sono linee, archi o cerchi.": "The chosen layers contain no lines, arcs or circles.",
+    "Nel centro": "At the center",
+    "Nel file non ci sono linee, archi o cerchi da importare.": "The file contains no lines, arcs or circles to import.",
+    "Nel file non ci sono linee, archi o cerchi da importare{}": "The file contains no lines, arcs or circles to import{}",
+    "Nel file non ci sono solidi né superfici (forse contiene solo linee o un disegno 2D).": "The file contains no solids or surfaces (maybe it only contains lines or a 2D drawing).",
+    "Nel file non ci sono superfici da importare.": "The file contains no surfaces to import.",
+    "Nell'anteprima la crocetta rossa è il punto che andrà sull'origine dello schizzo. Togli la spunta ai <b>layer</b> che non servono (cartiglio, quote, squadratura). Le linee tratto-punto (assi) diventano <b>linee di mezzeria</b>, quelle tratteggiate <b>geometria di costruzione</b>. Gli estremi molto vicini vengono uniti e le entità doppie tolte. Se il file non dice l'unità si usano i millimetri. Va bene anche uno <b>.zip</b> con il DXF dentro (se ce n'è più di uno, scegli quale). I <b>DWG</b> di AutoCAD si leggono direttamente, compresi quelli di AutoCAD 2019–2025, che usano il formato 2018. Per salvare i DXF o convertire molti disegni insieme c'è il {}.": "In the preview the red cross is the point that will go on the sketch origin. Uncheck the <b>layers</b> you do not need (title block, dimensions, border). Dash-dot lines (axes) become <b>centerlines</b>, dashed ones <b>construction geometry</b>. Very close endpoints are joined and duplicate entities removed. If the file does not state the unit, millimeters are used. A <b>.zip</b> with the DXF inside also works (if there is more than one, choose which). AutoCAD <b>DWG</b> files are read directly, including those of AutoCAD 2019–2025, which use the 2018 format. To save the DXF files or convert many drawings at once there is the {}.",
+    "Nell'assieme non c'è ancora nessun componente con un solido: premi Inserisci parte.": "The assembly has no component with a solid yet: press Insert Part.",
+    "nello <b>schizzo aperto</b>": "into the <b>open sketch</b>",
+    "Nello schizzo delle posizioni dei fori non si importano file DXF o DWG.": "DXF or DWG files cannot be imported into the hole position sketch.",
+    "Nello schizzo delle posizioni dei fori non si importano file DXF.": "DXF files cannot be imported into the hole position sketch.",
+    "Nello zip c'è un DWG, non un DXF: estrailo e scegli direttamente il file .dwg.": "The zip contains a DWG, not a DXF: extract it and choose the .dwg file directly.",
+    "Nello zip non c'è nessun file .dxf.": "The zip contains no .dxf file.",
+    "Nervatura": "Rib",
+    "Nervatura{#}": "Rib{}",
+    "Nessun componente da spostare: sono tutti fissi.": "No component to move: they are all fixed.",
+    "Nessun componente: fai clic nella vista": "No component: click in the view",
+    "Nessun elemento: fai clic nella vista": "No entity: click in the view",
+    "Nessun layer scelto.": "No layer chosen.",
+    "Nessun passo.": "No steps.",
+    "Nessun profilo: fai clic sugli schizzi nella vista, nell'ordine": "No profile: click the sketches in the view, in order",
+    "nessun solido.": "no solid.",
+    "Nessuna": "None",
+    "Nessuna anteprima": "No preview",
+    "Nessuna interferenza su {} {}.": "No interference in {} {}.",
+    "Nessuna quota. Usa «Quota» o «Quote di ingombro».": "No dimensions. Use «Dimension» or «Overall dimensions».",
+    "Nessuna sezione.": "No section.",
+    "Nessuno": "None",
+    "Nessuno spigolo valido da {}": "No valid edge to {}",
+    "Nome": "Name",
+    "Nome della parte": "Part name",
+    "Non c'è ancora materiale da tagliare: crea prima un solido.": "There is no material to cut yet: create a solid first.",
+    "Non c'è ancora materiale da tagliare: fai prima un'estrusione o una rivoluzione base.": "There is no material to cut yet: first make an extruded or revolved boss.",
+    "Non c'è ancora nessun corpo solido.": "There is no solid body yet.",
+    "Non c'è ancora nessun solido: crea prima una funzione (per esempio un'estrusione).": "There is no solid yet: create a feature first (for example an extrusion).",
+    "Non c'è ancora niente da salvare: crea il pezzo, oppure apri uno schizzo o la messa in tavola.": "There is nothing to save yet: create the part, or open a sketch or the drawing.",
+    "Non c'è materiale da togliere: prima crea un solido": "There is no material to remove: create a solid first",
+    "Non c'è nessun solido": "There is no solid",
+    "Non c'è nessun solido da esportare.": "There is no solid to export.",
+    "Non è un file DWG di AutoCAD (i primi caratteri dovrebbero essere «AC10…»).": "This is not an AutoCAD DWG file (the first characters should be «AC10…»).",
+    "Non importati: {}.": "Not imported: {}.",
+    "Non so quotare questa combinazione di entità.": "I cannot dimension this combination of entities.",
+    "Non soddisfatto.": "Not satisfied.",
+    "Non sono riuscito a creare il PDF: {}": "The PDF could not be created: {}",
+    "Non specificato": "Not specified",
+    "Non trovo il tratto del foro.": "Cannot find the hole segment.",
+    "Normale (media)": "Normal (medium)",
+    "Normale a": "Normal To",
+    "Note": "Notes",
+    "Numeri di posizione": "Balloons",
+    "Numero del disegno": "Drawing number",
+    "Numero di copie": "Number of copies",
+    "Numero di istanze": "Number of instances",
+    "Numero di lati": "Number of sides",
+    "Nuova misura": "New measurement",
+    "Nuova parte": "New Part",
+    "Nuovo assieme": "New Assembly",
+    "Nuovo passo": "New step",
+    "Nuovo progetto": "New project",
+    "Nuovo schizzo sul piano o sulla faccia selezionati": "New sketch on the selected plane or face",
+    "Nuovo schizzo: scegli un piano o una faccia piana": "New sketch: choose a plane or a flat face",
+    "Nylon PA6": "Nylon PA6",
+    "Ø lamatura (vuoto = norma)": "Counterbore Ø (empty = standard)",
+    "Ø{} (DIN 974-1)": "Ø{} (DIN 974-1)",
+    "Ø{} (ISO 273)": "Ø{} (ISO 273)",
+    "Ø{} × 90° (ISO 15065)": "Ø{} × 90° (ISO 15065)",
+    "Ø{} mm": "Ø{} mm",
+    "occt-import-js": "occt-import-js",
+    "oggetti OLE": "OLE objects",
+    "oggetto OLE": "OLE object",
+    "Ogni profilo è uno schizzo con un solo contorno chiuso, su un piano diverso (Piano di riferimento). L'ordine dell'elenco è quello in cui il solido attraversa i profili: cambialo con le frecce. Tra due profili le facce sono dritte; con tre o più il solido passa per tutti con una curva morbida. Se i profili hanno lo stesso numero di lati, ogni vertice si unisce al vertice corrispondente.": "Each profile is a sketch with a single closed contour, on a different plane (Reference Plane). The order of the list is the order in which the solid passes through the profiles: change it with the arrows. Between two profiles the faces are straight; with three or more the solid passes through all of them with a smooth curve. If the profiles have the same number of sides, each vertex joins the corresponding vertex.",
+    "Ogni prova costruisce un pezzo (estrusioni, rivoluzioni, tagli, raccordi, smussi, fori ISO, serie, specchio, sformo, sweep, nervature, corpi importati da STL e OBJ, schizzi quotati) e confronta volume, area, baricentro e ingombro con i valori calcolati a mano con le formule della geometria. La colonna mostra l'errore più grande della prova.": "Each test builds a part (extrusions, revolves, cuts, fillets, chamfers, ISO holes, patterns, mirror, draft, sweeps, ribs, bodies imported from STL and OBJ, dimensioned sketches) and compares volume, area, center of mass and bounding box with the values calculated by hand with the geometry formulas. The column shows the largest error of the test.",
+    "OK (Invio)": "OK (Enter)",
+    "Ombreggiato": "Shaded",
+    "Ombreggiato con spigoli": "Shaded With Edges",
+    "Open CASCADE": "Open CASCADE",
+    "Operazione": "Operation",
+    "Oppure scegli un file: diventa una parte nuova di questo progetto (una copia: il file resta dov'è). Un file STEP con più corpi dà una parte per ogni corpo, nelle posizioni del file.": "Or choose a file: it becomes a new part of this project (a copy: the file stays where it is). A STEP file with several bodies gives one part for each body, in the file positions.",
+    "Opzioni di importazione": "Import options",
+    "Orientamento della vista": "View orientation",
+    "Orientamento della vista (barra spaziatrice)": "View orientation (spacebar)",
+    "Origine": "Origin",
+    "orizzontale": "horizontal",
+    "Orizzontale": "Horizontal",
+    "Orizzontale (punti)": "Horizontal (points)",
+    "Ottone CuZn39Pb3": "Brass CuZn39Pb3",
+    "Pannello laterale": "Side panel",
+    "Parallela": "Parallel",
+    "Parallela (tutte)": "Parallel (all)",
+    "Parallelo": "Parallel",
+    "Parametri": "Parameters",
+    "Parete di rinforzo sottile da una linea aperta fino al pezzo": "Thin reinforcing wall from an open line to the part",
+    "parte": "part",
+    "Parte": "Part",
+    "Parte aperta": "Open part",
+    "Parte nuova: «{}». Per tornare all'assieme usa la scheda Assieme.": "New part: «{}». To go back to the assembly use the Assembly tab.",
+    "Parte{#}": "Part{}",
+    "parti": "parts",
+    "Parti di altri autori": "Third-party components",
+    "Passante per vite (ISO 273)": "Clearance hole for screw (ISO 273)",
+    "Passante tutto": "Through All",
+    "passi": "steps",
+    "Passi di esplosione": "Explode steps",
+    "passo": "step",
+    "Passo": "Pitch",
+    "Passo e rivoluzione": "Pitch and Revolution",
+    "PDF della tavola pronto: foglio {} × {} mm, in scala 1:1 (in stampa scegli «Dimensioni effettive» o «100 %»).": "Drawing PDF ready: sheet {} × {} mm, at 1:1 scale (when printing choose «Actual size» or «100 %»).",
+    "PDF della vista 3D pronto: A4 orizzontale, la vista com'è sullo schermo.": "3D view PDF ready: A4 landscape, the view as it is on the screen.",
+    "PDF dello schizzo pronto: A4 orizzontale, scala {}.": "Sketch PDF ready: A4 landscape, scale {}.",
+    "Per AutoCAD e altri CAD 2D (livelli e tipi di linea ISO)": "For AutoCAD and other 2D CAD programs (ISO layers and line types)",
+    "Per cercare le interferenze servono almeno due componenti.": "At least two components are needed to look for interferences.",
+    "Per costruzione": "For construction",
+    "Per i file .stl e .obj usa «Importa STL o OBJ».": "For .stl and .obj files use «Import STL or OBJ».",
+    "Per la messa in tavola serve un solido: crea prima la parte.": "The drawing needs a solid: create the part first.",
+    "Per la tavola dell'assieme serve almeno un componente con un solido.": "The assembly drawing needs at least one component with a solid.",
+    "Per ogni componente": "For each component",
+    "Per ogni corpo": "For each body",
+    "Per ora la nervatura accetta solo linee (niente archi)": "For now the rib only accepts lines (no arcs)",
+    "Per ruotare o spostare, tocca prima il pezzo; poi un dito ruota e due dita spostano.": "To rotate or pan, first touch the part; then one finger rotates and two fingers pan.",
+    "Percorso": "Path",
+    "Percorso scelto: {}": "Chosen path: {}",
+    "Percorso: {}": "Path: {}",
+    "Perpendicolare": "Perpendicular",
+    "Pezzo preso: un dito ruota, due dita spostano": "Part held: one finger rotates, two fingers pan",
+    "Piani": "Planes",
+    "Piani e origine": "Planes and origin",
+    "Piano": "Plane",
+    "Piano dello schizzo": "Sketch plane",
+    "Piano destro": "Right Plane",
+    "Piano di {} cambiato.": "Plane of {} changed.",
+    "Piano di riferimento": "Reference Plane",
+    "Piano di sezione": "Section plane",
+    "Piano di simmetria": "Mirror plane",
+    "Piano frontale": "Front Plane",
+    "Piano medio": "Mid Plane",
+    "Piano medio (metà angolo per parte)": "Mid Plane (half the angle on each side)",
+    "Piano medio (metà per parte)": "Mid Plane (half on each side)",
+    "Piano parallelo a un piano o a una faccia, a una certa distanza": "Plane parallel to a plane or a face, at a given distance",
+    "Piano superiore": "Top Plane",
+    "Piano{#}": "Plane{}",
+    "piedi": "feet",
+    "Poi accoppia il pezzo al foro con Concentrico e Coincidente, oppure usa Vite nel foro.": "Then mate the part to the hole with Concentric and Coincident, or use Screw in Hole.",
+    "Poligono": "Polygon",
+    "Poligono regolare inscritto: centro, poi un vertice": "Inscribed regular polygon: center, then a vertex",
+    "pollici": "inches",
+    "Porta nello schizzo linee, archi, cerchi, ellissi e spline di un file DXF o DWG": "Brings lines, arcs, circles, ellipses and splines of a DXF or DWG file into the sketch",
+    "Positiva in senso antiorario, negativa in senso orario.": "Positive counterclockwise, negative clockwise.",
+    "Posizione": "Position",
+    "Posizione del foro": "Hole Position",
+    "Posizione del piano": "Plane position",
+    "Posizione del piano di taglio (mm)": "Cutting plane position (mm)",
+    "Posizione del punto": "Point position",
+    "Posizioni": "Positions",
+    "Premi Calcola: il volume in comune di ogni coppia di componenti si vede in rosso.": "Press Calculate: the common volume of each pair of components is shown in red.",
+    "Primo punto": "First point",
+    "Primo vertice": "First corner",
+    "profili": "profiles",
+    "Profili": "Profiles",
+    "profilo": "profile",
+    "Profilo": "Profile",
+    "Profilo e percorso": "Profile and Path",
+    "Profilo e percorso devono stare in due schizzi diversi": "Profile and path must be in two different sketches",
+    "profilo sull'asse": "profile on the axis",
+    "Profilo: {}": "Profile: {}",
+    "Profondità": "Depth",
+    "Profondità del filetto": "Thread depth",
+    "Profondità lamatura": "Counterbore depth",
+    "Progetto": "Project",
+    "Progetto importato": "Project imported",
+    "Pronto": "Ready",
+    "Propagazione tangente": "Tangent propagation",
+    "Proprietà di massa": "Mass Properties",
+    "Proprietà di massa dell'assieme": "Assembly mass properties",
+    "Prova": "Test",
+    "Punta di preparazione": "Tap drill",
+    "punti": "points",
+    "punto": "point",
+    "Punto": "Point",
+    "Punto dello schizzo": "Sketch point",
+    "Punto finale": "End point",
+    "Punto iniziale": "Start point",
+    "Punto medio": "Midpoint",
+    "Punto su circonferenza": "Point on circle",
+    "Punto su linea": "Point on line",
+    "Q.tà": "Qty",
+    "Quella faccia nasce dopo lo schizzo: scegline una precedente.": "That face is created after the sketch: choose an earlier one.",
+    "Questa curva viene dopo la funzione: non si può usare.": "This curve comes after the feature: it cannot be used.",
+    "Questa faccia non appartiene a una funzione che si può ripetere.": "This face does not belong to a feature that can be repeated.",
+    "Questa faccia non si può usare in un accoppiamento.": "This face cannot be used in a mate.",
+    "Questa quota renderebbe lo schizzo sovradefinito: è stata aggiunta come quota condotta (solo lettura, tra parentesi).": "This dimension would make the sketch over defined: it was added as a driven dimension (read only, in parentheses).",
+    "Questa relazione renderebbe lo schizzo sovradefinito (è già implicata da altre).": "This relation would make the sketch over defined (it is already implied by others).",
+    "Questi corpi non hanno materiale in comune": "These bodies have no material in common",
+    "Questo accoppiamento non si può aggiungere.": "This mate cannot be added.",
+    "Questo accoppiamento non si può soddisfare insieme agli altri.": "This mate cannot be satisfied together with the others.",
+    "Questo browser è troppo vecchio per leggere i file DWG: aggiorna Chrome, Edge, Firefox o Safari e riprova.": "This browser is too old to read DWG files: update Chrome, Edge, Firefox or Safari and try again.",
+    "Questo browser è troppo vecchio per leggere i file STEP e IGES: aggiorna Chrome, Edge, Firefox o Safari e riprova.": "This browser is too old to read STEP and IGES files: update Chrome, Edge, Firefox or Safari and try again.",
+    "Questo browser non sa aprire i file .zip compressi: estrai il DXF dallo zip e scegli quello.": "This browser cannot open compressed .zip files: extract the DXF from the zip and choose that.",
+    "Questo è un DXF binario: salvalo come DXF di testo (ASCII) dal programma d'origine e riprova.": "This is a binary DXF: save it as a text (ASCII) DXF from the original program and try again.",
+    "Questo è uno STEP in formato XML: esportalo come STEP normale (AP203 o AP214) e riprova.": "This is a STEP file in XML format: export it as a normal STEP (AP203 or AP214) and try again.",
+    "Questo file si chiama .dwg ma dentro è un DXF binario: dal programma d'origine salvalo come DXF di testo (ASCII).": "This file is named .dwg but it is really a binary DXF: save it as a text (ASCII) DXF from the original program.",
+    "Questo file si chiama .dwg ma dentro è un DXF: cambia il nome in .dxf e sceglilo di nuovo.": "This file is named .dwg but it is really a DXF: rename it to .dxf and choose it again.",
+    "Questo file si chiama .dwg ma dentro è un file STEP (un pezzo 3D): cambia il nome in .step e usa «Importa STEP o IGES».": "This file is named .dwg but it is really a STEP file (a 3D part): rename it to .step and use «Import STEP or IGES».",
+    "Questo foro non ha una faccia piana all'imbocco: accoppia la vite a mano.": "This hole has no flat face at its entrance: mate the screw by hand.",
+    "Questo pezzo non ha la faccia di appoggio.": "This part has no seating face.",
+    "Questo programma usa WebGL. Apri la pagina con Google Chrome aggiornato e controlla che l'accelerazione hardware sia attiva (Impostazioni › Sistema).": "This program uses WebGL. Open the page with an up-to-date Google Chrome and check that hardware acceleration is on (Settings › System).",
+    "Questo schizzo viene dopo la funzione: non si può usare.": "This sketch comes after the feature: it cannot be used.",
+    "Questo spigolo non è né una retta né un cerchio.": "This edge is neither a line nor a circle.",
+    "Qui si importano file .dxf (anche dentro uno .zip) e .dwg. Per i pezzi 3D usa «Importa STL o OBJ».": "Here you import .dxf files (also inside a .zip) and .dwg files. For 3D parts use «Import STL or OBJ».",
+    "quota": "dimension",
+    "Quota": "Dimension",
+    "Quota {}": "Dimension {}",
+    "Quota condotta:": "Driven dimension:",
+    "Quota intelligente": "Smart Dimension",
+    "Quota la posizione dei fori": "Dimension the hole positions",
+    "quote": "dimensions",
+    "Quote ({})": "Dimensions ({})",
+    "Quote di ingombro": "Overall dimensions",
+    "Quote in mm": "Dimensions in mm",
+    "Quote ISO: clic su uno spigolo, un cerchio o due punti, poi clic per posizionare": "ISO dimensions: click an edge, a circle or two points, then click to place",
+    "raccordare": "fillet",
+    "Raccordo": "Fillet",
+    "Raccordo di schizzo": "Sketch Fillet",
+    "Raccordo{#}": "Fillet{}",
+    "Raggio": "Radius",
+    "Raggio e punto iniziale": "Radius and start point",
+    "Rame Cu-ETP": "Copper Cu-ETP",
+    "Rastremazione verso l'esterno": "Taper outward",
+    "Rayuk-creator/CAD": "Rayuk-creator/CAD",
+    "regione": "region",
+    "regioni": "regions",
+    "Relazioni esistenti": "Existing Relations",
+    "Relazioni tra i punti e gli spigoli": "Relations between points and edges",
+    "Rendi flessibile": "Make flexible",
+    "Rendi quota condotta": "Make driven dimension",
+    "Rendi quota guida": "Make driving dimension",
+    "Rendi rigido": "Make rigid",
+    "Reticolo": "Wireframe",
+    "Retro": "Back",
+    "retta infinita": "infinite line",
+    "Rettangolo": "Corner Rectangle",
+    "Rettangolo centrale": "Center Rectangle",
+    "Rettangolo dato da due vertici opposti": "Rectangle given by two opposite corners",
+    "Rettangolo dato dal centro e da un vertice": "Rectangle given by the center and a corner",
+    "rette infinite": "infinite lines",
+    "richiami": "leaders",
+    "richiamo": "leader",
+    "Ricostruisce i pezzi di prova e confronta volume, area, baricentro e ingombro con i valori calcolati a mano (tolleranza 1%)": "Rebuilds the test parts and compares volume, area, center of mass and bounding box with the values calculated by hand (1% tolerance)",
+    "Ricostruito in {} ms": "Rebuilt in {} ms",
+    "Ricostruzione dei pezzi di prova in corso…": "Rebuilding the test parts…",
+    "riempimenti": "fills",
+    "riempimento": "fill",
+    "Riferimento": "Reference",
+    "Riferimento non valido": "Invalid reference",
+    "Rimetti i numeri al loro posto": "Put the balloons back in place",
+    "Rinomina": "Rename",
+    "Ripete funzioni attorno a un asse": "Repeats features around an axis",
+    "Ripete funzioni lungo una o due direzioni": "Repeats features along one or two directions",
+    "ripetere": "pattern",
+    "Ripeti": "Redo",
+    "Ripeti (Ctrl+Y)": "Redo (Ctrl+Y)",
+    "Riporta la barra alla fine": "Roll to End",
+    "Riporta la barra qui (sopra)": "Roll Back to here (above)",
+    "Risultati": "Results",
+    "Risultato": "Result",
+    "Rivoluzione": "Revolve",
+    "Rivoluzione base": "Revolved Boss/Base",
+    "Rivoluzione{#}": "Revolve{}",
+    "Rivoluzioni": "Revolutions",
+    "Rondella ISO 7089": "Washer ISO 7089",
+    "Rondella piana, ISO 7089": "Plain washer, ISO 7089",
+    "Rotazione": "Rotation",
+    "Ruota": "Rotate",
+    "Salva CSV": "Save CSV",
+    "Salva PDF": "Save PDF",
+    "Salva PDF della tavola": "Save PDF of the drawing",
+    "Salva PDF della vista 3D": "Save PDF of the 3D view",
+    "Salva PDF dello schizzo": "Save PDF of the sketch",
+    "Salvataggio annullato": "Saving canceled",
+    "Salvato {}": "Saved {}",
+    "Salvato {}: dentro c'è {}": "Saved {}: it contains {}",
+    "Scala": "Scale",
+    "Scala {}": "Scale {}",
+    "Scala attuale: {} (scale normalizzate ISO 5455).": "Current scale: {} (ISO 5455 standard scales).",
+    "Scegli almeno due corpi": "Choose at least two bodies",
+    "Scegli almeno un corpo da importare.": "Choose at least one body to import.",
+    "Scegli almeno un layer da importare.": "Choose at least one layer to import.",
+    "Scegli due elementi, oppure premi la X per uscire.": "Choose two entities, or press X to exit.",
+    "Scegli i corpi da combinare": "Choose the bodies to combine",
+    "Scegli i corpi da eliminare": "Choose the bodies to delete",
+    "Scegli i corpi da mantenere": "Choose the bodies to keep",
+    "Scegli i corpi da sottrarre": "Choose the bodies to subtract",
+    "Scegli i corpi da spostare": "Choose the bodies to move",
+    "Scegli il corpo principale": "Choose the main body",
+    "Scegli il nuovo piano (o la faccia piana) per {}": "Choose the new plane (or flat face) for {}",
+    "Scegli il percorso nella vista": "Choose the path in the view",
+    "Scegli il piano o la faccia per il cerchio dell'elica": "Choose the plane or face for the helix circle",
+    "Scegli il piano o la faccia per lo schizzo di {}": "Choose the plane or face for the sketch of {}",
+    "Scegli il piano o la faccia piana su cui disegnare lo schizzo": "Choose the plane or flat face to draw the sketch on",
+    "Scegli il piano per lo schizzo della nervatura": "Choose the plane for the rib sketch",
+    "Scegli il profilo nella vista": "Choose the profile in the view",
+    "Scegli l'asse della serie circolare": "Choose the axis of the circular pattern",
+    "Scegli la direzione della serie": "Choose the pattern direction",
+    "Scegli la parte da aprire, o l'assieme": "Choose the part to open, or the assembly",
+    "Scegli lo schizzo dall'elenco oppure fai clic sulle sue linee nella vista (diventa blu).": "Choose the sketch from the list or click its lines in the view (it turns blue).",
+    "Scegli prima il file.": "Choose the file first.",
+    "Scegli un elemento di un altro componente: questo è nello stesso.": "Choose an entity of another component: this one is in the same one.",
+    "Scegli un file: qui vedrai l'anteprima del disegno.": "Choose a file: the drawing preview will appear here.",
+    "Scegli un piano o una faccia piana.": "Choose a plane or a flat face.",
+    "Scegli una faccia cilindrica o uno spigolo circolare.": "Choose a cylindrical face or a circular edge.",
+    "Scegli una faccia piana.": "Choose a flat face.",
+    "Scegli una parte del progetto. Si può inserire più volte: le copie cambiano tutte insieme quando modifichi la parte.": "Choose a part of the project. It can be inserted several times: the copies all change together when you edit the part.",
+    "Scegli uno spigolo rettilineo.": "Choose a straight edge.",
+    "Scegli…": "Choose…",
+    "Sceglie il materiale della parte": "Chooses the material of the part",
+    "schizzi": "sketches",
+    "Schizzi": "Sketches",
+    "schizzo": "sketch",
+    "Schizzo": "Sketch",
+    "Schizzo da estrudere": "Sketch to extrude",
+    "Schizzo da far ruotare": "Sketch to revolve",
+    "Schizzo da tagliare": "Sketch to cut",
+    "Schizzo della nervatura": "Rib sketch",
+    "Schizzo nuovo con linee, archi, cerchi, ellissi e spline di un file DXF o DWG": "New sketch with lines, arcs, circles, ellipses and splines of a DXF or DWG file",
+    "Schizzo scelto: {}": "Chosen sketch: {}",
+    "Schizzo su questa faccia": "Sketch on this face",
+    "Schizzo su questo piano": "Sketch on this plane",
+    "Schizzo{#}": "Sketch{}",
+    "Scrivi i valori (anche espressioni come 40/2) e premi Invio; Tab passa al campo successivo. Puoi anche continuare con il mouse.": "Type the values (also expressions like 40/2) and press Enter; Tab moves to the next field. You can also continue with the mouse.",
+    "Scrivi un valore maggiore di zero.": "Type a value greater than zero.",
+    "Se è usato come sottoassieme in altri assiemi, sparisce anche da lì. Le parti restano. Non si può annullare.": "If it is used as a subassembly in other assemblies, it disappears from there too. The parts stay. It cannot be undone.",
+    "Se il pezzo è troppo grande o troppo piccolo cambia l'unità; se arriva coricato spunta la casella della Z.": "If the part is too large or too small change the unit; if it arrives lying down check the Z box.",
+    "Se la finestra di stampa non si apre (succede nella pagina condivisa), usa Esporta SVG o apri il file del programma in Chrome. Nella stampa scegli «Dimensioni effettive» o «100%».": "If the print window does not open (it happens in the shared page), use Export SVG or open the program file in Chrome. When printing choose «Actual size» or «100%».",
+    "Se lo scaricamento non parte (succede nella pagina condivisa), copia il testo qui sotto e salvalo in un file chiamato <b>{}</b>.": "If the download does not start (it happens in the shared page), copy the text below and save it in a file named <b>{}</b>.",
+    "Seconda direzione": "Second direction",
+    "Seleziona (Esc)": "Select (Esc)",
+    "Seleziona almeno uno spigolo": "Select at least one edge",
+    "Seleziona due o più entità (Ctrl+clic) e scegli la relazione nel pannello a sinistra.": "Select two or more entities (Ctrl+click) and choose the relation in the panel on the left.",
+    "Seleziona gli elementi da misurare.": "Select the entities to measure.",
+    "Seleziona il testo e copialo con Ctrl+C": "Select the text and copy it with Ctrl+C",
+    "Seleziona le entità da specchiare e una linea di mezzeria (Ctrl+clic), poi premi Specchia entità.": "Select the entities to mirror and a centerline (Ctrl+click), then press Mirror Entities.",
+    "Seleziona le entità e scegli la relazione nel pannello a sinistra": "Select the entities and choose the relation in the panel on the left",
+    "Seleziona le entità e una linea di mezzeria, poi premi qui": "Select the entities and a centerline, then press here",
+    "Seleziona le funzioni da ripetere (estrusioni, tagli, rivoluzioni, fori, sweep o nervature) o i corpi": "Select the features to repeat (extrusions, cuts, revolves, holes, sweeps or ribs) or the bodies",
+    "Seleziona prima gli spigoli grigi della faccia (sono la geometria del pezzo vista dallo schizzo).": "Select the gray edges of the face first (they are the part geometry seen from the sketch).",
+    "Seleziona prima le linee, i cerchi o gli archi da trasformare.": "Select the lines, circles or arcs to convert first.",
+    "Seleziona prima una faccia piana o un piano.": "Select a flat face or a plane first.",
+    "Selezione automatica": "Auto-select",
+    "Sembra un IGES: cambia l'estensione in .igs.": "It looks like an IGES file: change the extension to .igs.",
+    "Sembra uno STEP: cambia l'estensione in .stp.": "It looks like a STEP file: change the extension to .stp.",
+    "semiretta": "ray",
+    "semirette": "rays",
+    "Senso antiorario": "Counterclockwise",
+    "Senso orario": "Clockwise",
+    "Senza materiale: {}. Per queste parti la massa è calcolata con densità 1 g/cm³: scegli il materiale nella parte per avere la massa vera.": "Without material: {}. For these parts the mass is calculated with density 1 g/cm³: choose the material in the part to get the real mass.",
+    "senza nome": "untitled",
+    "Senza solido": "No solid",
+    "Senza solido, quindi non contati: {}.": "Without a solid, so not counted: {}.",
+    "Serie circolare": "Circular Pattern",
+    "Serie circolare{#}": "Circular Pattern{}",
+    "Serie lineare": "Linear Pattern",
+    "Serie lineare{#}": "Linear Pattern{}",
+    "Serve una faccia piana.": "A flat face is needed.",
+    "Serve una linea di mezzeria (asse di rivoluzione) nello schizzo": "A centerline (axis of revolution) is needed in the sketch",
+    "Serve uno schizzo chiuso: scegli il piano o la faccia e disegnalo; poi la funzione si apre da sola.": "A closed sketch is needed: choose the plane or face and draw it; then the feature opens by itself.",
+    "Serve uno schizzo con un cerchio: il suo diametro è quello dell'elica. Scegli il piano e disegnalo; poi la curva si apre da sola.": "You need a sketch with a circle: its diameter is the helix diameter. Choose the plane and draw it; then the curve opens by itself.",
+    "Servono almeno due componenti: premi Inserisci parte.": "At least two components are needed: press Insert Part.",
+    "Servono almeno due corpi: togli la spunta da «Unisci risultato» quando crei una funzione.": "At least two bodies are needed: uncheck «Merge result» when you create a feature.",
+    "Servono almeno due profili: scegli gli schizzi nell'ordine in cui il solido li attraversa": "At least two profiles are needed: choose the sketches in the order the solid passes through them",
+    "Servono almeno due schizzi chiusi su piani diversi (usa Piano di riferimento): sceglili nell'ordine in cui il solido li attraversa.": "You need at least two closed sketches on different planes (use Reference Plane): choose them in the order the solid passes through them.",
+    "Servono il profilo chiuso (per esempio un cerchio) e il percorso che parte dal piano del profilo: uno schizzo di linee e archi tangenti, oppure una curva Elica/Spirale.": "You need the closed profile (for example a circle) and the path starting from the profile plane: a sketch of tangent lines and arcs, or a Helix/Spiral curve.",
+    "Sezione": "Section",
+    "Sezione {}–{} nella {} (piano a {} mm).": "Section {}–{} in the {} (plane at {} mm).",
+    "sfera": "sphere",
+    "Sfera": "Sphere",
+    "sfere": "spheres",
+    "Sfondo del disegno": "Drawing background",
+    "Sformo": "Draft",
+    "Sformo verso l'esterno": "Draft outward",
+    "Si controllano tutti i {} componenti, a coppie.": "All {} components are checked, in pairs.",
+    "Si possono importare file .step, .stp, .iges e .igs.": "You can import .step, .stp, .iges and .igs files.",
+    "Si possono importare file .stl e .obj (e, con «Importa STEP o IGES», .step, .stp, .iges, .igs).": "You can import .stl and .obj files (and, with «Import STEP or IGES», .step, .stp, .iges, .igs).",
+    "SIL OFL 1.1": "SIL OFL 1.1",
+    "Simmetrica": "Symmetric",
+    "Sinistra": "Left",
+    "Smussa gli spigoli selezionati": "Bevels the selected edges",
+    "Smussa l'angolo tra due linee: clic sul vertice": "Bevels the corner between two lines: click the vertex",
+    "smussare": "chamfer",
+    "Smussi (punta a 45°, esagono a 30°)": "Chamfers (45° tip, 30° hexagon)",
+    "Smussi non quotati 0,5 × 45°. Spigoli vivi arrotondati.": "Undimensioned chamfers 0.5 × 45°. Break sharp edges.",
+    "Smusso": "Chamfer",
+    "Smusso di schizzo": "Sketch Chamfer",
+    "Smusso{#}": "Chamfer{}",
+    "solidi": "solids",
+    "solidi 3D": "3D solids",
+    "solido": "solid",
+    "solido 3D": "3D solid",
+    "sono diventate": "became",
+    "sono superfici vere": "are true surfaces",
+    "Sopprimi": "Suppress",
+    "Sostituisce una vista con la sua sezione (piano di taglio e tratteggio)": "Replaces a view with its section (cutting plane and hatching)",
+    "Sotto definita: restano {} gradi di libertà": "Under defined: {} degrees of freedom left",
+    "Sotto definito ({} gradi di libertà)": "Under Defined ({} degrees of freedom)",
+    "Sottraendo questi corpi non resta materiale": "Subtracting these bodies leaves no material",
+    "Sottrai": "Subtract",
+    "Sovradefinito: c'è una quota o relazione di troppo": "Over Defined: there is one dimension or relation too many",
+    "Sovradefinito: quote o relazioni in conflitto": "Over Defined: conflicting dimensions or relations",
+    "Spariscono anche i suoi {} componenti nell'assieme, con i loro accoppiamenti.": "Its {} components in the assembly also disappear, with their mates.",
+    "Spariscono anche i suoi accoppiamenti: {}.": "Its mates also disappear: {}.",
+    "Spazio tra i pezzi (mm)": "Spacing between parts (mm)",
+    "Specchia entità": "Mirror Entities",
+    "specchiare": "mirror",
+    "Specchio": "Mirror",
+    "Specchio{#}": "Mirror{}",
+    "Spessore": "Thickness",
+    "spigoli": "edges",
+    "Spigoli da {}": "Edges to {}",
+    "spigolo": "edge",
+    "Spigolo": "Edge",
+    "Spigolo {}": "Edge {}",
+    "Spigolo ✓": "Edge ✓",
+    "Spigolo ad arco R": "Arc edge R",
+    "Spigolo circolare": "Circular edge",
+    "Spigolo circolare Ø": "Circular edge Ø",
+    "Spigolo curvo (ellisse o spline)": "Curved edge (ellipse or spline)",
+    "Spigolo del pezzo": "Part edge",
+    "Spigolo non supportato: si possono raccordare/smussare spigoli rettilinei tra due facce piane, spigoli circolari o ad arco tra un cilindro e una faccia piana e il bordo di un'ellisse o di una spline importata; il raggio (o la distanza) deve essere minore del raggio dell'arco o della curva": "Unsupported edge: you can fillet/chamfer straight edges between two flat faces, circular or arc edges between a cylinder and a flat face, and the edge of an imported ellipse or spline; the radius (or distance) must be smaller than the radius of the arc or curve",
+    "Spigolo rettilineo": "Straight edge",
+    "Spigolo virtuale": "Virtual edge",
+    "Spigolo…": "Edge…",
+    "Spirale": "Spiral",
+    "spline": "spline",
+    "Sposta": "Move",
+    "Sposta giù": "Move down",
+    "Sposta giù {}": "Move {} down",
+    "Sposta o ruota un componente nei gradi di libertà che gli restano (anche su tablet)": "Moves or rotates a component in its remaining degrees of freedom (also on tablets)",
+    "Sposta parte": "Move Component",
+    "Sposta su": "Move up",
+    "Sposta su {}": "Move {} up",
+    "Sposta, ruota o copia un corpo solido": "Moves, rotates or copies a solid body",
+    "Sposta/Copia corpo": "Body-Move/Copy",
+    "Sposta/Copia corpo{#}": "Body-Move/Copy{}",
+    "Spostamento": "Translation",
+    "Spostamento X": "Translation X",
+    "Spostamento Y": "Translation Y",
+    "Spostamento Z": "Translation Z",
+    "Spunta i corpi qui, oppure fai clic su di loro nella vista.": "Check the bodies here, or click them in the view.",
+    "Spunta i corpi su cui lavorare qui, oppure fai clic su di loro nella vista.": "Check the bodies to work on here, or click them in the view.",
+    "Stampa": "Print",
+    "Stampa / PDF": "Print / PDF",
+    "Stampa la tavola in scala (o salva in PDF dal browser)": "Prints the drawing to scale (or saves to PDF from the browser)",
+    "Standard": "Standard",
+    "STEP e IGES sono i formati che tutti i programmi CAD sanno scrivere (SolidWorks, Inventor, Fusion, FreeCAD, Solid Edge…). Il pezzo arriva con le sue <b>facce vere</b> (piane, cilindriche, coniche…) come funzione «Importato»: si vede, si misura, si mette in tavola, se ne calcolano volume e massa, e sopra puoi disegnare schizzi e aggiungere funzioni. Non porta con sé la storia delle funzioni.": "STEP and IGES are the formats that every CAD program can write (SolidWorks, Inventor, Fusion, FreeCAD, Solid Edge…). The part arrives with its <b>true faces</b> (flat, cylindrical, conical…) as an «Imported» feature: you can view it, measure it, put it in a drawing, calculate its volume and mass, and draw sketches and add features on top. It does not bring the feature history with it.",
+    "Stile di visualizzazione": "Display style",
+    "Stretto (fine)": "Close (fine)",
+    "Sullo sfondo: {}.": "In the background: {}.",
+    "superfici": "surfaces",
+    "superficie": "surface",
+    "Superficie libera": "Free-form surface",
+    "Superiore": "Top",
+    "Svasato per vite a testa svasata": "Countersink for countersunk screw",
+    "Svasatura": "Countersink",
+    "tabella": "table",
+    "tabelle": "tables",
+    "Taglia entità": "Trim Entities",
+    "Taglia la vista con un piano": "Cuts the view with a plane",
+    "Taglio con loft": "Lofted Cut",
+    "Taglio con loft{#}": "Lofted Cut{}",
+    "Taglio con percorso": "Swept Cut",
+    "Taglio con percorso{#}": "Swept Cut{}",
+    "Taglio estruso": "Extruded Cut",
+    "Taglio rivoluzione": "Revolved Cut",
+    "Taglio-Estrusione": "Cut-Extrude",
+    "Taglio-Estrusione{#}": "Cut-Extrude{}",
+    "Taglio-Rivoluzione": "Cut-Revolve",
+    "Taglio-Rivoluzione{#}": "Cut-Revolve{}",
+    "Tangente": "Tangent",
+    "TAV. 01": "DWG. 01",
+    "tavola": "drawing",
+    "Tavola": "Drawing",
+    "testi": "texts",
+    "Testi, quote, tratteggi e tabelle come sfondo di riferimento (solo da guardare: non comandano la forma)": "Texts, dimensions, hatches and tables as a reference background (only to look at: they do not drive the shape)",
+    "Testi, quote, tratteggi, tolleranze e tabelle del file DXF o DWG, in grigio, solo da guardare: non si selezionano e non contano per il pezzo.": "Texts, dimensions, hatches, tolerances and tables of the DXF or DWG file, in gray, only to look at: they cannot be selected and do not count for the part.",
+    "testo": "text",
+    "testo con l'eccezione di OCCT": "text with the OCCT exception",
+    "Testo copiato negli appunti": "Text copied to the clipboard",
+    "Tipo": "Type",
+    "Tipo di foro": "Hole type",
+    "Tipo di operazione": "Operation type",
+    "Tipo di vite sconosciuto: {}": "Unknown screw type: {}",
+    "Titolo": "Title",
+    "Togli": "Remove",
+    "Togli {}": "Remove {}",
+    "Togli la sezione": "Remove the section",
+    "Togli lo sfondo": "Remove the background",
+    "Toglie dei corpi, oppure tiene solo quelli scelti": "Removes bodies, or keeps only the chosen ones",
+    "Toglie materiale estrudendo uno schizzo": "Removes material by extruding a sketch",
+    "Toglie materiale facendo scorrere un profilo lungo un percorso: canali, gole": "Removes material by moving a profile along a path: channels, grooves",
+    "Toglie materiale passando per due o più profili chiusi su piani diversi": "Removes material by passing through two or more closed profiles on different planes",
+    "Toglie materiale ruotando un profilo": "Removes material by rotating a profile",
+    "tolleranza": "tolerance",
+    "tolleranza geometrica": "geometric tolerance",
+    "tolleranze": "tolerances",
+    "Tolleranze generali": "General tolerances",
+    "tolleranze geometriche": "geometric tolerances",
+    "Tolte {} entità doppie.": "Removed {} duplicate entities.",
+    "tori": "tori",
+    "Torna al pannello del foro": "Back to the hole panel",
+    "toro": "torus",
+    "Totale": "Total",
+    "tracce": "traces",
+    "traccia": "trace",
+    "Trascina le viste sul foglio per spostarle: quelle proiettate restano allineate alla vista frontale.": "Drag the views on the sheet to move them: the projected ones stay aligned with the front view.",
+    "Trascina un componente: si muove solo nei gradi di libertà che gli restano.": "Drag a component: it only moves in its remaining degrees of freedom.",
+    "Trasforma le entità selezionate in geometria di costruzione (e viceversa)": "Turns the selected entities into construction geometry (and back)",
+    "Tratta i sottoassiemi come componenti": "Treat subassemblies as components",
+    "tratteggi": "hatches",
+    "Tratteggiata ISO 128 (02.1)": "Dashed ISO 128 (02.1)",
+    "tratteggio": "hatch",
+    "Tratto e punto ISO 128 (04.1)": "Dash-dot ISO 128 (04.1)",
+    "Tre o più entità si incontrano nello stesso punto: il contorno deve essere una linea chiusa senza diramazioni.": "Three or more entities meet at the same point: the contour must be a closed line without branches.",
+    "Tre o più entità si incontrano nello stesso punto: il percorso deve essere una sola linea senza diramazioni.": "Three or more entities meet at the same point: the path must be a single line without branches.",
+    "triangoli": "triangles",
+    "triangolo": "triangle",
+    "Troppe rivoluzioni ({}): il massimo è {}": "Too many revolutions ({}): the maximum is {}",
+    "Trova i componenti che si compenetrano e per quale volume": "Finds the components that overlap and by what volume",
+    "Tutti": "All",
+    "Tutti i corpi": "All bodies",
+    "Tutto dal lato 1": "All on side 1",
+    "Tutto dal lato 2": "All on side 2",
+    "Uguale": "Equal",
+    "Uguale (tutte)": "Equal (all)",
+    "Un «Importato» per ogni corpo": "One «Imported» for each body",
+    "Un arco del percorso ha raggio R{}, più piccolo del profilo: aumenta il raggio": "An arc of the path has radius R{}, smaller than the profile: increase the radius",
+    "Un clic sul foro: inserisce la vite della misura giusta e la accoppia da sola": "One click on the hole: inserts the right size screw and mates it automatically",
+    "Un corpo non tocca il piano di simmetria: la sua copia resta un corpo a sé": "A body does not touch the mirror plane: its copy stays a separate body",
+    "Un corpo scelto": "A chosen body",
+    "un solido": "one solid",
+    "una superficie curva è": "one curved surface",
+    "Unisce due o più corpi, ne sottrae uno da un altro o tiene solo la parte in comune": "Joins two or more bodies, subtracts one from another, or keeps only the common part",
+    "Unisce due o più profili chiusi su piani diversi: pale svergolate, raccordi tra sezioni diverse, tramogge": "Joins two or more closed profiles on different planes: twisted blades, transitions between different sections, hoppers",
+    "Unisci i solidi": "Merge solids",
+    "Unisci risultato": "Merge result",
+    "Unità del file": "File units",
+    "Unità del file (solo STL e OBJ)": "File units (STL and OBJ only)",
+    "Uno degli spigoli non esiste più": "One of the edges no longer exists",
+    "Uno dei componenti non esiste più.": "One of the components no longer exists.",
+    "Valore della quota": "Dimension value",
+    "Valore:": "Value:",
+    "Valori di norma": "Standard values",
+    "Valori negativi: verso sinistra o verso il basso.": "Negative values: to the left or down.",
+    "Valuta": "Evaluate",
+    "Vari": "Miscellaneous",
+    "Vedi la distinta base": "See the bill of materials",
+    "Verifica interferenze": "Interference Detection",
+    "Verranno eliminate anche le funzioni che dipendono da questa: {}.": "The features that depend on this one will also be deleted: {}.",
+    "versione {} (più nuova del 2018: si prova lo stesso)": "version {} (newer than 2018: trying anyway)",
+    "verticale": "vertical",
+    "Verticale": "Vertical",
+    "Verticale (punti)": "Vertical (points)",
+    "Vertice": "Vertex",
+    "Vertice ({})": "Vertex ({})",
+    "vincoli": "constraints",
+    "vincolo": "constraint",
+    "vista": "view",
+    "Vista da destra": "Right view",
+    "Vista da destra (a sinistra della frontale)": "Right view (left of the front view)",
+    "Vista da sezionare": "View to section",
+    "Vista da sinistra": "Left view",
+    "Vista da sinistra (a destra della frontale)": "Left view (right of the front view)",
+    "Vista da sinistra (piano parallelo al destro)": "Left view (plane parallel to the right plane)",
+    "Vista dal basso": "Bottom view",
+    "Vista dal basso (sopra la frontale)": "Bottom view (above the front view)",
+    "Vista dall'alto": "Top view",
+    "Vista dall'alto (piano parallelo al superiore)": "Top view (plane parallel to the top plane)",
+    "Vista dall'alto (sotto la frontale)": "Top view (below the front view)",
+    "Vista esplosa": "Exploded View",
+    "Vista esplosa ({} {}){}": "Exploded View ({} {}){}",
+    "Vista frontale": "Front view",
+    "Vista frontale (piano parallelo al frontale)": "Front view (plane parallel to the front plane)",
+    "Vista in sezione": "Section View",
+    "Vista posteriore": "Back view",
+    "Viste (metodo E, primo diedro)": "Views (method E, first angle)",
+    "Vite a testa cilindrica con esagono incassato, ISO 4762": "Hexagon socket head cap screw, ISO 4762",
+    "Vite a testa esagonale, filetto parziale, ISO 4014": "Hexagon head bolt, partial thread, ISO 4014",
+    "Vite a testa esagonale, filetto totale, ISO 4017": "Hexagon head screw, full thread, ISO 4017",
+    "Vite a testa svasata con esagono incassato, ISO 10642": "Hexagon socket countersunk head screw, ISO 10642",
+    "Vite nel foro": "Screw in Hole",
+    "Vite svasata ISO 10642": "Countersunk screw ISO 10642",
+    "Vite TCEI ISO 4762": "Socket head cap screw ISO 4762",
+    "Vite TE ISO 4014": "Hex bolt ISO 4014",
+    "Vite TE ISO 4017": "Hex screw ISO 4017",
+    "Vite, dado o rondella vanno da soli al loro posto con due accoppiamenti: Concentrico sull'asse e Coincidente sull'imbocco.": "Screw, nut or washer go to their place by themselves with two mates: Concentric on the axis and Coincident on the entrance.",
+    "Viti e bulloni": "Screws and Bolts",
+    "Volume": "Volume",
+    "Volume (mm³)": "Volume (mm³)",
+    "Volume, area e baricentro sono calcolati sulle superfici esatte (cilindri, coni, sfere, tori), non sull'approssimazione a faccette della vista.": "Volume, area and center of mass are calculated on the exact surfaces (cylinders, cones, spheres, tori), not on the faceted approximation of the view.",
+    "Volume, area, massa e baricentro": "Volume, area, mass and center of mass",
+    "WebGL non disponibile": "WebGL not available",
+    "Worker non disponibile": "Worker not available",
+/* TRADUZIONE EN: fine */
+  };
+  const en = lang === 'en';
+  const exact = new Map(), pats = [], made = new Set(), cache = new Map(), missing = new Set();
+  const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const norm = s => s.replace(/\s+/g, ' ').trim();
+  for (const k in EN) {
+    const v = EN[k];
+    made.add(norm(v.replace(/\{\d*\}/g, '')));
+    if (!/\{#?\}/.test(k)) { exact.set(norm(k), v); continue; }
+    const parts = norm(k).split(/(\{#?\})/);
+    const re = parts.map((p, i) => i % 2 ? (p === '{#}' ? '(\\d[\\d.,]*)' : '(.*?)') : reEsc(p)).join('');
+    if (!parts.some((p, i) => !(i % 2) && p)) continue; // chiave fatta solo di {}: non si usa
+    pats.push({ re: new RegExp('^' + re + '$', 's'), v, lit: parts.filter((p, i) => !(i % 2)).join('').length });
+  }
+  pats.sort((a, b) => b.lit - a.lit); // prima le chiavi più lunghe (più precise)
+  // i pezzi variabili si traducono a loro volta; se uno di più parole resta in italiano la chiave non vale (null)
+  function fill(v, caps, depth) {
+    const c = [];
+    for (const x of caps) {
+      if (/^[\uE000-\uE0FF]$/.test(x)) { c.push(x); continue; }
+      const r = core(norm(x), depth + 1);
+      if (r !== null) c.push(/^\s*/.exec(x)[0] + r + /\s*$/.exec(x)[0]);
+      else if (/\s/.test(x.trim()) && looksItalian(norm(x))) return null;
+      else c.push(x);
+    }
+    let i = 0;
+    return v.replace(/\{(\d*)\}/g, (m, n) => (n ? c[+n - 1] : c[i++]) ?? '');
+  }
+  const SENT = /(?<=[.!?:;])\s+(?=[A-ZÀ-Ú«(\d])/;
+  // traduzione di una frase già normalizzata; null se manca
+  function core(k, depth) {
+    if (!k) return k;
+    let r = cache.get(k);
+    if (r !== undefined) return r;
+    r = exact.get(k);
+    if (r === undefined) for (const p of pats) { const m = p.re.exec(k); if (m) { const f = fill(p.v, m.slice(1), depth); if (f !== null) { r = f; break; } } }
+    // più frasi messe in fila («Fatto. Attenzione: …»): si prova a dividerle, prima le divisioni più lunghe
+    if (r === undefined) {
+      const ss = k.split(SENT);
+      for (let i = ss.length - 1; i >= 1 && r === undefined; i--) {
+        const h = core(ss.slice(0, i).join(' '), depth + 1), t = h === null ? null : core(ss.slice(i).join(' '), depth + 1);
+        if (h !== null && t !== null) r = h + ' ' + t;
+      }
+    }
+    // elenchi «1 linea, 2 archi» o «1 ellisse e 2 spline» dentro un pezzo variabile
+    for (const [sep, out] of [[', ', ', '], [' e ', ' and ']]) {
+      if (r !== undefined || depth === 0 || !k.includes(sep)) continue;
+      const ps = k.split(sep).map(x => core(x, depth + 1) ?? (looksItalian(x) ? null : x));
+      if (ps.every(x => x !== null)) r = ps.join(out);
+    }
+    if (r === undefined) r = null;
+    if (cache.size > 20000) cache.clear();
+    cache.set(k, r);
+    return r;
+  }
+  // traduce una frase; se manca restituisce l'originale (e la segnala, se sembra italiana)
+  function tr(s, depth = 0, quiet = false) {
+    if (!(en || check) || !s) return s;
+    const lead = /^\s*/.exec(s)[0], trail = /\s*$/.exec(s)[0], k = norm(s);
+    if (!k) return s;
+    const r = core(k, depth);
+    if (r === null) { if (!quiet && looksItalian(k)) missing.add(k); return s; }
+    made.add(norm(r));
+    return lead + r + trail;
+  }
+  // testo da segnalare se manca: ha lettere, non è inglese già tradotto, non è solo unità o sigle
+  function looksItalian(k) {
+    if (made.has(k) || !/[a-zà-ù]{2}/i.test(k)) return false;
+    if (/^[\d\s.,:;·×±°%()\-+/*=<>⌀Ø²³'"«»…–—]*([a-zµ]{1,3}[²³]?)?[\d\s.,:;·×±°%()\-+/*=<>⌀Ø²³'"«»…–—]*$/i.test(k)) return false;
+    return true;
+  }
+  const t = s => tr(String(s));
+  // traduce i testi <text> di un SVG scritto come stringa (tavola salvata in SVG o PDF)
+  const svg = s => en ? String(s).replace(/(<text\b[^>]*>)([^<]*)(<\/text>)/g, (m, a, b, c) => a + escXml(t(unXml(b))) + c) : s;
+  const unXml = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  const escXml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  /* --------------------------- traduzione della pagina --------------------------- */
+  const ATTRS = ['title', 'aria-label', 'placeholder', 'alt'];
+  const INLINE = new Set(['B', 'I', 'EM', 'STRONG', 'KBD', 'CODE', 'SUB', 'SUP', 'BR', 'U', 'SMALL']);
+  const SKIP = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'CANVAS']);
+  const skip = el => !el || SKIP.has(el.nodeName) || !!(el.closest && el.closest('[translate="no"],[data-i18n="no"]'));
+  let busy = false;
+  function doAttrs(el) {
+    for (const a of ATTRS) { const v = el.getAttribute(a); if (v) { const r = tr(v); if (r !== v && en) el.setAttribute(a, r); } }
+  }
+  // elemento con testo e tag in linea: si traduce la frase intera, se c'è nel dizionario.
+  // <b>, <i>... senza attributi restano nella frase; gli altri elementi in linea (a, span...) diventano
+  // segnaposti , ... (il {} delle chiavi) e tornano al loro posto, con il loro testo tradotto a parte.
+  // Con tag di blocco o comandi (div, label, input, button...) niente frase intera: ogni testo per conto suo.
+  const BLOCK = new Set(('DIV P UL OL LI TABLE TR TD TH THEAD TBODY TFOOT H1 H2 H3 H4 H5 H6 SECTION HEADER FOOTER NAV ASIDE MAIN FORM FIELDSET LEGEND PRE BLOCKQUOTE DL DT DD DETAILS SUMMARY FIGURE FIGCAPTION CAPTION HR LABEL ' +
+    'INPUT BUTTON SELECT OPTION TEXTAREA IMG CANVAS SCRIPT STYLE').split(' '));
+  function doMixed(el) {
+    if (!el.firstChild || el.childNodes.length < 2 || el.namespaceURI !== 'http://www.w3.org/1999/xhtml') return false;
+    let key = '', slots = [];
+    for (const c of el.childNodes) {
+      if (c.nodeType === 3) key += c.nodeValue.replace(/[<>&]/g, m => m === '<' ? '&lt;' : m === '>' ? '&gt;' : '&amp;');
+      else if (c.nodeType === 1) {
+        if (BLOCK.has(c.nodeName) || c.namespaceURI !== 'http://www.w3.org/1999/xhtml') return false;
+        if (INLINE.has(c.nodeName) && !c.attributes.length) key += c.outerHTML;
+        else { key += String.fromCharCode(0xE000 + slots.length); slots.push(c); }
+      } else if (c.nodeType !== 8) return false;
+    }
+    const k = norm(key);
+    if (!/[a-zà-ù]{2}/i.test(k.replace(/<[^>]*>/g, ''))) return false;
+    const r = tr(k, 0, true);
+    if (r === k) return false; // si prova testo per testo (lì si segnalano le frasi che mancano)
+    if (!en) { slots.forEach(c => walk(c)); return true; }
+    const lead = /^\s*/.exec(key)[0], trail = /\s*$/.exec(key)[0];
+    const parts = (lead + r + trail).split(/([-])/);
+    while (el.firstChild) el.removeChild(el.firstChild);
+    const tpl = root.document.createElement('template');
+    for (const p of parts) {
+      if (!p) continue;
+      const i = p.charCodeAt(0) - 0xE000;
+      if (p.length === 1 && i >= 0 && i < slots.length) { el.appendChild(slots[i]); walk(slots[i]); }
+      else { tpl.innerHTML = p; el.appendChild(tpl.content); }
+    }
+    return true;
+  }
+  function walk(node, fromParent) {
+    if (node.nodeType === 3) {
+      const p = node.parentNode;
+      if (!p || skip(p)) return;
+      if (!fromParent && p.nodeType === 1 && doMixed(p)) return;
+      const v = node.nodeValue, r = tr(v);
+      if (r !== v && en) node.nodeValue = r;
+      return;
+    }
+    if (node.nodeType !== 1 || skip(node)) return;
+    doAttrs(node);
+    if (doMixed(node)) return;
+    for (let c = node.firstChild; c; c = c.nextSibling) walk(c, true);
+  }
+  function run(recs) {
+    if (busy) return;
+    busy = true;
+    try {
+      for (const m of recs) {
+        if (m.type === 'childList') m.addedNodes.forEach(walk);
+        else if (m.type === 'characterData') walk(m.target);
+        else if (m.type === 'attributes' && m.target.nodeType === 1 && !skip(m.target)) doAttrs(m.target);
+      }
+    } finally { obs.takeRecords(); busy = false; }
+  }
+  const obs = (en || check) && root.MutationObserver ? new root.MutationObserver(run) : null;
+  function start() {
+    if (!obs) return;
+    const d = root.document;
+    if (en) { d.documentElement.lang = 'en'; d.title = tr(d.title); }
+    busy = true; try { walk(d.body); } finally { busy = false; }
+    obs.observe(d.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS });
+  }
+  // cambia lingua: si salva la scelta e si ricarica la pagina (il lavoro è già salvato)
+  function set(l) {
+    try { root.localStorage.setItem(KEY, l === 'en' ? 'en' : 'it'); } catch (e) { /* niente */ }
+    if (root.location) {
+      const u = new URL(root.location.href); u.searchParams.delete('lang');
+      root.location.replace(u.href);
+    }
+  }
+  const api = {
+    lang, en, check, t, tr, svg, set, start, missing, dict: EN,
+    dc: en ? '.' : ',',                 // separatore decimale
+    loc: en ? 'en-US' : 'it-IT',        // per toLocaleString
+    // numero con il separatore decimale della lingua (la stringa arriva con il punto)
+    dec: s => en ? String(s) : String(s).replace('.', ','),
+  };
+  root.I18N = api;
+  if ((en || check) && root.document && root.document.body) start();
+})(this);
+/* LINGUA: fine */
 /* CSG con alberi BSP (algoritmo di csg.js, E. Wallace) riscritto senza ricorsione profonda.
    Ogni poligono porta un "tag": l'indice della superficie da cui nasce (piano, cilindro, cono, toro...).
    I tag servono per il calcolo esatto delle proprietà di massa, per gli spigoli e per la messa in tavola.
@@ -2947,7 +4740,7 @@ label.chk .gl-i { margin-left: 2px; }
       if (nt <= max) break;
     }
     if (!res.meshes.length || !nt) throw new Error('Nel file non ci sono solidi né superfici (forse contiene solo linee o un disegno 2D).');
-    if (nt > max) throw new Error(`Il pezzo è troppo complesso: anche con i triangoli più grandi ne servono ${nt.toLocaleString('it-IT')}, il massimo è ${max.toLocaleString('it-IT')}. Prova a importare una parte alla volta.`);
+    if (nt > max) throw new Error(`Il pezzo è troppo complesso: anche con i triangoli più grandi ne servono ${nt.toLocaleString((typeof I18N !== 'undefined' ? I18N.loc : 'it-IT'))}, il massimo è ${max.toLocaleString((typeof I18N !== 'undefined' ? I18N.loc : 'it-IT'))}. Prova a importare una parte alla volta.`);
     const pos = new Float32Array(nt * 9), face = new Uint32Array(nt), body = new Uint32Array(nt);
     let t = 0, fid = 0;
     const names = [], fcol = [], bodies = [];
@@ -3882,7 +5675,7 @@ self.postMessage({ hello: true });`;
       if (b && b.ents.length) { walkNote(b.ents, mmul(m, [1, 0, 0, 1, num(g, 12), num(g, 22)]), 0); return; }
       // quota senza blocco: solo il numero, nel punto del testo
       const o = ocs(g); if (!o) { curves3d++; return; }
-      const T0 = val(g, 1, ''), meas = num(g, 42), mt = String(Math.round(meas * 1e4) / 1e4).replace('.', ',');
+      const T0 = val(g, 1, ''), meas = num(g, 42), mt = String(Math.round(meas * 1e4) / 1e4).replace('.', (typeof I18N !== 'undefined' ? I18N.dc : ','));
       if (!meas && (!T0 || T0 === '<>')) return;   // nessun numero da mostrare
       const s = T0 && T0 !== '<>' ? mtextLines(recode(T0).replace('<>', mt), 0, 1).join(' ') : mt;
       noteText(mmul(m, o), s, num(g, 11), num(g, 21), styleOf(g).h || 2.5, num(g, 53) * Math.PI / 180, 1, 1, 0, 0);
@@ -5990,7 +7783,7 @@ self.postMessage({ hello: true });`;
       rMin = Math.min(rMin, dot(q, d0)); rMax = Math.max(rMax, r); zMin = Math.min(zMin, z); zMax = Math.max(zMax, z);
       rho = Math.max(rho, len(sub(p, P0)));
     }
-    const fmt = x => String(+x.toFixed(3)).replace('.', ',');
+    const fmt = x => String(+x.toFixed(3)).replace('.', (typeof I18N !== 'undefined' ? I18N.dc : ','));
     if (rMin + Math.min(0, cv.r1 - cv.R) <= 1e-6) throw userErr('Il profilo arriva all\'asse dell\'elica: rimpicciolisci il profilo o allarga il cerchio');
     if (cv.revs > 1 + 1e-9) {
       if (!cv.spiral && zMax - zMin >= cv.pitch - 1e-6) throw userErr('Il passo (' + fmt(cv.pitch) + ' mm) non è più grande dell\'altezza del profilo (' + fmt(zMax - zMin) + ' mm): le spire si compenetrano. Aumenta il passo o rimpicciolisci il profilo');
@@ -8717,7 +10510,7 @@ self.postMessage({ hello: true });`;
   }
   // distinta base in CSV per i fogli di calcolo italiani: punto e virgola, virgola decimale, massa in grammi
   function bomCSV(rows) {
-    const num = v => v.toFixed(3).replace('.', ',');
+    const num = v => v.toFixed(3).replace('.', (typeof I18N !== 'undefined' ? I18N.dc : ','));
     const q = t => { const x = String(t); return /[";\n\r]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; };
     const out = ['N.;Parte;Materiale;Quantità;Massa cad. (g);Massa tot. (g)'];
     for (const r of rows) out.push([r.item, q(r.name), q(r.solid && r.material ? r.material.name : 'Senza solido'), r.qty, r.solid ? num(r.unitMass) : '', r.solid ? num(r.mass) : ''].join(';'));
@@ -9321,7 +11114,7 @@ self.postMessage({ hello: true });`;
     return e;
   };
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const fmt = (x, d = 2) => (Math.abs(x) < 0.5 * Math.pow(10, -d) ? 0 : x).toFixed(d).replace('.', ',');
+  const fmt = (x, d = 2) => (Math.abs(x) < 0.5 * Math.pow(10, -d) ? 0 : x).toFixed(d).replace('.', I18N.dc);
   const STORE = 'banco-cad-v1';
 
   const App = window.App = {
@@ -9451,7 +11244,7 @@ self.postMessage({ hello: true });`;
     } catch (e) {
       // spazio del browser esaurito (di solito molte parti o un file importato molto grande): si passa all'archivio grande del browser
       if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
-        dbDo('readwrite', os => os.put(data, STORE)).then(() => {
+        return dbDo('readwrite', os => os.put(data, STORE)).then(() => {
           App.storeInDb = true; App.storeFull = false;
           try { localStorage.setItem(STORE, DB_MARK); } catch (e2) { try { localStorage.removeItem(STORE); localStorage.setItem(STORE, DB_MARK); } catch (e3) { /* niente segno: la prossima apertura guarda comunque l'archivio */ } }
         }).catch(() => {
@@ -9481,6 +11274,8 @@ self.postMessage({ hello: true });`;
     clearTimeout(saveT);
     saveT = setTimeout(writeStore, 300);
   };
+  // salvataggio subito (per il cambio di lingua): la promessa finisce quando anche l'archivio grande è scritto
+  App.saveNow = () => { clearTimeout(saveT); return Promise.resolve(writeStore()).catch(() => {}); };
   // chiusura o ricarica della pagina: il salvataggio in sospeso si fa subito
   const flushSave = () => { if (saveT) { clearTimeout(saveT); writeStore(); } };
   window.addEventListener('pagehide', flushSave);
@@ -9504,7 +11299,7 @@ self.postMessage({ hello: true });`;
     }).catch(() => { App.storeLoading = false; App.storeInDb = false; toast('Il progetto salvato non si può leggere dall\'archivio del browser.', 6000); });
   }
   function afterLoad(mode) {
-    $('#docName').value = App.doc.name || 'Parte1';
+    $('#docName').value = I18N.t(App.doc.name || 'Parte1');
     App.mode = 'part'; $('#app').dataset.mode = 'part';
     App.undoStack = []; App.redoStack = []; App.sel = [];
     if (mode === 'assembly') App.asm.enter();
@@ -9840,7 +11635,7 @@ self.postMessage({ hello: true });`;
         }
         const q = r.project(PC[3]);
         c.fillStyle = '#4a6f94'; c.font = '12px ' + getComputedStyle(document.body).fontFamily; c.textAlign = 'left'; c.textBaseline = 'bottom';
-        c.fillText(Model.STD_PLANES[id].name, q[0] + 4, q[1] - 3);
+        c.fillText(I18N.t(Model.STD_PLANES[id].name), q[0] + 4, q[1] - 3);
       }
       for (const id of visSet) {
         if (Model.STD_PLANES[id] || !App.st || !App.st.planes || !App.st.planes.has(id)) continue;
@@ -9848,7 +11643,7 @@ self.postMessage({ hello: true });`;
         if (!pf || Math.abs(dot(F.z, b.back)) < 0.08) continue;
         const q = r.project(planeCorners(F)[3]);
         c.fillStyle = '#4a6f94'; c.font = '12px ' + getComputedStyle(document.body).fontFamily; c.textAlign = 'left'; c.textBaseline = 'bottom';
-        c.fillText(pf.name, q[0] + 4, q[1] - 3);
+        c.fillText(I18N.t(pf.name), q[0] + 4, q[1] - 3);
       }
     }
     if (App.mode === 'sketch') Sketcher.drawOverlay(c);
@@ -10183,9 +11978,9 @@ self.postMessage({ hello: true });`;
     showCtx(e.clientX, e.clientY, [['Schizzo su questo piano', () => Sketcher.start({ kind: 'std', id })], ['Normale a', () => App.r.setView(GLView.Renderer.normalQ(Model.STD_PLANES[id].F))]]);
   }
   function renameFeature(f) {
-    modal('Rinomina', `<div class="row"><label for="rn">Nome</label><input id="rn" type="text" value="${esc(f.name)}" style="width:240px"></div>`, [
+    modal('Rinomina', `<div class="row"><label for="rn">Nome</label><input id="rn" type="text" value="${esc(I18N.t(f.name))}" style="width:240px"></div>`, [
       { label: 'Annulla' },
-      { label: 'Rinomina', primary: true, fn: () => { const v = $('#rn').value.trim(); if (v) App.change(() => { f.name = v; }, { noRegen: true }); App.renderTree(); } },
+      { label: 'Rinomina', primary: true, fn: () => { const v = $('#rn').value.trim(); if (v && v !== I18N.t(f.name)) App.change(() => { f.name = v; }, { noRegen: true }); App.renderTree(); } },
     ]);
     setTimeout(() => { const i = $('#rn'); if (i) { i.focus(); i.select(); } }, 30);
   }
@@ -10436,7 +12231,7 @@ self.postMessage({ hello: true });`;
 
   /* ================= materiale e proprietà di massa ================= */
   function materialDialog() {
-    const opts = Model.MATERIALS.map(m => `<option value="${m.id}" ${m.id === App.doc.material ? 'selected' : ''}>${esc(m.name)} — ${String(m.rho).replace('.', ',')} g/cm³</option>`).join('');
+    const opts = Model.MATERIALS.map(m => `<option value="${m.id}" ${m.id === App.doc.material ? 'selected' : ''}>${esc(m.name)} — ${String(m.rho).replace('.', I18N.dc)} g/cm³</option>`).join('');
     modal('Materiale', `<div class="row"><label for="matSel">Materiale della parte</label><select id="matSel" style="width:300px">${opts}</select></div><p class="note">La densità serve per calcolare la massa nelle proprietà di massa.</p>`, [
       { label: 'Annulla' },
       { label: 'Applica', primary: true, fn: () => { const v = $('#matSel').value; App.change(() => { App.doc.material = v; }, { noRegen: true }); App.renderTree(); } },
@@ -10622,6 +12417,7 @@ self.postMessage({ hello: true });`;
     }
   }
   App.offerFile = function (name, mime, data, title) {
+    name = I18N.tr(name, 0, true); // in inglese: «Parte1-tavola.pdf» → «Part1-drawing.pdf»
     if (App.dl) { platformSave(name, mime, data).then(ok => { if (!ok) App.dl = null, App.offerFile(name, mime, data, title); }); return; }
     let downloaded = false;
     try {
@@ -10665,11 +12461,16 @@ self.postMessage({ hello: true });`;
       return;
     }
     App.change(() => { App.doc = d.doc; App.drawingState = d.drawing || null; App.sel = []; activePart().doc = App.doc; });
-    $('#docName').value = App.doc.name || 'Parte1';
+    $('#docName').value = I18N.t(App.doc.name || 'Parte1');
     App.r.fit();
     toast('Progetto importato');
   }
   App.importText = doImport;
+  // cambio della lingua: il lavoro si salva e la pagina si ricarica nella lingua scelta
+  function switchLanguage() {
+    if (App.mode === 'sketch' || App.pm) { toast('Chiudi prima lo schizzo o il pannello aperto, poi cambia lingua.'); return; }
+    App.saveNow().then(() => I18N.set(I18N.en ? 'it' : 'en'));
+  }
   function exportSTL() {
     const st = App.st;
     if (!st || !st.body.length) { toast('Non c\'è nessun solido da esportare.'); return; }
@@ -10812,10 +12613,10 @@ self.postMessage({ hello: true });`;
     const m = Import.weld(r.pos);
     const nt = m.i.length / 3;
     if (!nt) throw new Error('Il file non contiene triangoli.');
-    if (nt > MESH_MAX) throw new Error(`Il file ha ${nt.toLocaleString('it-IT')} triangoli: il massimo è ${MESH_MAX.toLocaleString('it-IT')}. Riducili con il programma da cui viene (comando «Semplifica» o «Riduci») e riprova.`);
+    if (nt > MESH_MAX) throw new Error(`Il file ha ${nt.toLocaleString(I18N.loc)} triangoli: il massimo è ${MESH_MAX.toLocaleString(I18N.loc)}. Riducili con il programma da cui viene (comando «Semplifica» o «Riduci») e riprova.`);
     const f = { type: 'import', fmt: ext, file: String(name), unit: opts.unit || 'mm', zUp: !!opts.zUp, mesh: Import.pack(m) };
     const { info, e, w } = addImported(f);
-    let msg = e ? 'Importazione con errori: ' + e : `Importato «${name}»: ${info.tris.toLocaleString('it-IT')} triangoli, ${info.faces.toLocaleString('it-IT')} facce piane.`;
+    let msg = e ? 'Importazione con errori: ' + e : `Importato «${name}»: ${info.tris.toLocaleString(I18N.loc)} triangoli, ${info.faces.toLocaleString(I18N.loc)} facce piane.`;
     if (!e && info.reoriented) msg += ' Alcune facce erano girate al contrario: sono state corrette.';
     if (!e && w) msg += ' Attenzione: il corpo non è chiuso.';
     return { f, info, error: e || null, warn: w || null, msg };
@@ -10949,7 +12750,7 @@ self.postMessage({ hello: true });`;
   // assieme: elenco dei corpi con le caselle (tutti scelti), poi un solo «Importato» con i corpi scelti
   function chooseCadBodies(name, fmt, r, opts) {
     // volume con 4 cifre significative: sotto 1 cm³ in mm³, sopra in cm³ (0,9999 cm³ e 1000,0001 mm³ si leggono uguali)
-    const vol = v => { const x = +v.toPrecision(4); return x >= 1000 ? (x / 1000).toLocaleString('it-IT', { maximumSignificantDigits: 4 }) + ' cm³' : x.toLocaleString('it-IT', { maximumSignificantDigits: 4 }) + ' mm³'; };
+    const vol = v => { const x = +v.toPrecision(4); return x >= 1000 ? (x / 1000).toLocaleString(I18N.loc, { maximumSignificantDigits: 4 }) + ' cm³' : x.toLocaleString(I18N.loc, { maximumSignificantDigits: 4 }) + ' mm³'; };
     const rows = r.bodies.map((b, i) => `<label class="chk cad-body"><input type="checkbox" data-body="${i}" checked>` +
       `<span class="sw" style="background:${b.color && opts.colors !== false ? '#' + b.color : 'var(--line-2)'}"></span> ${esc(b.name || 'Corpo ' + (i + 1))}` +
       `<span class="n">${b.faces} ${b.faces === 1 ? 'faccia' : 'facce'} · ${vol(b.volume)}</span></label>`).join('');
@@ -10997,7 +12798,7 @@ self.postMessage({ hello: true });`;
     let msg;
     if (e) msg = 'Importazione con errori: ' + e;
     else {
-      msg = `Importato «${name}»: ${info.brepFaces.toLocaleString('it-IT')} facce` + (info.parts > 1 ? `, ${info.parts} corpi separati` : '') + '.';
+      msg = `Importato «${name}»: ${info.brepFaces.toLocaleString(I18N.loc)} facce` + (info.parts > 1 ? `, ${info.parts} corpi separati` : '') + '.';
       if (r.level >= 2) msg += ' Il pezzo è molto complesso: le superfici curve sono state divise in triangoli più grandi, volume e massa sono meno precisi.';
       if (info.reoriented) msg += ' Alcune facce erano girate al contrario: sono state corrette.';
       if (w) msg += ' Attenzione: il corpo non è chiuso (forse il file contiene solo superfici).';
@@ -11194,7 +12995,7 @@ self.postMessage({ hello: true });`;
       const box = $('#dxfLayers');
       if (cur.layers) {
         box.innerHTML = `<div class="lh"><b>Layer da importare</b><button type="button" data-all="1">Tutti</button><button type="button" data-all="0">Nessuno</button></div>` +
-          cur.layers.map(l => `<label class="chk"><input type="checkbox" data-ly="${esc(l.name)}" ${l.off ? '' : 'checked'}> ${esc(l.name)}${l.off ? ' <i>(spento nel file)</i>' : ''}<span class="n">${l.count.toLocaleString('it-IT')} entità nel file</span></label>`).join('');
+          cur.layers.map(l => `<label class="chk"><input type="checkbox" data-ly="${esc(l.name)}" ${l.off ? '' : 'checked'}> <span data-i18n="no">${esc(l.name)}</span>${l.off ? ' <i>(spento nel file)</i>' : ''}<span class="n">${l.count.toLocaleString(I18N.loc)} entità nel file</span></label>`).join('');
         box.hidden = false;
         box.querySelectorAll('input[data-ly]').forEach(x => x.addEventListener('change', drawDxfPreview));
         box.querySelectorAll('button[data-all]').forEach(b => b.addEventListener('click', () => { box.querySelectorAll('input[data-ly]').forEach(x => { x.checked = b.dataset.all === '1'; }); drawDxfPreview(); }));
@@ -11257,15 +13058,15 @@ self.postMessage({ hello: true });`;
         }
       }
       const noteSvg = r.notes.length ? `<g class="dxf-notes" fill="var(--ink-3)">${noteS.length ? `<path class="dxf-soft" d="${noteS.join('')}" fill-rule="evenodd" opacity="0.16"/>` : ''}${noteH.length ? `<path class="dxf-hatch" d="${noteH.join('')}" fill="none" stroke="var(--ink-3)" stroke-width="0.6" opacity="0.6" vector-effect="non-scaling-stroke"/>` : ''}${noteD.length ? `<path d="${noteD.join('')}" fill="none" stroke="var(--ink-3)" stroke-width="0.8" vector-effect="non-scaling-stroke"/>` : ''}${noteF.length ? `<path d="${noteF.join('')}"/>` : ''}${noteT.join('')}</g>` : '';
-      $('#dxfPrev').innerHTML = `<svg viewBox="${vb.map(f).join(' ')}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Anteprima del disegno DXF">` + noteSvg +
+      $('#dxfPrev').innerHTML = `<svg viewBox="${vb.map(f).join(' ')}" preserveAspectRatio="xMidYMid meet" role="img" data-i18n="no" aria-label="${I18N.t('Anteprima del disegno DXF')}">` + noteSvg +
         stroke(paths.cons, 'var(--ink-3)', '5 4') + stroke(paths.center, 'var(--accent)', '10 3 2 3') + stroke(paths.n, 'var(--ink)') +
         `<path d="M${P([O[0] - cs, O[1]])}L${P([O[0] + cs, O[1]])}M${P([O[0], O[1] - cs])}L${P([O[0], O[1] + cs])}" stroke="#d92d20" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
-      const n = r.geo.length, fmtN = x => (Math.round(x * k * 100) / 100).toLocaleString('it-IT');
-      cap.textContent = `${cur.conv ? cur.conv.kind.name + ' · ' : ''}${n.toLocaleString('it-IT')} tra linee, archi e cerchi (polilinee e blocchi divisi nei loro tratti) · ingombro ${fmtN(w)} × ${fmtN(h)} mm (unità: ${DXF_UNIT_NAMES[unit] || unit}${r.unit || $('#dxfUnit').value !== 'file' ? '' : ', il file non la dice'})${noteWords(r.noteCount) ? ' · sullo sfondo: ' + noteWords(r.noteCount) : ''}`;
+      const n = r.geo.length, fmtN = x => (Math.round(x * k * 100) / 100).toLocaleString(I18N.loc);
+      cap.textContent = `${cur.conv ? cur.conv.kind.name + ' · ' : ''}${n.toLocaleString(I18N.loc)} tra linee, archi e cerchi (polilinee e blocchi divisi nei loro tratti) · ingombro ${fmtN(w)} × ${fmtN(h)} mm (unità: ${DXF_UNIT_NAMES[unit] || unit}${r.unit || $('#dxfUnit').value !== 'file' ? '' : ', il file non la dice'})${noteWords(r.noteCount) ? ' · sullo sfondo: ' + noteWords(r.noteCount) : ''}`;
     }
   }
   function noteWords(c) {
-    const w = [], a = (n, one, many) => { if (n) w.push(n.toLocaleString('it-IT') + ' ' + (n === 1 ? one : many)); };
+    const w = [], a = (n, one, many) => { if (n) w.push(n.toLocaleString(I18N.loc) + ' ' + (n === 1 ? one : many)); };
     a(c.testi, 'testo', 'testi'); a(c.quote, 'quota', 'quote'); a(c.richiami, 'richiamo', 'richiami'); a(c.tratteggi, 'tratteggio', 'tratteggi'); a(c.tolleranze, 'tolleranza geometrica', 'tolleranze geometriche'); a(c.tabelle, 'tabella', 'tabelle');
     return w.join(', ');
   }
@@ -11287,7 +13088,7 @@ self.postMessage({ hello: true });`;
     const c = info.count, parts = [];
     const n = (k, one, many) => { if (c[k]) parts.push(c[k] + ' ' + (c[k] === 1 ? one : many)); };
     n('line', 'linea', 'linee'); n('arc', 'arco', 'archi'); n('circle', 'cerchio', 'cerchi'); n('center', 'linea di mezzeria', 'linee di mezzeria'); n('cons', 'entità di costruzione', 'entità di costruzione');
-    const fmt = x => (Math.round(x * 100) / 100).toLocaleString('it-IT');
+    const fmt = x => (Math.round(x * 100) / 100).toLocaleString(I18N.loc);
     let msg = `Importato «${name}»: ${parts.join(', ')}. Ingombro ${fmt(info.box.mx[0] - info.box.mn[0])} × ${fmt(info.box.mx[1] - info.box.mn[1])} mm (unità: ${DXF_UNIT_NAMES[unit] || unit}${r.unit || (opts.unit && opts.unit !== 'file') ? '' : ', il file non la dice'}).`;
     const ONE = { testi: 'testo', quote: 'quota', tratteggi: 'tratteggio', riempimenti: 'riempimento', punti: 'punto', ellissi: 'ellisse', 'curve spline': 'curva spline', richiami: 'richiamo', 'facce 3D': 'faccia 3D', attributi: 'attributo', immagini: 'immagine', finestre: 'finestra', mascherature: 'mascheratura', semirette: 'semiretta', 'rette infinite': 'retta infinita', tolleranze: 'tolleranza', blocchi: 'blocco', regioni: 'regione', 'solidi 3D': 'solido 3D', 'corpi 3D': 'corpo 3D', superfici: 'superficie', tabelle: 'tabella', multilinee: 'multilinea', luci: 'luce', tracce: 'traccia', forme: 'forma', 'oggetti OLE': 'oggetto OLE', eliche: 'elica' };
     const sk = Object.entries(r.skipped).map(([k, v]) => v + ' ' + (v === 1 && ONE[k] ? ONE[k] : k));
@@ -11302,7 +13103,7 @@ self.postMessage({ hello: true });`;
       if (ap.arcs) pieces.push(ap.arcs + (ap.arcs === 1 ? ' arco' : ' archi'));
       if (ap.lines) pieces.push(ap.lines + (ap.lines === 1 ? ' linea' : ' linee'));
       const e = ap.err * scale;
-      const em = e < 0.0005 ? 'meno di 0,001' : (e < 0.01 ? e.toLocaleString('it-IT', { maximumFractionDigits: 4 }) : e.toLocaleString('it-IT', { maximumSignificantDigits: 2 }));
+      const em = e < 0.0005 ? 'meno di 0,001' : (e < 0.01 ? e.toLocaleString(I18N.loc, { maximumFractionDigits: 4 }) : e.toLocaleString(I18N.loc, { maximumSignificantDigits: 2 }));
       msg += ` ${what.join(' e ')} ${ap.ellipses + ap.splines === 1 ? 'è diventata' : 'sono diventate'} ${pieces.join(' e ')} (compresi nel conteggio), lontani al massimo ${em} mm dalla curva vera.`;
       if (ap.over) msg += ' Attenzione: in qualche punto la curva è troppo complicata e lo scostamento è maggiore del solito.';
     }
@@ -11331,7 +13132,7 @@ self.postMessage({ hello: true });`;
         return;
       }
       App.change(() => { App.doc = Model.newDoc(); App.sel = []; App.drawingState = null; });
-      $('#docName').value = 'Parte1';
+      $('#docName').value = I18N.t('Parte1');
       App.r.setView(GLView.Renderer.viewQ('iso'));
       App.r.fit();
     });
@@ -11358,7 +13159,7 @@ self.postMessage({ hello: true });`;
       return;
     }
     const restored = load();
-    $('#docName').value = App.doc.name || 'Parte1';
+    $('#docName').value = I18N.t(App.doc.name || 'Parte1');
     $('#partSel').addEventListener('change', e => { const v = e.target.value; if (v === 'asm') App.setCmdTab('assembly'); else if (v.startsWith('asm:')) App.asm.switchTo(v.slice(4)); else openPart(v); });
     $('#docName').addEventListener('change', e => {
       if (App.mode === 'assembly') { const v = e.target.value.trim() || 'Assieme1'; App.change(() => { App.project.assembly.name = v; }, { noRegen: true }); App.asm.refreshPartSel(); App.renderTree(); return; }
@@ -11371,9 +13172,11 @@ self.postMessage({ hello: true });`;
       m.querySelector('[data-act="pdf"]').textContent = App.mode === 'drawing' ? 'Salva PDF della tavola' : App.mode === 'sketch' ? 'Salva PDF dello schizzo' : 'Salva PDF della vista 3D';
     });
     $('#manualLink').href = App.MANUAL_URL;
+    if (I18N.en) { const lb = $('#langBtn'); lb.textContent = 'Lingua: italiano'; lb.lang = 'it'; }
     $('#menuFile').addEventListener('click', e => {
       const b = e.target.closest('[data-act]'); if (!b) return; hideMenus();
       if (b.dataset.act === 'manual') return; // è un collegamento: lo apre il browser
+      if (b.dataset.act === 'lang') { switchLanguage(); return; }
       if (b.dataset.act === 'addPart') { addNewPart(); return; }
       if (b.dataset.act === 'delPart') { deletePartDialog(); return; }
       if (App.mode === 'assembly' && (b.dataset.act === 'importCad' || b.dataset.act === 'importMesh')) { App.asm.insertDialog(); return; }
@@ -11504,7 +13307,7 @@ self.postMessage({ hello: true });`;
     App.mode = 'part'; $('#app').dataset.mode = 'part';
     ctxLoad();
     App.sel = []; App.hover = null;
-    $('#docName').value = App.doc.name || 'Parte1';
+    $('#docName').value = I18N.t(App.doc.name || 'Parte1');
     App.setCmdTab(tab || (App.doc.features.length ? 'features' : 'sketch'));
     App.regen();
     App.r.fit();
@@ -11643,7 +13446,7 @@ self.postMessage({ hello: true });`;
       App.mode = 'part'; $('#app').dataset.mode = 'part';
       ctxLoad();
       App.sel = []; App.hover = null;
-      $('#docName').value = App.doc.name || 'Parte1';
+      $('#docName').value = I18N.t(App.doc.name || 'Parte1');
       App.regen();
       App.r.fit();
       refreshPartSel();
@@ -13572,10 +15375,10 @@ self.postMessage({ hello: true });`;
     closeModify();
     analyze(); showProps(); A().redraw();
   }
-  function trimNum(v) { return (Math.round(v * 1e6) / 1e6).toString().replace('.', ','); }
+  function trimNum(v) { return (Math.round(v * 1e6) / 1e6).toString().replace('.', I18N.dc); }
   SK.fmtDim = function (c) {
     const v = Math.round(c.v * 100) / 100;
-    let s = (Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : v.toFixed(2).replace(/0$/, '')).replace('.', ',');
+    let s = (Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : v.toFixed(2).replace(/0$/, '')).replace('.', I18N.dc);
     if (c.t === 'diameter') s = 'Ø' + s;
     if (c.t === 'radius') s = 'R' + s;
     if (c.t === 'angle') s = s + '°';
@@ -13713,7 +15516,7 @@ self.postMessage({ hello: true });`;
     const list = el('div', { class: 'rellist' });
     for (const c of rels) {
       const bad = ss.bad && ss.bad.has(c.id);
-      list.append(el('div', { class: 'ri', style: bad ? 'color:var(--err)' : '' }, relGlyph(c.t) + ' ' + (S.REL_NAMES[c.t] || c.t), el('button', { type: 'button', title: 'Elimina la relazione', onclick: () => edit(() => { ss.sk.cons = ss.sk.cons.filter(x => x !== c); }) }, 'Elimina')));
+      list.append(el('div', { class: 'ri', style: bad ? 'color:var(--err)' : '' }, relGlyph(c.t) + ' ', (S.REL_NAMES[c.t] || c.t), el('button', { type: 'button', title: 'Elimina la relazione', onclick: () => edit(() => { ss.sk.cons = ss.sk.cons.filter(x => x !== c); }) }, 'Elimina')));
     }
     rg.append(list);
     body.append(rg);
@@ -13722,7 +15525,7 @@ self.postMessage({ hello: true });`;
     if (opts.length) {
       const ag = el('div', { class: 'grp' }, el('h3', {}, 'Aggiungi relazioni'));
       const br = el('div', { class: 'btnrow' });
-      for (const o of opts) br.append(el('button', { class: 'relbtn', type: 'button', onclick: () => addRelation(o) }, relGlyph(o.t) + ' ' + o.label));
+      for (const o of opts) br.append(el('button', { class: 'relbtn', type: 'button', onclick: () => addRelation(o) }, relGlyph(o.t) + ' ', o.label));
       ag.append(br);
       body.append(ag);
     }
@@ -14401,7 +16204,7 @@ self.postMessage({ hello: true });`;
     // valore a metà arco
     const am = degv > 1e-6 ? a / 2 : 0.35;
     const qt = scr(from[0] + (rr + 16 * px) * Math.cos(am), from[1] + (rr + 16 * px) * Math.sin(am));
-    const txt = (Math.abs(degv - Math.round(degv)) < 5e-4 ? String(Math.round(degv)) : degv.toFixed(1).replace('.', ',')) + '°' + (ortho ? (degv === 0 || Math.round(degv) === 180 ? ' orizzontale' : ' verticale') : '');
+    const txt = (Math.abs(degv - Math.round(degv)) < 5e-4 ? String(Math.round(degv)) : degv.toFixed(1).replace('.', I18N.dc)) + '°' + (ortho ? (degv === 0 || Math.round(degv) === 180 ? ' orizzontale' : ' verticale') : '');
     c.font = '600 11px ' + font; c.textAlign = 'center'; c.textBaseline = 'middle';
     const w = c.measureText(txt).width + 8;
     c.fillStyle = dark() ? 'rgba(20,24,30,0.85)' : 'rgba(255,255,255,0.88)'; c.fillRect(qt[0] - w / 2, qt[1] - 8, w, 16);
@@ -14733,7 +16536,7 @@ self.postMessage({ hello: true });`;
       pm._preview = previewSt;
       // Elica/Spirale: le misure della curva, aggiornate a ogni modifica
       const ci = document.querySelector('#pmCurveInfo');
-      if (ci) { const nf = previewSt.info.get(f.id), n3 = x => (+x.toFixed(3)).toLocaleString('it-IT', { maximumFractionDigits: 3 }); ci.textContent = nf ? 'Lunghezza della curva: ' + n3(nf.length) + ' mm · altezza ' + n3(nf.height) + ' mm · passo ' + n3(nf.pitch) + ' mm · ' + n3(nf.revs) + ' rivoluzioni' + (Math.abs(nf.r1 - nf.r0) > 1e-9 ? ' · diametro finale ' + n3(2 * nf.r1) + ' mm' : '') : ''; }
+      if (ci) { const nf = previewSt.info.get(f.id), n3 = x => (+x.toFixed(3)).toLocaleString(I18N.loc, { maximumFractionDigits: 3 }); ci.textContent = nf ? 'Lunghezza della curva: ' + n3(nf.length) + ' mm · altezza ' + n3(nf.height) + ' mm · passo ' + n3(nf.pitch) + ' mm · ' + n3(nf.revs) + ' rivoluzioni' + (Math.abs(nf.r1 - nf.r0) > 1e-9 ? ' · diametro finale ' + n3(2 * nf.r1) + ' mm' : '') : ''; }
       App.redraw();
     }
     pm.refresh = refresh;
@@ -14873,7 +16676,7 @@ self.postMessage({ hello: true });`;
     const upd = () => pm.update();
     const num = (label, key, unit, opts = {}) => {
       const id = 'pm_' + key;
-      const inp = el('input', { type: 'text', id, inputmode: 'decimal', value: String(f[key] ?? '').replace('.', ',') });
+      const inp = el('input', { type: 'text', id, inputmode: 'decimal', value: String(f[key] ?? '').replace('.', I18N.dc) });
       inp.addEventListener('input', () => { const v = parseFloat(inp.value.replace(',', '.')); if (isFinite(v)) { f[key] = v; upd(); } });
       return el('div', { class: 'row' }, el('label', { for: id }, label), inp, el('span', { class: 'unit' }, unit || ''));
     };
@@ -15019,11 +16822,11 @@ self.postMessage({ hello: true });`;
       }
       case 'import': {
         let info = null; try { info = Model.importInfo(f); } catch (e) { /* errore mostrato sotto */ }
-        const fmtN = x => Math.round(x).toLocaleString('it-IT');
+        const fmtN = x => Math.round(x).toLocaleString(I18N.loc);
         const isCad = f.fmt === 'step' || f.fmt === 'iges';
         const g = grp('File importato', el('p', { class: 'note' }, (f.file || 'senza nome') + ' (' + String(f.fmt || 'stl').toUpperCase() + ')'));
         if (info) {
-          const sz = [0, 1, 2].map(k => info.bbox.mx[k] - info.bbox.mn[k]).map(x => x.toFixed(2).replace('.', ',')).join(' × ');
+          const sz = [0, 1, 2].map(k => info.bbox.mx[k] - info.bbox.mn[k]).map(x => x.toFixed(2).replace('.', I18N.dc)).join(' × ');
           if (isCad) g.append(el('p', { class: 'note' }, `${fmtN(info.brepFaces)} facce del modello d'origine, divise in ${fmtN(info.tris)} triangoli` + (info.parts > 1 ? `; ${info.parts} corpi separati` : '') + '.'));
           else g.append(el('p', { class: 'note' }, `${fmtN(info.tris)} triangoli, ${fmtN(info.faces)} facce piane` + (info.parts > 1 ? `, ${info.parts} parti separate` : '') + '.'));
           g.append(el('p', { class: 'note' }, 'Ingombro (X × Y × Z): ' + sz + ' mm.'),
@@ -15115,8 +16918,8 @@ self.postMessage({ hello: true });`;
       }
     }
     // nome della funzione
-    const nm = el('input', { type: 'text', value: f.name, id: 'pm_name' });
-    nm.addEventListener('change', () => { f.name = nm.value.trim() || f.name; });
+    const nm = el('input', { type: 'text', value: I18N.t(f.name), id: 'pm_name' });
+    nm.addEventListener('change', () => { const v = nm.value.trim(); if (v && v !== I18N.t(f.name)) f.name = v; });
     body.append(el('div', { class: 'row' }, el('label', { for: 'pm_name' }, 'Nome'), nm));
     body.append(msg);
   }
@@ -16276,10 +18079,12 @@ self.postMessage({ hello: true });`;
   function fmtNum(v) {
     const r = Math.round(v * 100) / 100;
     if (Math.abs(r - Math.round(r)) < 1e-9) return String(Math.round(r));
-    return r.toFixed(2).replace(/0$/, '').replace('.', ',');
+    return r.toFixed(2).replace(/0$/, '').replace('.', I18N.dc);
   }
   D.fmtNum = fmtNum;
-  function render(opts = {}) {
+  // in inglese i testi della tavola si traducono già qui: valgono per lo schermo, SVG, PDF, DXF e stampa
+  function render(opts = {}) { const r = render0(opts); if (I18N.en) r.svg = I18N.svg(r.svg); return r; }
+  function render0(opts = {}) {
     const App = A(), st = opts.st || curSt();
     const ds = opts.ds || D.state();
     const doc = opts.doc || curDoc();
@@ -16999,7 +18804,7 @@ self.postMessage({ hello: true });`;
   D.exit = function () {
     const App = A();
     active = false; tool = null; picks = [];
-    if (D.assembly()) { const n = document.querySelector('#docName'); n.disabled = false; n.value = App.doc.name || 'Parte1'; D.setAssembly(null); D.invalidate(); }
+    if (D.assembly()) { const n = document.querySelector('#docName'); n.disabled = false; n.value = I18N.t(App.doc.name || 'Parte1'); D.setAssembly(null); D.invalidate(); }
     App.mode = 'part';
     document.querySelector('#app').dataset.mode = 'part';
     document.querySelector('#view').hidden = false;
@@ -17281,7 +19086,7 @@ self.postMessage({ hello: true });`;
     const mid = k => (bb.mn[k] + bb.mx[k]) / 2;
     App.modal('Vista in sezione', `
       <div class="row"><label for="secV">Vista da sezionare</label><select id="secV" style="width:280px">${opts.map(([v, t]) => `<option value="${v}" ${sec.view === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-      <div class="row"><label for="secO">Posizione del piano di taglio (mm)</label><input id="secO" type="text" value="${String(Math.round(sec.offset * 1000) / 1000).replace('.', ',')}" style="width:120px"></div>
+      <div class="row"><label for="secO">Posizione del piano di taglio (mm)</label><input id="secO" type="text" value="${String(Math.round(sec.offset * 1000) / 1000).replace('.', I18N.dc)}" style="width:120px"></div>
       <div class="row"><label for="secL">Lettera</label><input id="secL" type="text" maxlength="1" value="${sec.label || 'A'}" style="width:60px"></div>
       <p class="note">La posizione è la coordinata del piano lungo la sua normale (Z per la vista frontale, Y per quella dall'alto, X per quella da sinistra). Il centro del pezzo è: X ${App.fmt(mid(0))}, Y ${App.fmt(mid(1))}, Z ${App.fmt(mid(2))}.</p>`, [
       { label: 'Togli la sezione', fn: () => { ds.section = null; D.invalidate(); App.save(); draw(); } },
@@ -17296,8 +19101,8 @@ self.postMessage({ hello: true });`;
       } },
     ]);
     // valore predefinito: il centro del pezzo
-    if (!ds.section) { const v0 = sec.view; const k = v0 === 'front' ? 2 : v0 === 'top' ? 1 : 0; document.querySelector('#secO').value = String(Math.round(mid(k) * 1000) / 1000).replace('.', ','); }
-    document.querySelector('#secV').addEventListener('change', e => { const k = e.target.value === 'front' ? 2 : e.target.value === 'top' ? 1 : 0; document.querySelector('#secO').value = String(Math.round(mid(k) * 1000) / 1000).replace('.', ','); });
+    if (!ds.section) { const v0 = sec.view; const k = v0 === 'front' ? 2 : v0 === 'top' ? 1 : 0; document.querySelector('#secO').value = String(Math.round(mid(k) * 1000) / 1000).replace('.', I18N.dc); }
+    document.querySelector('#secV').addEventListener('change', e => { const k = e.target.value === 'front' ? 2 : e.target.value === 'top' ? 1 : 0; document.querySelector('#secO').value = String(Math.round(mid(k) * 1000) / 1000).replace('.', I18N.dc); });
   }
 
   /* ---------------- stampa ---------------- */
@@ -17407,6 +19212,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     ['Funzioni', 'Sposta/Copia corpo', ['sposta corpo', 'copia corpo', 'copia il corpo', 'spostamento', 'spostamento x', 'spostamento y', 'spostamento z', 'rotazione', 'numero di copie', 'asse per l\'origine', 'copia'], 'Ruota un corpo attorno a un asse che passa per l\'origine e poi lo sposta. Con «Copia il corpo» l\'originale resta e nascono delle copie, ognuna spostata rispetto alla precedente.'],
     ['Funzioni', 'Elimina/Mantieni corpo', ['elimina corpo', 'mantieni corpo', 'corpi scelti'], 'Toglie i corpi scelti, oppure tiene solo quelli. Come ogni funzione si può sopprimere o cancellare: i corpi tornano.'],
     ['Interfaccia', 'Informazioni e licenze', ['informazioni', 'licenze'], 'Progetto › Informazioni e licenze: chi ha scritto il programma, la sua licenza, le parti di altri autori e i marchi citati.'],
+    ['Interfaccia', 'Lingua', ['language', 'inglese', 'english', 'language: english', 'lingua: italiano'], 'Il programma è in italiano; con Progetto › Language: English diventa inglese, con i nomi dei comandi della versione inglese di SolidWorks. Il progetto resta lo stesso; in inglese i numeri usano il punto decimale.'],
     ['Interfaccia', 'GNU GPL 3', ['gpl', 'gpl 3', 'licenza gpl'], 'La licenza del Banco CAD. Permette a chiunque di usare, studiare, modificare e ridistribuire il programma, purché le versioni distribuite restino con la stessa licenza e con i sorgenti disponibili.'],
     ['Interfaccia', 'CommandManager', ['barra dei comandi'], 'La barra in alto con le schede Funzioni, Schizzo, Valuta, Messa in tavola e Assieme. Ogni scheda mostra i comandi di quel gruppo, come in SolidWorks.'],
     ['Interfaccia', 'Albero di progettazione', ['featuremanager', 'albero'], 'L\'elenco a sinistra con i piani, l\'origine e tutte le funzioni nell\'ordine in cui sono state create. Il pezzo si ricostruisce seguendo l\'albero dall\'alto in basso: doppio clic su una funzione per modificarla, clic destro per gli altri comandi.'],
@@ -20507,6 +22313,16 @@ if (isNode) {
     ],
     tips: ['Il programma non raccoglie dati: il lavoro resta nel tuo browser.'],
     terms: ['Informazioni e licenze', 'GNU GPL 3'],
+  });
+  add('Per iniziare', 'lingua', 'Usare il programma in inglese', {
+    why: 'Lavorare con i nomi dei comandi della versione inglese di SolidWorks, o far usare il Banco CAD a chi non parla italiano.',
+    steps: [
+      'Scegli **Progetto › Language: English**: il lavoro si salva e la pagina si riapre in inglese, con lo stesso progetto.',
+      'Per tornare all\'italiano scegli **Project › Lingua: italiano**.',
+      'In inglese i numeri si scrivono con il punto decimale (12.5); nei campi si può scrivere anche la virgola.',
+    ],
+    tips: ['La scelta resta in questo browser. Il collegamento al sito con ?lang=en in fondo all\'indirizzo apre direttamente la versione inglese.', 'I nomi delle funzioni fatte in italiano (Estrusione1) si vedono in inglese (Boss-Extrude1) senza cambiare il progetto; un nome scritto da te resta com\'è.'],
+    terms: ['Lingua'],
   });
   add('Per iniziare', 'salvare', 'Salvare, esportare e riaprire il lavoro', {
     why: 'Non perdere il lavoro e portarlo su un altro computer.',

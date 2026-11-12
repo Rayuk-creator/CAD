@@ -4,6 +4,8 @@
 
 Modellatore 3D parametrico per la scuola, ispirato a SolidWorks, in **un'unica pagina HTML**: si apre con un doppio clic in Chrome, Edge o Firefox, non c'è niente da installare e funziona anche senza internet.
 
+Il programma è in italiano e, con **Progetto › Language: English**, anche in inglese (con i nomi dei comandi della versione inglese di SolidWorks).
+
 ![Banco CAD: flangia con mozzo e otto fori nella vista isometrica](docs/img/modello-3d.png)
 
 Pensato per gli istituti tecnici (meccanica e meccatronica): si impara il metodo di lavoro dei CAD professionali (schizzo quotato, funzioni, albero di progettazione, messa in tavola secondo le norme ISO) su un programma leggero che gira su qualunque computer o tablet della scuola.

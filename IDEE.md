@@ -6,19 +6,17 @@ Promemoria delle cose discusse ma **non ancora fatte**. Da leggere all'inizio di
 
 Elica e spirale, sweep lungo la curva, Estrusione e Taglio con loft, guida PDF dell'elica con la pala svergolata (`bash tools/guide/fai.sh`, PDF in `tools/guide/out`, non pubblicati: da chiedere all'utente se metterli sul sito) e manuale rifatto. Possibili aggiunte, solo se servono: curve guida nel loft, tangenze agli estremi del loft.
 
-## PROSSIMO LAVORO: traduzione in inglese
+## IN CORSO: traduzione in inglese
 
-Scelta dell'utente del 5 novembre, confermata il 12 novembre (ordine: elica, traduzione, installabile): **dopo le funzioni per l'elica**. Tradurre tutto il programma in inglese, lasciando l'italiano come lingua normale e l'inglese da scegliere con un comando.
+Scelta dell'utente del 5 novembre, confermata il 12 novembre (ordine: elica, traduzione, installabile; e subito dopo la traduzione: **ripubblicare su claude.ai** e **mettere sul sito le due guide PDF**, scelta del 12 novembre). L'italiano resta la lingua normale, l'inglese si sceglie con Progetto › Language: English. Come funziona: `RIPARTENZA.md`, punto «Lingua».
 
-Testo misurato il 5 novembre in `index.html` (conteggio automatico, approssimato). Tempi stimati: in tutto 6-10 ore di lavoro, su 3-5 chat, a tappe:
+1. **Interfaccia e scelta della lingua: FATTA il 12 novembre** (1 600 frasi, `tools/traduzione/en.json`).
+2. **Glossario** (circa 8 100 parole): **prossimo**. Da fare: termini e spiegazioni in inglese (probabilmente un elenco parallelo nel modulo `Glossary`, scelto con `I18N.en`); `decorate` deve trovare i termini anche nel testo inglese; i `title` dei comandi oggi in inglese ricevono ancora la spiegazione italiana del Glossario; «Che cos'è: …» e il pulsante «Glossario» (già nel dizionario).
+3. **Guida** (circa 7 000 parole, 64 argomenti): stesso metodo; titoli dei gruppi, pulsanti «Mostrami dove», «← Tutti gli argomenti».
+4. **Manuale PDF in inglese**, con le schermate rifatte in inglese (capitoli scritti a mano in `tools/manuale/build.py`, più Guida e Glossario tradotti). Il README inglese va riscritto con i nomi inglesi dei comandi.
+5. **Convertitore DWG** in inglese e prova finale: `npm run test:lingua` con 0 frasi mancanti anche per Glossario e Guida (togliere l'esclusione in `tools/traduzione/mancanti.js`).
 
-1. **Interfaccia e scelta della lingua** (3-5 ore): circa 1.050 frasi, 8.700 parole, più le etichette di una parola sola (almeno 180). Attenzione a: messaggi composti a pezzi con numeri e plurali, numeri scritti in formato italiano (`toLocaleString('it-IT')`), nomi dei comandi da prendere dalla versione inglese di SolidWorks (da controllare su fonti esterne: l'utente non ha SolidWorks).
-2. **Glossario** (1 ora): circa 8.100 parole.
-3. **Guida** (1 ora): circa 7.000 parole.
-4. **Manuale PDF in inglese**, con le schermate rifatte (1-2 ore): capitoli scritti a mano in `tools/manuale/build.py` (circa 3.000 parole, codice compreso), più Guida e Glossario già tradotti.
-5. **Convertitore DWG e prove in inglese** (circa 1 ora; testo del Convertitore non ancora misurato): una prova che cerca le frasi rimaste in italiano nella versione inglese.
-
-L'Autoverifica (5.400 parole) è proposta fuori dalla traduzione: i nomi delle prove possono restare in italiano. Il lavoro consuma molto del limite settimanale dell'utente: dopo ogni tappa il programma deve restare usabile.
+L'Autoverifica (5 400 parole) resta fuori dalla traduzione: i nomi delle prove possono restare in italiano. Il lavoro consuma molto del limite settimanale dell'utente: dopo ogni tappa il programma deve restare usabile.
 
 ## DOPO LA TRADUZIONE: rendere installabile il Banco CAD (dopo la traduzione)
 
