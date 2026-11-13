@@ -32,7 +32,7 @@
     "**Mouse – wheel:** zooms towards the point under the pointer: forward zooms in, backward zooms out.",
     "**Ctrl + wheel:** rotates the model around the vertical axis.",
     "**Dragging:** left button on empty space to rotate; right button (or Shift + left) to pan.",
-    "**Tablet:** spreading or pinching two fingers zooms. To rotate and pan, **touch the part first** (the view border turns blue and «Part held» appears): then one finger rotates and two fingers pan. Touch empty space or «Release» to let it go.",
+    "**Tablet:** spreading or pinching two fingers zooms. To rotate and pan, **touch the part first** (the view border turns blue and “Part held” appears): then one finger rotates and two fingers pan. Touch empty space or “Release” to let it go.",
     "**Keyboard:** space bar for the orientations (Front, Top, Isometric…), F to fit the part to the window."
    ],
    "tips": [
@@ -99,7 +99,7 @@
    "t": "Importing a part from an STL or OBJ file",
    "why": "Use a part made with another program (SolidWorks, Inventor, Tinkercad…) to measure it, put it on a drawing or modify it.",
    "steps": [
-    "In the original program save the part as [[STL]] (or [[OBJ]]). In SolidWorks: File › Save As › type STL. If the program can write [[STEP]], use that: see «Importing a part from a STEP or IGES file».",
+    "In the original program save the part as [[STL]] (or [[OBJ]]). In SolidWorks: File › Save As › type STL. If the program can write [[STEP]], use that: see “Importing a part from a STEP or IGES file”.",
     "Here: **Project › Import STL or OBJ** and choose the file.",
     "Choose the [[Unità del file]] (usually millimeters) and, if the part arrives lying on its side, check [[Asse Z del file verso l'alto]]. Press **Import**.",
     "**Imported1** appears in the tree: it is a [[Corpo a faccette]]. You can measure it, compute its mass (Evaluate tab) and put it on a drawing.",
@@ -116,17 +116,17 @@
    "t": "Importing a part from a STEP or IGES file",
    "why": "Bring here, with its true surfaces, a part designed with SolidWorks, Inventor, Fusion, FreeCAD or another CAD program: to measure it, put it on a drawing or modify it.",
    "steps": [
-    "In the original program save the part as [[STEP]]. SolidWorks: File › Save As › type «STEP AP214 (*.step)». Inventor: Export › CAD Format › STEP. If only [[IGES]] is available, that works too.",
+    "In the original program save the part as [[STEP]]. SolidWorks: File › Save As › type “STEP AP214 (*.step)”. Inventor: Export › CAD Format › STEP. If only [[IGES]] is available, that works too.",
     "Here: **Project › Import STEP or IGES** and choose the file (.step, .stp, .iges or .igs).",
     "The unit of measure is written in the file: you do not have to choose it. If the part arrives lying on its side, check [[Asse Z del file verso l'alto]]. Press **Import**.",
     "The first time, wait a few seconds: the reader ([[OpenCascade]]) gets ready. The file is read separately: meanwhile the page stays free, and with **Cancel** you can stop the reading.",
-    "If the file contains several bodies (an assembly), choose with the check boxes which ones to import ([[Corpi di un assieme]]). With **One «Imported» for each body** checked, each body becomes a feature of its own; otherwise a single **Imported1** appears in the tree.",
+    "If the file contains several bodies (an assembly), choose with the check boxes which ones to import ([[Corpi di un assieme]]). With **One “Imported” for each body** checked, each body becomes a feature of its own; otherwise a single **Imported1** appears in the tree.",
     "The [[Facce del modello d'origine|faces of the model]] stay recognizable: on flat faces you can open a **Sketch** and add cuts, holes and extrusions.",
-    "Volume, area and mass (Evaluate tab) have an error well below 1 %. To change the orientation or turn off the [[Colori del file]]: double-click **Imported1**."
+    "Volume, area and mass (Evaluate tab) have an error well below 1%. To change the orientation or turn off the [[Colori del file]]: double-click **Imported1**."
    ],
    "tips": [
     "The part arrives without its feature history: the original dimensions cannot be edited.",
-    "Each body of an assembly arrives in its own «Imported» feature (it can be suppressed or deleted on its own); with the box unchecked they all arrive in a single feature.",
+    "Each body of an assembly arrives in its own “Imported” feature (it can be suppressed or deleted on its own); with the box unchecked they all arrive in a single feature.",
     "The face colors written in the file are shown on the part; the mass still uses the chosen material.",
     "The .sldprt (SolidWorks) and .ipt (Inventor) files cannot be opened: save them as STEP first.",
     "The reader is inside the page: it also works without the Internet."
@@ -143,7 +143,7 @@
    ],
    "tips": [
     "On the face of a part the edges are shown in gray: you can snap and dimension to them ([[Geometria esterna]]).",
-    "Right-click a face or a plane › «Sketch on this plane»."
+    "Right-click a face or a plane › “Sketch on this plane”."
    ]
   },
   "sk-colori": {
@@ -273,7 +273,7 @@
     "Get the drawing as a [[File DXF]] or [[File DWG]]. If it has a title block, border or hatches, you can turn off their layers in the window.",
     "On the tab: **Sketch › Insert DXF or DWG** (or **Project › Import DXF or DWG (sketch)**). Outside a sketch choose the **plane**; inside a sketch the geometry goes into the open one.",
     "Choose the file: the window shows a **preview** of the drawing, with a small red cross on the point that will go on the origin. If the drawing has several [[Layer|layers]], uncheck the ones you do not need (title block, dimensions, border): the preview updates.",
-    "Choose the [[Unità del file]] (usually «from the file») and the **position**: as in the file, or with the lower left corner or the center on the origin. The **Texts, dimensions, hatches and tables as reference background** box brings them under the sketch, in gray ([[Sfondo del disegno]]): also the [[Tratteggio del disegno|hatches]], the [[Tolleranza geometrica|geometric tolerances]] and the [[Richiamo multiplo|multileaders]]. Press **Import**.",
+    "Choose the [[Unità del file]] (usually “from the file”) and the **position**: as in the file, or with the lower left corner or the center on the origin. The **Texts, dimensions, hatches and tables as a reference background** box brings them under the sketch, in gray ([[Sfondo del disegno]]): also the [[Tratteggio del disegno|hatches]], the [[Tolleranza geometrica|geometric tolerances]] and the [[Richiamo multiplo|multileaders]]. Press **Import**.",
     "The entities arrive selected and blue ([[Sotto definito]]): check that the outlines are closed, then press ✓. [[Ellisse|Ellipses]] and [[Spline|splines]] arrive as chains of tangent arcs ([[Biarco|biarcs]]).",
     "If you have the background, read the gray sizes and put them back with **Smart Dimension**: those in the file do not drive the shape. In the sketch panel you can hide it (**Show the background**) or remove it (**Remove the background**).",
     "Select the sketch and use **Extruded Boss/Base**, or **Revolved Boss/Base** if there is a [[Linea di mezzeria]]."
@@ -285,7 +285,7 @@
     "The final message says into how many arcs each ellipse or spline was divided, and the [[Scostamento dalla curva]]: usually a few thousandths of a millimeter.",
     "You can also import whole drawings with thousands of entities; to keep only the part, uncheck the layers you do not need (title block, border, dimensions).",
     "Layers that are off or frozen in the file start unchecked.",
-    "You can also choose a **.zip** with the DXF inside: that is how the DWG → DXF Converter saves files in the published page. If the zip holds several drawings (the converter's «Save all DXF» button), choose one in **Drawing in the zip**.",
+    "You can also choose a **.zip** with the DXF inside: that is how the DWG → DXF Converter saves files in the published page. If the zip holds several drawings (the converter's “Save all DXFs” button), choose one in **Drawing in the zip**.",
     "A **DWG** takes a moment longer, because it is first turned into a DXF: meanwhile the page stays free, and Cancel stops the reading.",
     "To save DXF files, for other programs or for many drawings at once, there is the [[Convertitore DWG → DXF]]."
    ]
@@ -320,7 +320,7 @@
     "Select the entities (Ctrl+click for more than one).",
     "Only the possible relations appear in the panel on the left: press the one you need.",
     "The existing relations are listed in the panel: the × removes them.",
-    "With «Show the relations on the sketch» the symbols appear next to the entities."
+    "With “Show the relations on the sketch” the symbols appear next to the entities."
    ],
    "tips": [
     "A relation in the right place is worth more than a dimension: for example Equal among four holes, or Horizontal between two centers."
@@ -333,11 +333,11 @@
     "Draw a closed sketch (holes inside are fine too).",
     "Press **Extruded Boss/Base** (even while you are still in the sketch).",
     "Choose the [[Condizione finale]]: [[Cieca]] with the depth, or [[Piano medio]] to get a part symmetric about the plane.",
-    "If needed: «Reverse Direction», [[Direzione 2]] to extrude to the other side too, [[Sformo]] to tilt the walls.",
+    "If needed: “Reverse Direction”, [[Direzione 2]] to extrude to the other side too, [[Sformo]] to tilt the walls.",
     "Look at the orange preview and confirm with ✓."
    ],
    "tips": [
-    "The sketch to use is chosen from the «Sketch» list or by clicking its lines in the view."
+    "The sketch to use is chosen from the “Sketch” list or by clicking its lines in the view."
    ]
   },
   "taglio": {
@@ -360,7 +360,7 @@
    "steps": [
     "Open an Extruded Boss/Base or an Extruded Cut with the [[Cieca]] condition.",
     "Check **Draft** and type the angle (for example 3°).",
-    "Normally the profile gets smaller going away from the sketch; check «Draft outward» to make it larger.",
+    "Normally the profile gets smaller going away from the sketch; check “Draft outward” to make it larger.",
     "Confirm: flat faces become tilted planes, cylinders become cones."
    ],
    "tips": [
@@ -387,7 +387,7 @@
    "steps": [
     "**Path:** in a sketch draw **tangent** lines and arcs (use Tangent Arc or Sketch Fillet at the corners). Confirm.",
     "**Profile:** on a plane perpendicular to the path, at the point where the path starts, draw the closed outline (for example a circle). Confirm.",
-    "Press **Sweep**: profile and path are chosen automatically; if needed change them from the lists or with «Pick in the view».",
+    "Press **Sweep**: profile and path are chosen automatically; if needed change them from the lists or with “Choose the profile in the view” or “Choose the path in the view”.",
     "Confirm with ✓. To remove material use **Swept Cut**."
    ],
    "tips": [
@@ -403,11 +403,11 @@
     "**Circle:** open a sketch on the plane perpendicular to the spring axis (for example the Top Plane) and draw a [[Cerchio]] with the mean diameter of the spring. Confirm.",
     "Press **Helix and Spiral**: in [[Definita da]] choose which sizes to give (for example [[Passo]] 10 and [[Rivoluzioni]] 5) and look at the orange curve. Confirm with ✓.",
     "**Profile:** open a sketch on a plane through the start of the helix (with the circle on the Top Plane and [[Angolo iniziale]] 0° it is the Front Plane) and draw the wire: a circle centered on the start point of the curve. Confirm.",
-    "Press **Sweep**: the profile and the curve are chosen automatically (the curve can also be chosen from the «Path» list or by clicking it in the view). Confirm with ✓."
+    "Press **Sweep**: the profile and the curve are chosen automatically (the curve can also be chosen from the “Path” list or by clicking it in the view). Confirm with ✓."
    ],
    "tips": [
     "The pitch must be larger than the profile, otherwise the coils run into each other and an error appears.",
-    "For a conical spring check [[Elica rastremata]]; for a flat spring choose «Spiral».",
+    "For a conical spring check [[Elica rastremata]]; for a flat spring choose “Spiral”.",
     "For a real thread use **Swept Cut** with a triangular profile on a cylinder.",
     "The length of the wire is shown in the curve panel."
    ]
@@ -436,7 +436,7 @@
     "Open a sketch on a plane that cuts the part where the rib goes (often the Front Plane or a mid plane).",
     "Draw **just one line** (open) where the free edge of the rib must run. It does not need to touch the part: it is extended automatically.",
     "Press **Rib**, type the [[Spessore]] and choose the side (mid plane or one side).",
-    "If the material goes to the wrong side use «Flip material side». Confirm with ✓."
+    "If the material goes to the wrong side use “Flip material side”. Confirm with ✓."
    ]
   },
   "fori": {
@@ -451,7 +451,7 @@
    ],
    "tips": [
     "The depth of blind holes is measured up to the start of the [[Punta a 118°]].",
-    "To change the positions: double-click the hole › «Edit the positions»."
+    "To change the positions: double-click the hole › “Edit the positions”."
    ]
   },
   "corpi": {
@@ -465,12 +465,12 @@
     "In **Evaluate › Mass Properties** you find the data of each body; **Export STEP** writes one solid for each body."
    ],
    "tips": [
-    "With «Merge result» checked the material joins the bodies it touches; if there is more than one body and it touches none, a new body is born."
+    "With “Merge result” checked the material joins the bodies it touches; if there is more than one body and it touches none, a new body is born."
    ]
   },
   "combina": {
    "t": "Combining bodies: Add, Subtract, Common",
-   "why": "Make a part by joining, subtracting or intersecting bodies, like «Combine» in SolidWorks.",
+   "why": "Make a part by joining, subtracting or intersecting bodies, like “Combine” in SolidWorks.",
    "steps": [
     "Press **Combine** and choose the operation: **Add**, **Subtract** or **Common**.",
     "Check the bodies in the panel, or click them in the view (you can also pick them in the tree with Ctrl + click before pressing **Combine**). For **Subtract** first choose the **main body**, then the ones to take away from it.",
@@ -484,7 +484,7 @@
    "t": "Moving, rotating or copying a body",
    "why": "Put a body in its place or make copies of it, without redoing the sketches.",
    "steps": [
-    "Press **Body-Move/Copy** and check the bodies.",
+    "Press **Move/Copy Bodies** and check the bodies.",
     "Type the **rotation** (X, Y or Z axis through the origin and angle) and the **translation** in X, Y and Z. It rotates first, then moves.",
     "For copies check **Copy the body** and type the **number of copies**: each one is moved from the previous one."
    ]
@@ -493,7 +493,7 @@
    "t": "Deleting or keeping bodies",
    "why": "Remove the bodies you no longer need, for example those used for construction.",
    "steps": [
-    "Press **Body-Delete/Keep** and choose whether the chosen bodies are **to delete** or **to keep**.",
+    "Press **Delete/Keep Body** and choose whether the chosen bodies are **to delete** or **to keep**.",
     "Check the bodies and confirm with ✓."
    ],
    "tips": [
@@ -520,7 +520,7 @@
    "why": "Repeat holes or bosses in a row or in a grid.",
    "steps": [
     "Press **Linear Pattern**.",
-    "In «Features to pattern» click a face of the feature to copy (or its name in the tree).",
+    "In “Features to pattern” click a face of the feature to copy (or its name in the tree).",
     "Direction 1: X, Y, Z axis or an edge of the part; type the distance (spacing) and the number of [[Istanze]].",
     "For a grid check Direction 2 and fill it in the same way. Confirm with ✓."
    ]
@@ -531,7 +531,7 @@
    "steps": [
     "Make the first hole (or the first boss).",
     "Press **Circular Pattern** and choose the feature to repeat.",
-    "Axis: X, Y, Z or «From the part» and click a cylindrical face (its axis is used).",
+    "Axis: X, Y, Z or “From the part” and click a cylindrical face (its axis is used).",
     "Number of instances and total angle (360° = spread over the whole turn). Confirm."
    ]
   },
@@ -553,7 +553,7 @@
    "why": "Make sketches where there is no face: in the middle of the part, higher up, offset.",
    "steps": [
     "Select a plane or a flat face, then press **Reference Plane**.",
-    "Type the distance; «Reverse» for the other side.",
+    "Type the distance; “Reverse” for the other side.",
     "Confirm: the new plane appears in the tree and can be used for sketches.",
     "**Sketch on the plane:** click its name in the tree (it turns blue in the view) and press **Sketch**. Or press **Sketch** without choosing anything and pick the plane in the panel."
    ]
@@ -563,7 +563,7 @@
    "why": "The model is parametric: change a size and the part updates.",
    "steps": [
     "**Double-click** the feature in the tree (or a face of the part): its panel opens again.",
-    "For the sketch: right-click the feature › «Edit Sketch» (or double-click the sketch under the feature).",
+    "For the sketch: right-click the feature › “Edit Sketch” (or double-click the sketch under the feature).",
     "Change the values and confirm: all the features after it are recalculated ([[Rigenerazione]]).",
     "If a feature turns red it has an error: hover over it with the pointer to read why."
    ]
@@ -574,8 +574,8 @@
    "steps": [
     "Right-clicking a feature in the tree opens the menu.",
     "**Suppress:** the feature stays but is not calculated (struck through). Useful for trying variants.",
-    "**Rename:** give clear names (e.g. «M6 fixing hole»).",
-    "**Roll back here:** the orange [[Barra di ripristino]] hides the features below it; you can insert a feature in the middle. «Roll to End» to go back.",
+    "**Rename:** give clear names (e.g. “M6 fixing hole”).",
+    "**Roll Back to here:** the orange [[Barra di ripristino]] hides the features below it; you can insert a feature in the middle. “Roll to End” to go back.",
     "**Delete:** removes the feature (and those that depend on it, after a confirmation).",
     "Ctrl+Z undoes, Ctrl+Y redoes."
    ]
@@ -586,7 +586,7 @@
    "steps": [
     "**Evaluate › Material** tab: choose the material (steel, aluminum, brass, plastics…).",
     "**Evaluate › Mass Properties**: volume, area, mass, center of mass and bounding box appear.",
-    "With «Material…» in the same window you change the material on the fly."
+    "With “Material…” in the same window you change the material on the fly."
    ],
    "tips": [
     "Without a material the mass is calculated with a density of 1 g/cm³."
@@ -598,7 +598,7 @@
    "steps": [
     "Press **Measure**.",
     "Click one or two faces, edges or vertices.",
-    "The result appears in the panel; «New measurement» starts again."
+    "The result appears in the panel; “New measurement” starts again."
    ]
   },
   "sezione": {
@@ -606,8 +606,8 @@
    "why": "See inside the part without changing it.",
    "steps": [
     "Press **Section View** (also from the small bar of the view).",
-    "At the bottom choose the plane and move the slider to move the cut; «Reverse» changes the part that is removed.",
-    "«Close» removes the section."
+    "At the bottom choose the plane and move the slider to move the cut; “Reverse” changes the part that is removed.",
+    "“Close” removes the section."
    ]
   },
   "assieme": {
@@ -646,12 +646,12 @@
    "steps": [
     "Press **New Assembly** and assemble the group, as usual.",
     "Go back to the other assembly with the list next to the name.",
-    "Press **Insert Part**: the list also contains the group, marked «subassembly». Mate it like a part: choose the faces of its pieces."
+    "Press **Insert Part**: the list also contains the group, marked “subassembly”. Mate it like a part: choose the faces of its pieces."
    ],
    "tips": [
     "A subassembly is rigid, until you choose Make flexible with the right button.",
     "The bill of materials opens the subassemblies and counts the real parts.",
-    "Interference Detection also checks the pieces inside the subassembly; with the «Treat subassemblies as components» box it checks it as one block.",
+    "Interference Detection also checks the pieces inside the subassembly; with the “Treat subassemblies as components” box it checks it as one block.",
     "An assembly cannot contain itself: it does not appear in the list.",
     "Right-click the name of the assembly in the tree to delete it."
    ]
@@ -707,7 +707,7 @@
     "For each identical screw, insert it again: the bill of materials keeps a single row, with the right quantity."
    ],
    "tips": [
-    "A screw in a tapped hole or in a nut shows up in Interference Detection marked «thread»: this is normal, because the thread is only indicated.",
+    "A screw in a tapped hole or in a nut shows up in Interference Detection marked “thread”: this is normal, because the thread is only indicated.",
     "On the drawing, threads are drawn with the thin lines of ISO 6410, in section views too: there the hatching goes up to the thick line.",
     "A countersunk screw rests on its cone: use Coincident between the top face of the head and the face of the part, with a countersunk hole of the same size."
    ]
@@ -799,7 +799,7 @@
    ],
    "tips": [
     "Two faces in contact are not an interference: a pin with the same diameter as the hole is not reported.",
-    "With imported pieces (STEP, IGES, STL, OBJ) a very thin layer is marked «maybe just contact», because those pieces are made of triangles.",
+    "With imported pieces (STEP, IGES, STL, OBJ) a very thin layer is marked “maybe just contact”, because those pieces are made of triangles.",
     "With very complex pieces the calculation can hold the page still for a few minutes."
    ]
   },
@@ -809,7 +809,7 @@
    "steps": [
     "Press **Self-check**.",
     "The program rebuilds the test parts and compares volume, area, center of mass and bounding box with the values calculated by hand.",
-    "The table shows, for each test, the largest error (allowed up to 1 %)."
+    "The table shows, for each test, the largest error (allowed up to 1%)."
    ]
   },
   "tavola": {
@@ -831,7 +831,7 @@
    "steps": [
     "**Overall dimensions:** adds in one go the largest sizes and the diameters of the circles.",
     "**Dimension:** click an edge (length), a circle (diameter) or two points of the same view, then click where to place the dimension.",
-    "Dimensions can be dragged to arrange them; the «Dimensions» list on the left lets you delete them."
+    "Dimensions can be dragged to arrange them; the “Dimensions” list on the left lets you delete them."
    ],
    "tips": [
     "Dimensions go on the orthographic views, not on the isometric view."
@@ -843,15 +843,15 @@
    "steps": [
     "Press **Section View** (Drawing tab).",
     "Choose the view to section, the position of the cutting plane and the letter (A).",
-    "«Apply»: the view becomes the hatched section A-A and the trace of the plane appears in the nearby view."
+    "“Apply”: the view becomes the hatched section A-A and the trace of the plane appears in the nearby view."
    ]
   },
   "stampa": {
    "t": "Printing and exporting the drawing",
    "why": "Hand in the drawing on paper or as a file.",
    "steps": [
-    "**Save PDF:** the simplest way: a PDF file of the drawing, to scale, that opens and prints anywhere (see «Saving the drawing, the sketch or the 3D view as PDF»).",
-    "**Print / PDF:** in the print window choose «Actual size» or «100 %» to get the right scale, or «Save as PDF».",
+    "**Save PDF:** the simplest way: a PDF file of the drawing, to scale, that opens and prints anywhere (see “Saving the drawing, the sketch or the 3D view as PDF”).",
+    "**Print / PDF:** in the print window choose “Actual size” or “100%” to get the right scale, or “Save as PDF”.",
     "**Export SVG:** vector drawing at 1:1 scale.",
     "**Export DXF:** for AutoCAD and other 2D CAD programs, with layers and line types."
    ]
@@ -866,7 +866,7 @@
     "In the shared page the file goes through the claude.ai save window; in the file opened from the computer it goes into Downloads."
    ],
    "tips": [
-    "To print to scale, open the PDF and in the print window choose «Actual size» or «100 %» (not «Fit to page»).",
+    "To print to scale, open the PDF and in the print window choose “Actual size” or “100%” (not “Fit to page”).",
     "The 3D view in the PDF is an image: for a sharp drawing to scale use the drawing."
    ]
   },
@@ -877,7 +877,7 @@
     "Choose **Project › Export STEP (for other CAD programs)**: the .step file holds the part as a solid, in millimeters.",
     "In the other program open it with **File › Open** (in SolidWorks: STEP file type).",
     "Planes, cylinders, cones, spheres and tori arrive as [[Superficie vera|true surfaces]]: in the other CAD program a hole has its exact diameter and a fillet its radius. The message says how many there are.",
-    "Surfaces that cannot be written exactly (two cylinders crossing each other, a sweep along a free curve) arrive divided into narrow flat faces: the solid stays closed."
+    "Surfaces that cannot be written exactly (for example a sweep along a helix, or a loft) arrive divided into narrow flat faces: the solid stays closed."
    ],
    "tips": [
     "Dimensions and the feature history do not pass: no CAD program exchanges them with the others. New features can be added on top of the imported part.",

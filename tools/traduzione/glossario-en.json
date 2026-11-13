@@ -773,7 +773,7 @@
    "a": [
     "flip material side"
    ],
-   "d": "On which side of the rib line the material goes. It is usually found by itself (toward the part); \"Reverse\" chooses the other side."
+   "d": "On which side of the rib line the material goes. It is usually found by itself (toward the part); \"Flip material side\" chooses the other side."
   },
   "Creazione guidata fori": {
    "t": "Hole Wizard",
@@ -1038,7 +1038,7 @@
   "Baricentro": {
    "t": "Center of mass",
    "a": [
-    "centre of mass",
+    "center of mass",
     "center of gravity"
    ],
    "d": "The point where all the mass can be thought to be concentrated (X, Y, Z with respect to the origin)."
@@ -1122,7 +1122,7 @@
    "a": [
     "interference check"
    ],
-   "d": "The command that checks all the components in pairs and shows the shared volume of each pair, also in red in the view. With parts made in the program the volume is calculated on the true surfaces; with imported ones, made of triangles, a very thin layer is marked \"maybe only contact\"."
+   "d": "The command that checks all the components in pairs and shows the shared volume of each pair, also in red in the view. With parts made in the program the volume is calculated on the true surfaces; with imported ones, made of triangles, a very thin layer is marked \"maybe just contact\"."
   },
   "Vista esplosa": {
    "t": "Exploded View",
@@ -1401,7 +1401,7 @@
    "d": "Check box of the drawing: the isometric view is drawn with filled faces and a light, like the \"Shaded With Edges\" style of SolidWorks. Each face has the color of the part in the 3D view, or the one written in the STEP or IGES file. The orthographic views stay as lines, as the standard requires. The colors are seen on screen, in print and in the SVG; the DXF stays as lines."
   },
   "Assi": {
-   "t": "Center lines",
+   "t": "Centerlines",
    "a": [
     "centerlines",
     "axis lines"
@@ -1724,7 +1724,7 @@
     "choice of bodies",
     "body selection"
    ],
-   "d": "A STEP file can contain several separate solids, for example the pieces of an assembly. After reading, Banco CAD lists them with the number of faces and the volume: with the check boxes you choose which ones to import. With the check box \"One «Imported» for each body\" (checked) each body arrives in its own feature, with the name of the body if the file has it; without it, they arrive together in a single \"Imported\". In an IGES file the surfaces that touch form a single body."
+   "d": "A STEP file can contain several separate solids, for example the pieces of an assembly. After reading, Banco CAD lists them with the number of faces and the volume: with the check boxes you choose which ones to import. With the check box \"One “Imported” for each body\" (checked) each body arrives in its own feature, with the name of the body if the file has it; without it, they arrive together in a single \"Imported\". In an IGES file the surfaces that touch form a single body."
   },
   "Colori del file": {
    "t": "File colors",

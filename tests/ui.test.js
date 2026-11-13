@@ -2933,7 +2933,7 @@ const pdfCheck = file => { try { return JSON.parse(require('child_process').exec
       && /Drop the \.dwg files here/.test(en.text) && /Reader ready/.test(en.text) && /Save all DXFs \(\.zip\)/.test(en.text)
       && /2 inserted blocks, 1 line, 1 arc, 1 circle, 1 polyline \(2 block definitions\)/.test(sample) && /Preview · 5 elements · size 5 × 8 /.test(sample)
       && /16 lines/.test(r14) && /1 text/.test(r14) && /less than 0\.1 s|\d\.\d s/.test(r14) && /13\.6 kB/.test(r14)
-      && /This is already a DXF file: open it directly in Banco CAD with «Import DXF or DWG \(sketch\)»\./.test(en.text)
+      && /This is already a DXF file: open it directly in Banco CAD with “Import DXF or DWG \(sketch\)”\./.test(en.text)
       && /This is a STEP file \(a 3D part\)/.test(en.text) && rows.some(r => /mio pezzo\.step/.test(r))
       && dl.suggestedFilename() === 'dxf-drawings.zip' && en.toast === 'Downloaded dxf-drawings.zip'
       && bEn === 'Project' && !it1.en && it1.btn === 'Language: English' && /Trascina qui i file \.dwg/.test(it1.text);

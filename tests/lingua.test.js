@@ -116,6 +116,24 @@ rec('Testi di un SVG tradotti (tavola salvata), il resto non cambia',
     missing.concat(badc).slice(0, 6).join(' | '));
 }
 
+// 5. scrittura inglese: virgolette “ ” (non « »), percentuali senza spazio (1%), «center» americano;
+//    nomi delle funzioni nell'albero e del materiale come nella versione inglese di SolidWorks
+{
+  const TD = path.join(__dirname, '..', 'tools', 'traduzione');
+  const strs = o => typeof o === 'string' ? [o] : Array.isArray(o) ? o.flatMap(strs) : o && typeof o === 'object' ? Object.values(o).flatMap(strs) : [];
+  const files = ['en.json', 'glossario-en.json', 'guida-en.json', 'convertitore-en.json'];
+  const badW = [];
+  for (const f of files) for (const s of strs(JSON.parse(fs.readFileSync(path.join(TD, f), 'utf8')))) {
+    if (/[«»]|\d %|\bcentre\b/.test(s)) badW.push(f + ': ' + s.slice(0, 80));
+  }
+  rec('Testi inglesi: virgolette “ ”, percentuali senza spazio (1%), center', !badW.length, badW.length + ' testi: ' + badW.slice(0, 3).join(' | '));
+  const sw = [['Serie lineare2', 'LPattern2'], ['Serie circolare1', 'CirPattern1'], ['Taglio con percorso1', 'Cut-Sweep1'], ['Taglio con loft1', 'Cut-Loft1'],
+    ['Estrusione con percorso1', 'Sweep1'], ['Estrusione con loft1', 'Loft1'], ['Sposta/Copia corpo1', 'Body-Move/Copy1'], ['Elimina/Mantieni corpo1', 'Body-Delete/Keep1'],
+    ['Sposta/Copia corpo', 'Move/Copy Bodies'], ['Elimina/Mantieni corpo', 'Delete/Keep Body'], ['Materiale <Non specificato>', 'Material <not specified>']];
+  const wrongSW = sw.filter(([i, e]) => en.tr(i) !== e).map(([i, e]) => `${i} → ${en.tr(i)} (atteso ${e})`);
+  rec('Nomi come nella versione inglese di SolidWorks (LPattern1, Cut-Sweep1, Material <not specified>…)', !wrongSW.length, wrongSW.join(' | '));
+}
+
 const fail = rows.filter(x => !x).length;
 console.log(`\n${rows.length - fail}/${rows.length} superati`);
 process.exit(fail ? 1 : 0);
